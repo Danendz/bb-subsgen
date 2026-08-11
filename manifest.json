@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "bb-subsgen",
+  "version": "0.0.1",
+  "description": "Hover pinyin + CC-CEDICT glosses over Bilibili subtitles.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.bilibili.com/*",
+    "https://*.hdslb.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["src/content/main.ts"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["dict/words.bin", "dict/defs.json"],
+      "matches": ["https://www.bilibili.com/*"]
+    }
+  ],
+  "commands": {
+    "toggle-pinyin": {
+      "suggested_key": { "default": "Alt+P" },
+      "description": "Toggle pinyin display"
+    },
+    "cycle-font-size": {
+      "suggested_key": { "default": "Alt+S" },
+      "description": "Cycle subtitle font size"
+    }
+  }
+}
