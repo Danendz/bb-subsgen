@@ -1,6 +1,7 @@
 import { adoptStyles, buildPinyinElement } from './overlay'
 import { toDiacriticPhrase } from '../lang/tone'
 import { parseDefinitions } from '../lang/definitions'
+import { rankEntries } from '../lang/entries'
 import type { CedictEntry } from '../lang/dict'
 
 const DWELL_MS = 150
@@ -126,9 +127,13 @@ export function attachHover({
 
   const buildPopupContent = (
     headword: string,
-    fallbackPinyin: string,
-    entries: CedictEntry[],
+    displayedPinyin: string,
+    rawEntries: CedictEntry[],
   ): HTMLElement => {
+    // File order puts variant spellings first for some characters, so rank
+    // by relevance to the reading actually shown on the subtitle.
+    const entries = rankEntries(rawEntries, headword, displayedPinyin, isTraditional())
+
     const el = document.createElement('div')
     el.className = 'popup'
 
@@ -145,7 +150,7 @@ export function attachHover({
     head.appendChild(wordGroup)
 
     const primary = entries[0]
-    const headPinyin = primary?.pinyin || fallbackPinyin
+    const headPinyin = primary?.pinyin || displayedPinyin
     if (headPinyin) {
       const pinyinGroup = document.createElement('span')
       pinyinGroup.className = 'popup-head-group'
