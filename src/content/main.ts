@@ -76,7 +76,12 @@ async function main() {
     status = 'active'
 
     stopMount = mount(({ shadowRoot, video }) => {
-      const stopHover = attachHover({ shadowRoot, video, lookupDefs })
+      const stopHover = attachHover({
+        shadowRoot,
+        video,
+        lookupDefs,
+        isTraditional: () => settings.useTraditional,
+      })
       let lastIndex = -1
       const render = () => {
         if (lastIndex === -1) {

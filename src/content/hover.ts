@@ -1,5 +1,6 @@
 import { adoptStyles, buildPinyinElement } from './overlay'
 import { toDiacritic } from '../lang/tone'
+import { parseDefinitions } from '../lang/definitions'
 import type { CedictEntry } from '../lang/dict'
 
 const DWELL_MS = 150
@@ -56,9 +57,16 @@ export interface HoverDeps {
   shadowRoot: ShadowRoot
   video: HTMLVideoElement
   lookupDefs: (headword: string) => Promise<CedictEntry[]>
+  /** Read at popup-build time so live settings changes take effect. */
+  isTraditional: () => boolean
 }
 
-export function attachHover({ shadowRoot, video, lookupDefs }: HoverDeps): () => void {
+export function attachHover({
+  shadowRoot,
+  video,
+  lookupDefs,
+  isTraditional,
+}: HoverDeps): () => void {
   const controller = new HoverPauseController()
   let dwellTimer: ReturnType<typeof setTimeout> | null = null
   let resumeTimer: ReturnType<typeof setTimeout> | null = null
@@ -105,11 +113,39 @@ export function attachHover({ shadowRoot, video, lookupDefs }: HoverDeps): () =>
       return el
     }
 
-    for (const definition of primary.definitions.slice(0, MAX_DEFINITIONS)) {
+    // Lifts CC-CEDICT classifier notation out of the definition text, so raw
+    // syntax never shows and classifiers don't eat a definition slot.
+    const { definitions, classifiers } = parseDefinitions(
+      primary.definitions,
+      isTraditional(),
+    )
+
+    for (const definition of definitions.slice(0, MAX_DEFINITIONS)) {
       const def = document.createElement('div')
       def.className = 'popup-def'
       def.textContent = definition
       el.appendChild(def)
+    }
+
+    if (classifiers.length) {
+      const row = document.createElement('div')
+      row.className = 'popup-cl'
+      const label = document.createElement('span')
+      label.className = 'popup-cl-label'
+      label.textContent = 'measure'
+      row.appendChild(label)
+
+      for (const classifier of classifiers) {
+        const item = document.createElement('span')
+        item.className = 'popup-cl-item'
+        const word = document.createElement('span')
+        word.className = 'popup-cl-word'
+        word.textContent = classifier.word
+        item.appendChild(word)
+        item.appendChild(buildPinyinElement(classifier.pinyin, 'popup-cl-pinyin', true))
+        row.appendChild(item)
+      }
+      el.appendChild(row)
     }
 
     // 多音字: surface the other readings rather than silently showing only one.

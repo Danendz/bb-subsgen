@@ -110,6 +110,26 @@ const STYLE = `
   background: rgba(255, 255, 255, 0.12);
 }
 .popup-def + .popup-def { margin-top: 3px; }
+.popup-cl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 9px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+.popup-cl-label {
+  color: #7c8496;
+  margin-right: 1px;
+}
+.popup-cl-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.popup-cl-word { color: #fff; }
 .popup-alt {
   margin-top: 7px;
   font-size: 11.5px;
