@@ -1,5 +1,5 @@
 import { adoptStyles, buildPinyinElement } from './overlay'
-import { toDiacritic } from '../lang/tone'
+import { toDiacriticPhrase } from '../lang/tone'
 import { parseDefinitions } from '../lang/definitions'
 import type { CedictEntry } from '../lang/dict'
 
@@ -38,6 +38,51 @@ export class HoverPauseController {
   userPaused(): void {
     this.weInitiatedPause = false
   }
+}
+
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="9" y="9" width="12" height="12" rx="2"/>' +
+  '<path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'
+
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M4 12.5l5.2 5.2L20 7"/></svg>'
+
+const COPIED_FEEDBACK_MS = 1100
+
+/** A small button that copies `text`, briefly showing a check on success. */
+function buildCopyButton(text: string, label: string): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = 'copy-btn'
+  button.title = label
+  button.setAttribute('aria-label', label)
+  // Constant markup — never interpolates dictionary or page data.
+  button.innerHTML = COPY_ICON
+
+  let resetTimer: ReturnType<typeof setTimeout> | null = null
+  button.addEventListener('click', (e) => {
+    // Without this the click reaches Bilibili's player and toggles playback.
+    e.preventDefault()
+    e.stopPropagation()
+
+    navigator.clipboard.writeText(text).then(
+      () => {
+        button.innerHTML = CHECK_ICON
+        button.classList.add('copied')
+        if (resetTimer) clearTimeout(resetTimer)
+        resetTimer = setTimeout(() => {
+          button.innerHTML = COPY_ICON
+          button.classList.remove('copied')
+        }, COPIED_FEEDBACK_MS)
+      },
+      (err) => console.warn('[bb-subsgen] copy failed', err),
+    )
+  })
+
+  return button
 }
 
 /** The `.word` an event target sits inside, or null if it isn't in one. */
@@ -89,15 +134,27 @@ export function attachHover({
 
     const head = document.createElement('div')
     head.className = 'popup-head'
+
+    const wordGroup = document.createElement('span')
+    wordGroup.className = 'popup-head-group'
     const wordSpan = document.createElement('span')
     wordSpan.className = 'popup-word'
     wordSpan.textContent = headword
-    head.appendChild(wordSpan)
+    wordGroup.appendChild(wordSpan)
+    wordGroup.appendChild(buildCopyButton(headword, `Copy ${headword}`))
+    head.appendChild(wordGroup)
 
     const primary = entries[0]
     const headPinyin = primary?.pinyin || fallbackPinyin
     if (headPinyin) {
-      head.appendChild(buildPinyinElement(headPinyin, 'popup-pinyin', true))
+      const pinyinGroup = document.createElement('span')
+      pinyinGroup.className = 'popup-head-group'
+      pinyinGroup.appendChild(buildPinyinElement(headPinyin, 'popup-pinyin', true))
+      // Copy the readable form, not CC-CEDICT's numeric-tone notation.
+      pinyinGroup.appendChild(
+        buildCopyButton(toDiacriticPhrase(headPinyin), 'Copy pinyin'),
+      )
+      head.appendChild(pinyinGroup)
     }
     el.appendChild(head)
 
@@ -156,9 +213,7 @@ export function attachHover({
     if (otherReadings.length) {
       const alt = document.createElement('div')
       alt.className = 'popup-alt'
-      const readings = otherReadings
-        .map((pinyin) => pinyin.split(' ').map(toDiacritic).join(''))
-        .join(', ')
+      const readings = otherReadings.map((pinyin) => toDiacriticPhrase(pinyin, '')).join(', ')
       alt.textContent = `also read ${readings}`
       el.appendChild(alt)
     }

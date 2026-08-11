@@ -90,10 +90,38 @@ const STYLE = `
 }
 .popup-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
+.popup-head-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa3b2;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.copy-btn.copied { color: #7ee0a8; }
+.copy-btn svg { display: block; }
 .popup-word {
   font-size: 19px;
   font-weight: 600;

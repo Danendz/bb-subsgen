@@ -41,6 +41,12 @@ function markPosition(lettersLower: string): number {
   return last
 }
 
+/** Converts a whole CC-CEDICT pinyin run (e.g. "xi3 huan5") to diacritics ("xǐ huan"). */
+export function toDiacriticPhrase(pinyin: string, separator = ' '): string {
+  if (!pinyin) return ''
+  return pinyin.split(' ').map(toDiacritic).join(separator)
+}
+
 /** Converts a CC-CEDICT numeric-tone syllable (e.g. "xi3") to diacritic form (e.g. "xǐ"). */
 export function toDiacritic(syllable: string): string {
   const match = /^([a-zA-Zü]+)([1-5])$/.exec(syllable)

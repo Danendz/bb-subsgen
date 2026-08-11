@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseTone, toDiacritic, toneColor } from './tone'
+import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from './tone'
 
 describe('parseTone', () => {
   test('reads the trailing tone digit from a CC-CEDICT syllable', () => {
@@ -61,5 +61,20 @@ describe('toDiacritic', () => {
         .map(toDiacritic)
         .join(''),
     ).toBe('xǐhuan')
+  })
+})
+
+describe('toDiacriticPhrase', () => {
+  test('converts every syllable in a run, space-separated by default', () => {
+    expect(toDiacriticPhrase('xi3 huan5')).toBe('xǐ huan')
+    expect(toDiacriticPhrase('yin2 hang2')).toBe('yín háng')
+  })
+
+  test('accepts a custom separator', () => {
+    expect(toDiacriticPhrase('xi3 huan5', '')).toBe('xǐhuan')
+  })
+
+  test('returns an empty string for empty input', () => {
+    expect(toDiacriticPhrase('')).toBe('')
   })
 })
