@@ -8,6 +8,7 @@
 // wherever this derived data is shown or redistributed.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { rankEntries } from '../src/lang/entries.ts'
 
 interface CedictEntry {
   simplified: string
@@ -42,32 +43,47 @@ function parse(src: string): CedictEntry[] {
   return entries
 }
 
-function buildWords(entries: CedictEntry[]): string {
-  const words = new Map<string, string>()
+function groupByHeadword(entries: CedictEntry[]): Map<string, CedictEntry[]> {
+  const byHeadword = new Map<string, CedictEntry[]>()
   for (const entry of entries) {
-    if (!words.has(entry.simplified)) words.set(entry.simplified, entry.pinyin)
-    if (!words.has(entry.traditional)) words.set(entry.traditional, entry.pinyin)
+    for (const key of new Set([entry.simplified, entry.traditional])) {
+      const existing = byHeadword.get(key)
+      if (existing) existing.push(entry)
+      else byHeadword.set(key, [entry])
+    }
   }
+  return byHeadword
+}
+
+/**
+ * Picks one reading per headword.
+ *
+ * Taking the first entry gives the wrong reading whenever CC-CEDICT lists a
+ * surname first — 也 is "Ye3 surname Ye" before "ye3 also; too", and 过 is
+ * "Guo1 surname Guo" before "guo4 to cross" — so the ruby annotation showed a
+ * capitalized proper noun over ordinary words. Ranking demotes proper nouns
+ * and variant stubs, which corrects ~1500 headwords.
+ */
+function buildWords(byHeadword: Map<string, CedictEntry[]>): string {
   const lines: string[] = []
-  for (const [word, pinyin] of words) lines.push(`${word}\t${pinyin}`)
+  for (const [word, candidates] of byHeadword) {
+    const [best] = rankEntries(candidates, word)
+    lines.push(`${word}\t${best.pinyin}`)
+  }
   return lines.join('\n')
 }
 
-function buildDefs(entries: CedictEntry[]): Record<string, CedictEntry[]> {
-  const defs: Record<string, CedictEntry[]> = {}
-  for (const entry of entries) {
-    for (const key of new Set([entry.simplified, entry.traditional])) {
-      ;(defs[key] ??= []).push(entry)
-    }
-  }
-  return defs
+function buildDefs(byHeadword: Map<string, CedictEntry[]>): Record<string, CedictEntry[]> {
+  return Object.fromEntries(byHeadword)
 }
 
 const src = readFileSync(SRC, 'utf8')
 const entries = parse(src)
 
+const byHeadword = groupByHeadword(entries)
+
 mkdirSync(OUT_DIR, { recursive: true })
-writeFileSync(path.join(OUT_DIR, 'words.bin'), buildWords(entries))
-writeFileSync(path.join(OUT_DIR, 'defs.json'), JSON.stringify(buildDefs(entries)))
+writeFileSync(path.join(OUT_DIR, 'words.bin'), buildWords(byHeadword))
+writeFileSync(path.join(OUT_DIR, 'defs.json'), JSON.stringify(buildDefs(byHeadword)))
 
 console.log(`Parsed ${entries.length} CC-CEDICT entries`)
