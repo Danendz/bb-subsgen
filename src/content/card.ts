@@ -42,6 +42,13 @@ export const WORD_STYLE = `
 }
 .pinyin .syl + .syl { margin-left: 0.25em; }
 
+/* Withheld, not removed — the row keeps its height so a line of mixed known
+   and unknown words still sits on one baseline. Hovering anywhere in the line
+   brings every reading back, so nothing is ever actually lost. */
+.pinyin.withheld { visibility: hidden; }
+.line:hover .pinyin.withheld,
+.selection-card:hover .pinyin.withheld { visibility: visible; }
+
 .hanzi {
   color: #fff;
   white-space: nowrap;
@@ -317,6 +324,16 @@ export function buildPinyinElement(
 export interface WordStyleOptions {
   showPinyin: boolean
   showToneColors: boolean
+  /**
+   * Render the reading but keep it invisible until hovered.
+   *
+   * Withheld rather than omitted so the line does not reflow: a cue almost
+   * always mixes words you know with words you don't, and dropping the element
+   * for some of them would leave the hanzi sitting at two different heights
+   * across one line. It also means a word maturing mid-video changes nothing
+   * about the layout.
+   */
+  hidePinyin?: boolean
 }
 
 export function buildWordElement(token: Token, options: WordStyleOptions): HTMLElement {
@@ -327,7 +344,9 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   if (token.pinyin) word.dataset.pinyin = token.pinyin
 
   if (token.pinyin !== null && options.showPinyin) {
-    word.appendChild(buildPinyinElement(token.pinyin, 'pinyin', options.showToneColors))
+    const pinyin = buildPinyinElement(token.pinyin, 'pinyin', options.showToneColors)
+    if (options.hidePinyin) pinyin.classList.add('withheld')
+    word.appendChild(pinyin)
   }
 
   const hanziEl = document.createElement('span')

@@ -65,6 +65,16 @@ export interface HoverDeps {
   /** The line currently on screen, snapshotted onto whatever gets discovered. */
   currentContext: () => Context | null
   known: () => Set<string>
+  /**
+   * A card actually opened on a word — the moment a lookup happens.
+   *
+   * On a line whose words are all known, this is an unambiguous "I could not
+   * read that": the translation was withheld and you went looking for it. No
+   * threshold to tune, which is why it is a separate signal from the dwell.
+   */
+  onLookup: (headword: string) => void
+  /** How long the card stayed open, once the pointer has finally left. */
+  onLookupEnd: (ms: number) => void
 }
 
 export function attachHover({
@@ -75,6 +85,8 @@ export function attachHover({
   showToneColors,
   currentContext,
   known,
+  onLookup,
+  onLookupEnd,
 }: HoverDeps): () => void {
   const controller = new HoverPauseController()
   let dwellTimer: ReturnType<typeof setTimeout> | null = null
@@ -82,8 +94,15 @@ export function attachHover({
   let popup: HTMLElement | null = null
   let programmaticPause = false
   let activeWord: HTMLElement | null = null
+  // When the current card opened. The video is paused throughout, so elapsed
+  // wall-clock time here is real reading time rather than playback drifting on.
+  let openedAt = 0
 
   const closePopup = () => {
+    if (popup && openedAt) {
+      onLookupEnd(Date.now() - openedAt)
+      openedAt = 0
+    }
     popup?.remove()
     popup = null
   }
@@ -100,6 +119,8 @@ export function attachHover({
     // The popup opening is the interaction that counts as discovery: it follows
     // a deliberate dwell, not a pointer crossing the line on its way elsewhere.
     discoverWord(headword, currentContext() ?? undefined)
+    onLookup(headword)
+    openedAt = Date.now()
 
     popup = buildCard(
       {

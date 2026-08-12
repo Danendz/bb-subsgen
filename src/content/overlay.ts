@@ -113,6 +113,13 @@ const STYLE = `
    asynchronously — hide it until there's text, so it claims no flex gap. */
 .translation:empty { display: none; }
 
+/* Held back on a line whose words you all know, and in quiz mode. Hovering
+   anywhere in the line reveals it at once — a quick glance to confirm should
+   never be punished, and the reveal itself is the signal that the line was
+   harder than its vocabulary suggested. */
+.translation.withheld { visibility: hidden; }
+.line:hover .translation.withheld { visibility: visible; }
+
 /* 'card' layout: the English line sits below the subtitle in its own card. */
 .translation.standalone {
   box-sizing: border-box;
@@ -183,9 +190,13 @@ function backdrop(settings: Settings): string {
   return `rgba(18, 20, 25, ${settings.backdropOpacity / 100})`
 }
 
-function buildTranslationElement(settings: Settings, text: string): HTMLElement {
+function buildTranslationElement(
+  settings: Settings,
+  text: string,
+  withheld: boolean,
+): HTMLElement {
   const el = document.createElement('div')
-  el.className = 'translation'
+  el.className = withheld ? 'translation withheld' : 'translation'
   el.style.setProperty('font-size', `${settings.translationFontSize}px`)
   if (settings.translationLayout === 'card') {
     el.classList.add('standalone')
@@ -195,12 +206,30 @@ function buildTranslationElement(settings: Settings, text: string): HTMLElement 
   return el
 }
 
-export function renderCue(
-  shadowRoot: ShadowRoot,
-  tokens: Token[],
-  settings: Settings,
-  translation = '',
-): void {
+export interface CueView {
+  tokens: Token[]
+  translation: string
+  /** Words whose reading is withheld — declared known, or reviewed to maturity. */
+  known: ReadonlySet<string>
+  /** Withholds everything regardless of what you know, for testing yourself. */
+  quiz: boolean
+}
+
+/**
+ * Whether this line's translation should be held back.
+ *
+ * Quiz mode withholds unconditionally. Otherwise a line loses its translation
+ * once every word in it is known — which is a claim about vocabulary, not about
+ * grammar, and is sometimes wrong. That is deliberate: the reveal is cheap, and
+ * needing it is exactly the evidence that the line is worth keeping.
+ */
+export function translationWithheld(view: CueView): boolean {
+  if (view.quiz) return true
+  const words = view.tokens.filter((token) => token.pinyin !== null)
+  return words.length > 0 && words.every((token) => view.known.has(token.text))
+}
+
+export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Settings): void {
   const stack = ensureStack(shadowRoot)
   const line = stack.querySelector<HTMLElement>('.line')!
 
@@ -212,7 +241,14 @@ export function renderCue(
   words.className = 'words'
   words.style.setProperty('gap', `${settings.wordSpacing}px`)
   words.style.setProperty('font-size', `${settings.fontSize}px`)
-  words.replaceChildren(...tokens.map((token) => buildWordElement(token, settings)))
+  words.replaceChildren(
+    ...view.tokens.map((token) =>
+      buildWordElement(token, {
+        ...settings,
+        hidePinyin: view.quiz || view.known.has(token.text),
+      }),
+    ),
+  )
 
   // Rebuilt wholesale rather than kept around, so `.line:empty` still matches
   // once clearCue empties it.
@@ -220,7 +256,7 @@ export function renderCue(
   stack.querySelector(':scope > .translation')?.remove()
 
   if (settings.showTranslation) {
-    const el = buildTranslationElement(settings, translation)
+    const el = buildTranslationElement(settings, view.translation, translationWithheld(view))
     if (settings.translationLayout === 'card') stack.appendChild(el)
     else line.appendChild(el)
   }

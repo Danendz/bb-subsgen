@@ -56,6 +56,15 @@ export interface Settings {
   readerOrigins: string[]
   readerModifier: ReaderModifier
   readerSentenceTranslation: boolean
+  /**
+   * Withhold every reading and translation until hovered, so a video can be
+   * used to test yourself rather than to read along.
+   *
+   * Also switched on for a single page load by the `bbq=1` parameter that
+   * review's jump-back link carries — arriving at a line you are being quizzed
+   * on with its translation already on screen would defeat the trip.
+   */
+  quizMode: boolean
   /** New cards let into the deck each day. Capture is generous; intake is not. */
   newWordsPerDay: number
   newSentencesPerDay: number
@@ -93,6 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readerOrigins: [],
   readerModifier: 'shift',
   readerSentenceTranslation: true,
+  quizMode: false,
   newWordsPerDay: 10,
   newSentencesPerDay: 5,
   struggleThresholdMs: 5000,

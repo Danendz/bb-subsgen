@@ -469,6 +469,9 @@ export function attachReader({
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,
+        // Same rule as the subtitle overlay: readings you have earned stop
+        // being drawn, and hovering the card brings every one of them back.
+        hidePinyin: config.quizMode || known().has(token.text),
       })
       wordEl.dataset.index = String(index)
       wordsEl.appendChild(wordEl)

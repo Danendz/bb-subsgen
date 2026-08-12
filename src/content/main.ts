@@ -1,5 +1,13 @@
 import { mount } from './mount'
-import { renderCue, clearCue, setTranslation, setGeometry, setProgress } from './overlay'
+import {
+  renderCue,
+  clearCue,
+  setTranslation,
+  setGeometry,
+  setProgress,
+  translationWithheld,
+  type CueView,
+} from './overlay'
 import { watchPlayback } from './sync'
 import { attachHover } from './hover'
 import { withUserActivation } from './activation'
@@ -14,6 +22,7 @@ import { lookupDefs } from '../shared/dict-client'
 import {
   captureSentence,
   createExposureBuffer,
+  recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
 import { hanWords, isCapturableText, shouldCaptureLine } from '../flashcards/capture'
@@ -143,6 +152,12 @@ async function main() {
     known = next
   })
 
+  // Review's jump-back link carries this, so arriving at a line you are being
+  // quizzed on doesn't hand you the answer. Scoped to the page load rather than
+  // to the stored setting: it is this visit that is a test, not every visit.
+  const quizForThisVisit = new URLSearchParams(location.search).get('bbq') === '1'
+  const quizMode = () => settings.quizMode || quizForThisVisit
+
   const cacheFor = (lang: TranslationLang): Map<number, string> => {
     let cache = translations.get(lang)
     if (!cache) {
@@ -186,6 +201,10 @@ async function main() {
       // Kept beside lastIndex so the cue's words are segmented once per cue,
       // rather than again for every capture that needs them.
       let currentTokens: Token[] = []
+      // Per line, reset on every cue change: how long its cards stayed open,
+      // and whether it has already been kept.
+      let engagedMs = 0
+      let captured = false
 
       const buffer = createExposureBuffer({ bvid, title: document.title, url: location.href })
 
@@ -215,6 +234,33 @@ async function main() {
         showToneColors: () => settings.showToneColors,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
         known: () => known,
+
+        // Going looking for a translation that was withheld because you knew
+        // every word is an unambiguous "I couldn't read that" — no threshold to
+        // tune, so it acts at once.
+        onLookup: () => {
+          if (translationWithheld(cueView())) captureCurrentLine()
+        },
+
+        // Otherwise the evidence is weaker and cumulative: dwelling long enough
+        // on one line suggests something was off. The threshold is a guess, so
+        // every sample is logged raw and it can be moved to wherever the real
+        // "I'm stuck" pauses turn out to sit.
+        onLookupEnd: (ms) => {
+          if (lastIndex < 0) return
+          engagedMs += ms
+          const withheld = translationWithheld(cueView())
+          const overThreshold = engagedMs >= settings.struggleThresholdMs
+          if (overThreshold) captureCurrentLine()
+          recordSignal({
+            at: Date.now(),
+            bvid,
+            start: cues[lastIndex].start,
+            ms,
+            hidden: withheld,
+            captured,
+          })
+        },
       })
       let progress: ProgressState = { phase: 'idle' }
       // Blank cues are never translated, so they'd otherwise make the pass
@@ -229,6 +275,13 @@ async function main() {
         )
       }
 
+      const cueView = (): CueView => ({
+        tokens: currentTokens,
+        translation: cacheFor(settings.translationLang).get(lastIndex) ?? '',
+        known,
+        quiz: quizMode(),
+      })
+
       const render = () => {
         if (lastIndex === -1) {
           currentTokens = []
@@ -236,12 +289,7 @@ async function main() {
           return
         }
         currentTokens = segment(cues[lastIndex].text, words)
-        renderCue(
-          shadowRoot,
-          currentTokens,
-          settings,
-          cacheFor(settings.translationLang).get(lastIndex) ?? '',
-        )
+        renderCue(shadowRoot, cueView(), settings)
       }
 
       /**
@@ -254,13 +302,33 @@ async function main() {
        * rationed out, not that capture is stingy.
        */
       const onCueShown = () => {
+        engagedMs = 0
+        captured = false
         if (lastIndex < 0) return
+
         const seen = hanWords(currentTokens)
         buffer.line(seen)
 
         const { text } = cues[lastIndex]
         if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
         captureSentence(text, contextFor(lastIndex))
+        captured = true
+      }
+
+      /**
+       * Keeps the line on screen, once for whatever reason.
+       *
+       * Lines that already qualified on vocabulary were taken by `onCueShown`;
+       * this is the other path in, for a line whose words you all know but
+       * whose grammar you evidently didn't. Those are the most valuable
+       * sentences in the pool, and nothing else in the design would find them.
+       */
+      const captureCurrentLine = () => {
+        if (captured || lastIndex < 0) return
+        const { text } = cues[lastIndex]
+        if (!isCapturableText(text)) return
+        captureSentence(text, contextFor(lastIndex))
+        captured = true
       }
 
       // Re-applied on every settings change, since watchControls only emits

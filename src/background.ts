@@ -22,6 +22,8 @@ chrome.commands.onCommand.addListener(async (command) => {
     await saveSettings({ showPinyin: !settings.showPinyin })
   } else if (command === 'cycle-font-size') {
     await saveSettings({ fontSize: nextFontSize(settings.fontSize) })
+  } else if (command === 'toggle-quiz') {
+    await saveSettings({ quizMode: !settings.quizMode })
   }
 })
 

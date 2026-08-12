@@ -17,6 +17,10 @@ import {
   readerEnabledFor,
 } from '../shared/reader-sites'
 import type { Status, StatusResponse } from '../shared/messages'
+import { flashcardsDb } from '../flashcards/db'
+import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
+import { coverageOf, fraction } from '../flashcards/capture'
+import { parseBvidFromUrl } from '../bilibili/resolve'
 
 type TabStatus = Status | 'not-bilibili'
 
@@ -41,6 +45,26 @@ async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
     return response?.status ?? 'not-bilibili'
   } catch {
     return 'not-bilibili' // no content script on this tab
+  }
+}
+
+/**
+ * How much of this video you can already follow.
+ *
+ * Running words, not distinct ones — the words you know are the ones that
+ * repeat, so the two figures are far apart and only this one predicts whether a
+ * video is watchable. Below ~90% comprehension falls apart; above ~95% you can
+ * follow along and infer the rest.
+ */
+async function coverageFor(bvid: string): Promise<{ tokens: number; types: string } | null> {
+  const db = await flashcardsDb()
+  const [items, counts] = await Promise.all([listItems(db), videoWords(db, bvid)])
+  if (!counts.length) return null
+
+  const coverage = coverageOf(counts, knownSetOf(items))
+  return {
+    tokens: fraction(coverage.knownTokens, coverage.totalTokens),
+    types: `${coverage.knownTypes} of ${coverage.totalTypes} words`,
   }
 }
 
@@ -112,6 +136,7 @@ export function App() {
   const [loaded, setLoaded] = useState(false)
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
+  const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
 
   useEffect(() => {
     loadSettings().then((s) => {
@@ -121,6 +146,13 @@ export function App() {
     currentTab().then((t) => {
       setTab(t)
       fetchTabStatus(t?.id).then(setTabStatus)
+
+      const bvid = parseBvidFromUrl(t?.url ?? '')
+      if (bvid) {
+        coverageFor(bvid).then(setCoverage, (e: unknown) =>
+          console.warn('[bb-subsgen] coverage failed', e),
+        )
+      }
     })
   }, [])
 
@@ -174,6 +206,43 @@ export function App() {
       >
         Open flashcards
       </button>
+
+      {coverage && (
+        <p class="coverage">
+          You know <strong>{Math.round(coverage.tokens * 100)}%</strong> of what is said here —{' '}
+          {coverage.types}.
+          {coverage.tokens >= 0.95
+            ? ' Comfortable.'
+            : coverage.tokens >= 0.9
+              ? ' A stretch.'
+              : ' Hard going.'}
+        </p>
+      )}
+
+      <h2 class="section">Studying</h2>
+      <Toggle
+        label="Quiz mode (Alt+Q)"
+        checked={settings.quizMode}
+        onChange={(v) => update({ quizMode: v })}
+      />
+      <Slider
+        label="New words / day"
+        value={settings.newWordsPerDay}
+        min={0}
+        max={40}
+        onChange={(v) => update({ newWordsPerDay: v })}
+      />
+      <Slider
+        label="New sentences / day"
+        value={settings.newSentencesPerDay}
+        min={0}
+        max={20}
+        onChange={(v) => update({ newSentencesPerDay: v })}
+      />
+      <p class="hint">
+        Quiz mode holds back readings and translations until you hover. Capture is generous;
+        these limits are what keep the deck a constant size.
+      </p>
 
       <h2 class="section">Language</h2>
       <label class="row">

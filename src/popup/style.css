@@ -68,3 +68,13 @@ select {
   cursor: pointer;
 }
 .open-app:hover { background: #3568c4; }
+
+/* Whether this video is worth 30 minutes, before you spend them. */
+.coverage {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #23252c;
+  font-size: 12px;
+  line-height: 1.45;
+}
