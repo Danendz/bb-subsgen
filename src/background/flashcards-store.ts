@@ -14,6 +14,7 @@
 import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
 import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { schedule } from '../flashcards/scheduler'
+import { emptyBackup, type Backup } from '../flashcards/backup'
 import {
   sentenceId,
   wordId,
@@ -237,6 +238,65 @@ export async function recordSignalIn(db: IDBDatabase, signal: Signal): Promise<v
   await done(tx)
 }
 
+/** Everything worth carrying to another browser. See flashcards/backup.ts. */
+export async function exportBackupIn(db: IDBDatabase): Promise<Backup> {
+  const read = <T>(store: string) =>
+    request<T[]>(db.transaction(store, 'readonly').objectStore(store).getAll())
+
+  const [items, reviews, exposures, videoWordRows, videos] = await Promise.all([
+    read<Item>(STORES.items),
+    read<Review>(STORES.reviews),
+    read<Exposure>(STORES.exposures),
+    read<VideoWord>(STORES.videoWords),
+    read<Video>(STORES.videos),
+  ])
+
+  return {
+    ...emptyBackup(),
+    items,
+    // `seq` is an autoIncrement key from *this* database and means nothing in
+    // another one; carrying it would collide on import.
+    reviews: reviews.map(({ itemId, at, grade, style, intervalBefore, intervalAfter }) => ({
+      itemId,
+      at,
+      grade,
+      style,
+      intervalBefore,
+      intervalAfter,
+    })),
+    exposures,
+    videoWords: videoWordRows,
+    videos,
+  }
+}
+
+/**
+ * Replaces the study history wholesale.
+ *
+ * Always given the *merged* result rather than the imported file, so this
+ * clearing is not destructive — see `merge`, which is what guarantees the local
+ * history is already inside what's being written.
+ */
+export async function restoreIn(db: IDBDatabase, backup: Backup): Promise<void> {
+  const stores = [
+    STORES.items,
+    STORES.reviews,
+    STORES.exposures,
+    STORES.videoWords,
+    STORES.videos,
+  ]
+  const tx = db.transaction(stores, 'readwrite')
+
+  for (const store of stores) tx.objectStore(store).clear()
+  for (const item of backup.items) tx.objectStore(STORES.items).put(item)
+  for (const review of backup.reviews) tx.objectStore(STORES.reviews).put(review)
+  for (const exposure of backup.exposures) tx.objectStore(STORES.exposures).put(exposure)
+  for (const word of backup.videoWords) tx.objectStore(STORES.videoWords).put(word)
+  for (const video of backup.videos) tx.objectStore(STORES.videos).put(video)
+
+  await done(tx)
+}
+
 /** Parses `headword\trank\thsk` lines; either numeric column may be blank. */
 export function parseRanks(raw: string): Rank[] {
   const rows: Rank[] = []
@@ -285,6 +345,16 @@ export async function markKnown(headword: string, known: boolean): Promise<void>
 
 export async function recordSignal(signal: Signal): Promise<void> {
   return recordSignalIn(await flashcardsDb(), signal)
+}
+
+export async function exportBackup(): Promise<Backup> {
+  return exportBackupIn(await flashcardsDb())
+}
+
+/** Writes a merged history and republishes the known set it implies. */
+export async function restore(backup: Backup): Promise<void> {
+  await restoreIn(await flashcardsDb(), backup)
+  await refreshKnownMirror()
 }
 
 /**

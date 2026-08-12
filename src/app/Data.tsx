@@ -1,0 +1,180 @@
+import { useState } from 'preact/hooks'
+import {
+  conflictsOf,
+  emptyBackup,
+  isBackup,
+  merge,
+  type Backup,
+  type Conflict,
+} from '../flashcards/backup'
+import { exportBackup, restore } from '../background/flashcards-store'
+
+function stamp(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function download() {
+  const backup = await exportBackup()
+  const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `bb-subsgen-${stamp()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+interface Pending {
+  incoming: Backup
+  local: Backup
+  conflicts: Conflict[]
+}
+
+export function Data() {
+  const [pending, setPending] = useState<Pending | null>(null)
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const onFile = async (file: File) => {
+    setMessage('')
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await file.text())
+    } catch {
+      setMessage('That file is not valid JSON.')
+      return
+    }
+    if (!isBackup(parsed)) {
+      setMessage('That does not look like a bb-subsgen export.')
+      return
+    }
+
+    const local = await exportBackup()
+    const conflicts = conflictsOf(local, parsed)
+
+    // Nothing to arbitrate: apply straight away rather than asking a question
+    // with one possible answer.
+    if (!conflicts.length) {
+      await apply(local, parsed, 'local')
+      return
+    }
+    setPending({ incoming: parsed, local, conflicts })
+  }
+
+  const apply = async (local: Backup, incoming: Backup, prefer: 'local' | 'incoming') => {
+    setBusy(true)
+    try {
+      const merged = merge(local, incoming, { prefer })
+      await restore(merged)
+      setPending(null)
+      setMessage(
+        `Merged. ${merged.items.length.toLocaleString()} cards and ` +
+          `${merged.reviews.length.toLocaleString()} reviews in total.`,
+      )
+    } catch (e) {
+      console.warn('[bb-subsgen] import failed', e)
+      setMessage('Import failed — nothing was changed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const clearEverything = async () => {
+    if (!confirm('Delete every card, review and count? This cannot be undone.')) return
+    await restore(emptyBackup())
+    setMessage('Everything cleared.')
+  }
+
+  return (
+    <>
+      <div class="panel">
+        <div class="row">
+          <div class="grow">
+            <strong>Export</strong>
+            <div class="muted small">
+              One JSON file with every card, the full review log, exposure counts and video
+              history. Dwell samples and the frequency table are left out — the first is
+              calibration for this machine, the second is rebuilt from the extension itself.
+            </div>
+          </div>
+          <button onClick={() => void download()}>Download</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <div class="grow">
+            <strong>Import</strong>
+            <div class="muted small">
+              Merged, not replaced. Review logs from both sides are combined and the schedule is
+              recomputed from them, so studying you did in another browser still counts. Counts
+              add up and videos merge by id.
+            </div>
+          </div>
+          <input
+            type="file"
+            accept="application/json,.json"
+            disabled={busy}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0]
+              if (file) void onFile(file)
+              e.currentTarget.value = ''
+            }}
+          />
+        </div>
+      </div>
+
+      {pending && (
+        <div class="panel">
+          <strong>
+            {pending.conflicts.length} word{pending.conflicts.length === 1 ? '' : 's'} disagree
+          </strong>
+          <p class="muted small">
+            These are marked known on one side and not the other. Everything else merges on its
+            own — only a declaration has no evidence to settle it.
+          </p>
+          <p class="small">
+            {pending.conflicts
+              .slice(0, 12)
+              .map((c) => c.text)
+              .join('、')}
+            {pending.conflicts.length > 12 && ` … +${pending.conflicts.length - 12}`}
+          </p>
+          <div class="toolbar">
+            <button
+              class="primary"
+              disabled={busy}
+              onClick={() => void apply(pending.local, pending.incoming, 'local')}
+            >
+              Keep mine ({pending.conflicts.filter((c) => c.local).length} stay known)
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => void apply(pending.local, pending.incoming, 'incoming')}
+            >
+              Use the file ({pending.conflicts.filter((c) => c.incoming).length} become known)
+            </button>
+            <button disabled={busy} onClick={() => setPending(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message && <div class="panel small">{message}</div>}
+
+      <div class="panel">
+        <div class="row">
+          <div class="grow">
+            <strong>Clear everything</strong>
+            <div class="muted small">
+              Deletes all cards, reviews and counts. Export first — there is no undo.
+            </div>
+          </div>
+          <button onClick={() => void clearEverything()}>Clear</button>
+        </div>
+      </div>
+    </>
+  )
+}

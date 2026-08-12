@@ -1,3 +1,4 @@
+import { Data } from './Data'
 import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
 import { Review } from './Review'
@@ -9,6 +10,7 @@ const TABS = [
   { route: '/review', label: 'Review' },
   { route: '/dictionary', label: 'Dictionary' },
   { route: '/videos', label: 'Videos' },
+  { route: '/data', label: 'Data' },
 ]
 
 function Nav({ route }: { route: string }) {
@@ -46,7 +48,9 @@ export function App() {
 
       <Nav route={route} />
 
-      {route === '/review' ? (
+      {route === '/data' ? (
+        <Data />
+      ) : route === '/review' ? (
         <Review />
       ) : route === '/dictionary' ? (
         <Dictionary />
