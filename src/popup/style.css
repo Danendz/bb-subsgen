@@ -8,6 +8,19 @@ body {
 }
 .app { padding: 14px 16px; }
 h1 { font-size: 15px; margin: 0 0 10px; }
+/* Section headers double as the dividers between the three groups, so the
+   panel reads as "what I'm reading / where / the player" without extra rules. */
+.section {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a8a95;
+  margin: 16px 0 2px;
+  padding-top: 10px;
+  border-top: 1px solid #33333a;
+}
+.app > .section:first-of-type { margin-top: 10px; }
 .row {
   display: flex;
   align-items: center;

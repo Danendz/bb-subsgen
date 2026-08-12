@@ -9,7 +9,8 @@ import { isWaiting, progressView, type ProgressState } from './progress'
 import { parseBvidFromUrl, fetchVideoInfo, watchBvidChange } from '../bilibili/resolve'
 import { fetchSubtitles, type Cue, type SubtitleTrack } from '../bilibili/subtitles'
 import { segment } from '../lang/segment'
-import { loadWords, initDefs } from '../lang/dict'
+import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
+import { lookupDefs } from '../shared/dict-client'
 import { createTranslator, isTranslatorSupported, translatorAvailability } from '../lang/translate'
 import {
   loadSettings,
@@ -111,11 +112,11 @@ async function translateTrack({
 }
 
 async function main() {
-  const [words, lookupDefs, initialSettings] = await Promise.all([
-    loadWords(),
-    initDefs(),
-    loadSettings(),
-  ])
+  // Definitions now come from the service worker, so nothing here opens a
+  // database — clear the one older versions left under bilibili.com's origin.
+  dropLegacyPageDefsDb()
+
+  const [words, initialSettings] = await Promise.all([loadWords(), loadSettings()])
   let settings = initialSettings
   let stopMount: (() => void) | null = null
   let rerenderCurrentCue: (() => void) | null = null
@@ -168,7 +169,7 @@ async function main() {
       const stopHover = attachHover({
         shadowRoot,
         video,
-        lookupDefs,
+        lookup: lookupDefs,
         isTraditional: () => settings.useTraditional,
       })
       let lastIndex = -1

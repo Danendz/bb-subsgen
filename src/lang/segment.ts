@@ -5,7 +5,7 @@ export interface Token {
 
 const wordSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
 
-function isHan(char: string): boolean {
+export function isHan(char: string): boolean {
   return /\p{Script=Han}/u.test(char)
 }
 
