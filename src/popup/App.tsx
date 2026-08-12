@@ -166,6 +166,15 @@ export function App() {
     <div class="app">
       <h1>bb-subsgen</h1>
 
+      <button
+        class="open-app"
+        onClick={() =>
+          void chrome.tabs.create({ url: chrome.runtime.getURL('src/app/index.html') })
+        }
+      >
+        Open flashcards
+      </button>
+
       <h2 class="section">Language</h2>
       <label class="row">
         <span>Translate to</span>

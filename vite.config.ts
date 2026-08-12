@@ -17,5 +17,11 @@ export default defineConfig({
     // emitted into the page never gets used — Chrome then logs a cross-world
     // resource mismatch warning for every shared chunk. Nothing preloads.
     modulePreload: false,
+    rollupOptions: {
+      // crxjs only picks up HTML the manifest points at, and MV3 has no field
+      // for an ordinary extension page — the flashcards app is opened by URL
+      // from the popup, so it has to be declared as an entry by hand.
+      input: { flashcards: 'src/app/index.html' },
+    },
   },
 })
