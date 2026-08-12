@@ -9,6 +9,8 @@
 //     NotAllowedError — see content/activation.ts.
 //   - Unavailable in Web Workers, so this cannot live in the service worker.
 
+import type { TranslationLang } from '../shared/settings'
+
 /** The only capability the rest of the extension needs from a translator. */
 export interface TranslatorLike {
   translate(text: string): Promise<string>
@@ -33,16 +35,23 @@ declare global {
   var Translator: TranslatorFactory | undefined
 }
 
-const PAIR: LanguagePair = { sourceLanguage: 'zh', targetLanguage: 'en' }
+// Both supported targets are directly available from Chinese — verified
+// against the live API, which reports zh→en and zh→ru alike. Neither has to
+// pivot through a second translator, so `TranslatorLike` stays one hop.
+function pairFor(target: TranslationLang): LanguagePair {
+  return { sourceLanguage: 'zh', targetLanguage: target }
+}
 
 export function isTranslatorSupported(): boolean {
   return typeof globalThis.Translator?.create === 'function'
 }
 
-export async function translatorAvailability(): Promise<Availability> {
+export async function translatorAvailability(
+  target: TranslationLang,
+): Promise<Availability> {
   if (!isTranslatorSupported()) return 'unavailable'
   try {
-    return await globalThis.Translator!.availability(PAIR)
+    return await globalThis.Translator!.availability(pairFor(target))
   } catch (e) {
     console.warn('[bb-subsgen] translator availability check failed', e)
     return 'unavailable'
@@ -50,18 +59,19 @@ export async function translatorAvailability(): Promise<Availability> {
 }
 
 /**
- * Creates a zh→en translator, downloading the language pack on first use.
+ * Creates a zh→`target` translator, downloading the language pack on first use.
  *
  * Must be called from within a user gesture. Callers should route through
  * `withUserActivation` rather than calling this directly.
  */
 export async function createTranslator(
+  target: TranslationLang,
   onProgress?: (fraction: number) => void,
 ): Promise<TranslatorLike> {
   const factory = globalThis.Translator
   if (!factory) throw new Error('Translator API unavailable')
   return factory.create({
-    ...PAIR,
+    ...pairFor(target),
     monitor(monitor) {
       monitor.addEventListener('downloadprogress', (event) => {
         onProgress?.((event as ProgressEvent).loaded)

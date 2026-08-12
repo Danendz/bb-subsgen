@@ -15,6 +15,18 @@ describe('translation defaults', () => {
   test('the English line defaults to sharing the subtitle card', () => {
     expect(DEFAULT_SETTINGS.translationLayout).toBe('inline')
   })
+
+  test('translates to English by default, so existing users see no change', () => {
+    expect(DEFAULT_SETTINGS.translationLang).toBe('en')
+  })
+})
+
+describe('control-bar avoidance defaults', () => {
+  test('lifting above the player controls is on by default', () => {
+    // At the default height the card sits directly under Bilibili's timeline,
+    // so the collision is the common case, not the edge case.
+    expect(DEFAULT_SETTINGS.liftAboveControls).toBe(true)
+  })
 })
 
 describe('nextFontSize', () => {

@@ -1,6 +1,8 @@
 import type { Token } from '../lang/segment'
 import { parseTone, toDiacritic, toneColor } from '../lang/tone'
 import type { Settings } from '../shared/settings'
+import type { ProgressView } from './progress'
+import type { PlayerGeometry } from './controls'
 
 const STYLE = `
 :host {
@@ -10,10 +12,20 @@ const STYLE = `
   pointer-events: none;
 }
 
-/* Owns the positioning, so the subtitle card and a standalone translation
-   card stack vertically and stay centered together. */
+/* Owns the positioning, so the progress pill, the subtitle card and a
+   standalone translation card stack vertically and stay centered together.
+
+   Three independent inputs, resolved by CSS so no caller needs the others:
+     --rest   the user's Height setting
+     --floor  container below the video (the danmaku input row) — the Height
+              slider is measured from the video's bottom edge, not the
+              container's, or 0% renders the card on the comment box
+     --lift   how much the control bar is currently covering
+   max() picks the lift only when it would actually cover the card, so a card
+   already dragged above the bar never jumps. */
 .stack {
   position: absolute;
+  bottom: max(calc(var(--rest, 8%) + var(--floor, 0px)), var(--lift, 0px));
   left: 50%;
   transform: translateX(-50%);
   width: fit-content;
@@ -23,6 +35,8 @@ const STYLE = `
   align-items: center;
   gap: 6px;
   pointer-events: none;
+  /* Roughly matches Bilibili's own control fade, so the two move together. */
+  transition: bottom 180ms ease;
 }
 
 .line {
@@ -54,6 +68,42 @@ const STYLE = `
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-end;
+}
+
+/* Unlike .translation this can't use :empty — it always holds a bar element —
+   so visibility is an explicit class. */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 25, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #c3c8d0;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.progress.hidden { display: none; }
+
+.progress-track {
+  width: 70px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: #6ea8fe;
+  transition: width 200ms ease;
 }
 
 .translation {
@@ -239,9 +289,24 @@ function ensureStack(shadowRoot: ShadowRoot): HTMLElement {
   if (!stack) {
     stack = document.createElement('div')
     stack.className = 'stack'
+
+    // Ordered above the card so it inherits the stack's centering and its
+    // control-bar lift for free, rather than needing its own positioning.
+    const progress = document.createElement('div')
+    progress.className = 'progress hidden'
+    const track = document.createElement('div')
+    track.className = 'progress-track'
+    const fill = document.createElement('div')
+    fill.className = 'progress-fill'
+    track.appendChild(fill)
+    const text = document.createElement('span')
+    text.className = 'progress-text'
+    progress.append(track, text)
+
     const line = document.createElement('div')
     line.className = 'line'
-    stack.appendChild(line)
+
+    stack.append(progress, line)
     shadowRoot.appendChild(stack)
   }
   return stack
@@ -309,7 +374,8 @@ export function renderCue(
   const stack = ensureStack(shadowRoot)
   const line = stack.querySelector<HTMLElement>('.line')!
 
-  stack.style.setProperty('bottom', `${settings.positionPercent}%`)
+  // Only the resting position; `setLift` owns the other half of `bottom`.
+  stack.style.setProperty('--rest', `${settings.positionPercent}%`)
   line.style.setProperty('background', backdrop(settings))
 
   const words = document.createElement('div')
@@ -339,6 +405,34 @@ export function renderCue(
 export function setTranslation(shadowRoot: ShadowRoot, text: string): void {
   const el = shadowRoot.querySelector<HTMLElement>('.translation')
   if (el) el.textContent = text
+}
+
+/**
+ * Sets how much of the player's bottom edge is unusable — permanently (the
+ * danmaku row below the video) and transiently (the control bar).
+ *
+ * Independent of `renderCue`'s `--rest`; see the `.stack` rule for how the
+ * three combine.
+ */
+export function setGeometry(shadowRoot: ShadowRoot, geometry: PlayerGeometry): void {
+  // ensureStack rather than a query: the control bar can be showing before the
+  // first cue paints, and an empty stack renders nothing anyway.
+  const stack = ensureStack(shadowRoot)
+  stack.style.setProperty('--floor', `${geometry.floor}px`)
+  stack.style.setProperty('--lift', `${geometry.lift}px`)
+}
+
+export function setProgress(shadowRoot: ShadowRoot, view: ProgressView): void {
+  // Likewise — the pack download happens before any cue has been rendered,
+  // which is precisely when this needs to be on screen.
+  const el = ensureStack(shadowRoot).querySelector<HTMLElement>('.progress')!
+  el.classList.toggle('hidden', !view.visible)
+  if (!view.visible) return
+  el.querySelector<HTMLElement>('.progress-text')!.textContent = view.text
+  el.querySelector<HTMLElement>('.progress-fill')!.style.setProperty(
+    'width',
+    `${Math.round(view.fraction * 100)}%`,
+  )
 }
 
 export function clearCue(shadowRoot: ShadowRoot): void {

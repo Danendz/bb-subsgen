@@ -5,6 +5,9 @@ const HOST_ID = 'bb-subsgen-host'
 export interface MountHandle {
   shadowRoot: ShadowRoot
   video: HTMLVideoElement
+  /** The player box the overlay is positioned against — also what carries
+   *  `data-ctrl-hidden`, which drives the control-bar lift. */
+  container: HTMLElement
   teardown: () => void
 }
 
@@ -57,13 +60,13 @@ export function mount(onMount: OnMount): () => void {
     current?.teardown()
     hideNativeSubtitles(container)
     const shadowRoot = createShadowHost(container)
-    const extraCleanup = onMount({ shadowRoot, video })
+    const extraCleanup = onMount({ shadowRoot, video, container })
     const teardown = () => {
       extraCleanup?.()
       restoreNativeSubtitles(container)
       shadowRoot.host.remove()
     }
-    current = { shadowRoot, video, teardown }
+    current = { shadowRoot, video, container, teardown }
   }
 
   tryMount()

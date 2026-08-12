@@ -1,15 +1,22 @@
 import { mount } from './mount'
-import { renderCue, clearCue, setTranslation } from './overlay'
+import { renderCue, clearCue, setTranslation, setGeometry, setProgress } from './overlay'
 import { watchPlayback } from './sync'
 import { attachHover } from './hover'
 import { withUserActivation } from './activation'
 import { runTranslationPass } from './translations'
+import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './controls'
+import { isWaiting, progressView, type ProgressState } from './progress'
 import { parseBvidFromUrl, fetchVideoInfo, watchBvidChange } from '../bilibili/resolve'
 import { fetchSubtitles, type Cue, type SubtitleTrack } from '../bilibili/subtitles'
 import { segment } from '../lang/segment'
 import { loadWords, initDefs } from '../lang/dict'
 import { createTranslator, isTranslatorSupported, translatorAvailability } from '../lang/translate'
-import { loadSettings, onSettingsChanged } from '../shared/settings'
+import {
+  loadSettings,
+  onSettingsChanged,
+  TRANSLATION_LANGS,
+  type TranslationLang,
+} from '../shared/settings'
 import { isGetStatusMessage, type Status } from '../shared/messages'
 
 console.log('[bb-subsgen] content script loaded', location.href)
@@ -47,9 +54,18 @@ async function loadCuesForCurrentVideo(): Promise<Cue[] | null> {
   )
 }
 
+function labelFor(lang: TranslationLang): string {
+  return TRANSLATION_LANGS.find((l) => l.code === lang)?.label ?? lang
+}
+
 interface TranslateTrackDeps {
+  lang: TranslationLang
   texts: string[]
   currentIndex: () => number
+  /** Fires only when a language pack actually has to be fetched. */
+  onDownload: (fraction: number) => void
+  /** The translator exists; from here on the pass is the thing to report. */
+  onReady: () => void
   onResult: (index: number, translated: string) => void
   signal: AbortSignal
 }
@@ -58,11 +74,14 @@ interface TranslateTrackDeps {
  * Acquires a translator and runs the whole track through it in the background.
  *
  * Silently does nothing where the API doesn't exist (non-Chrome, Chrome < 138,
- * mobile) — an absent English line is the correct fallback, never a broken one.
+ * mobile) — an absent translated line is the correct fallback, never a broken one.
  */
 async function translateTrack({
+  lang,
   texts,
   currentIndex,
+  onDownload,
+  onReady,
   onResult,
   signal,
 }: TranslateTrackDeps): Promise<void> {
@@ -73,26 +92,21 @@ async function translateTrack({
     )
     return
   }
-  console.log('[bb-subsgen] translator availability:', await translatorAvailability())
+  console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
 
   let translator
   try {
     // Needs a user gesture on the page; resolves on the first click or keypress.
-    // The first ever run also downloads the zh→en language pack.
-    translator = await withUserActivation(
-      () =>
-        createTranslator((fraction) =>
-          console.log(`[bb-subsgen] language pack ${Math.round(fraction * 100)}%`),
-        ),
-      { signal },
-    )
+    // The first run for a language also downloads its pack.
+    translator = await withUserActivation(() => createTranslator(lang, onDownload), { signal })
   } catch (e) {
     if (!signal.aborted) console.warn('[bb-subsgen] could not create translator', e)
     return
   }
   if (signal.aborted) return
+  onReady()
 
-  console.log('[bb-subsgen] translating', texts.length, 'cues')
+  console.log('[bb-subsgen] translating', texts.length, 'cues to', lang)
   await runTranslationPass({ texts, translator, currentIndex, onResult, signal })
 }
 
@@ -107,9 +121,20 @@ async function main() {
   let rerenderCurrentCue: (() => void) | null = null
   let startTranslation: (() => void) | null = null
   let translationAbort: AbortController | null = null
-  // Keyed by cue index, which is also what v2 word alignment will attach to.
-  const translations = new Map<number, string>()
+  // Per target language, each inner map keyed by cue index — which is also what
+  // v2 word alignment will attach to. Keeping a map per language means switching
+  // back to one already translated renders instantly instead of re-running the pass.
+  const translations = new Map<TranslationLang, Map<number, string>>()
   let status: Status = 'loading'
+
+  const cacheFor = (lang: TranslationLang): Map<number, string> => {
+    let cache = translations.get(lang)
+    if (!cache) {
+      cache = new Map()
+      translations.set(lang, cache)
+    }
+    return cache
+  }
 
   const stopTranslation = () => {
     translationAbort?.abort()
@@ -139,7 +164,7 @@ async function main() {
     }
     status = 'active'
 
-    stopMount = mount(({ shadowRoot, video }) => {
+    stopMount = mount(({ shadowRoot, video, container }) => {
       const stopHover = attachHover({
         shadowRoot,
         video,
@@ -147,6 +172,19 @@ async function main() {
         isTraditional: () => settings.useTraditional,
       })
       let lastIndex = -1
+      let progress: ProgressState = { phase: 'idle' }
+      // Blank cues are never translated, so they'd otherwise make the pass
+      // look permanently unfinished.
+      const translatable = cues.filter((cue) => cue.text.trim()).length
+
+      const renderProgress = () => {
+        const cache = cacheFor(settings.translationLang)
+        setProgress(
+          shadowRoot,
+          progressView(progress, isWaiting(lastIndex, (index) => cache.has(index))),
+        )
+      }
+
       const render = () => {
         if (lastIndex === -1) {
           clearCue(shadowRoot)
@@ -156,27 +194,73 @@ async function main() {
           shadowRoot,
           segment(cues[lastIndex].text, words),
           settings,
-          translations.get(lastIndex) ?? '',
+          cacheFor(settings.translationLang).get(lastIndex) ?? '',
         )
       }
-      rerenderCurrentCue = render
+
+      // Re-applied on every settings change, since watchControls only emits
+      // when the player changes — toggling the setting off has to take effect
+      // without waiting for the bar to move. The floor is not gated on the
+      // setting: rendering the card below the video is a bug, not a preference.
+      let geometry: PlayerGeometry = { floor: 0, lift: 0 }
+      const applyGeometry = () =>
+        setGeometry(shadowRoot, {
+          floor: geometry.floor,
+          lift: settings.liftAboveControls ? geometry.lift : 0,
+        })
+      const stopControls = watchControls(container, video, shadowRoot.host, (next) => {
+        geometry = next
+        applyGeometry()
+      })
+      // Hovering a character shouldn't make the player's own timeline vanish.
+      const stopForward = forwardHoverToPlayer(container, shadowRoot.host)
+
+      rerenderCurrentCue = () => {
+        if (!settings.showTranslation) progress = { phase: 'idle' }
+        render()
+        applyGeometry()
+        renderProgress()
+      }
+
       const stopSync = watchPlayback(video, cues, (index) => {
         lastIndex = index
         render()
+        renderProgress()
       })
 
       startTranslation = () => {
         if (!settings.showTranslation || translationAbort) return
+        // Captured, not re-read: a result arriving after the user switches
+        // language belongs to the language the pass was started for.
+        const lang = settings.translationLang
+        const cache = cacheFor(lang)
         const controller = new AbortController()
         translationAbort = controller
+
+        progress = { phase: 'pass', done: cache.size, total: translatable }
+        renderProgress()
+
         void translateTrack({
+          lang,
           // Blanking already-translated cues makes the pass skip them, so
-          // toggling the setting off and back on doesn't redo finished work.
-          texts: cues.map((cue, index) => (translations.has(index) ? '' : cue.text)),
+          // toggling the setting off and back on — or switching language and
+          // back — doesn't redo finished work.
+          texts: cues.map((cue, index) => (cache.has(index) ? '' : cue.text)),
           currentIndex: () => lastIndex,
+          onDownload: (fraction) => {
+            progress = { phase: 'download', label: labelFor(lang), fraction }
+            renderProgress()
+          },
+          onReady: () => {
+            progress = { phase: 'pass', done: cache.size, total: translatable }
+            renderProgress()
+          },
           onResult: (index, translated) => {
-            translations.set(index, translated)
+            cache.set(index, translated)
+            if (lang !== settings.translationLang) return // superseded mid-flight
             if (index === lastIndex) setTranslation(shadowRoot, translated)
+            progress = { phase: 'pass', done: cache.size, total: translatable }
+            renderProgress()
           },
           signal: controller.signal,
         })
@@ -186,6 +270,8 @@ async function main() {
       return () => {
         stopHover()
         stopSync()
+        stopControls()
+        stopForward()
       }
     })
   }
@@ -194,12 +280,17 @@ async function main() {
   onSettingsChanged((next) => {
     const enabledChanged = next.enabled !== settings.enabled
     const translationToggled = next.showTranslation !== settings.showTranslation
+    const langChanged = next.translationLang !== settings.translationLang
     settings = next
     if (enabledChanged) {
       loadCurrentVideo()
       return
     }
-    if (translationToggled) {
+    if (langChanged) {
+      // The caches survive, so switching back to a finished language is instant.
+      stopTranslation()
+      startTranslation?.()
+    } else if (translationToggled) {
       if (next.showTranslation) startTranslation?.()
       else stopTranslation()
     }

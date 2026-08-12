@@ -5,8 +5,10 @@ import { rankEntries } from '../lang/entries'
 import type { CedictEntry } from '../lang/dict'
 
 const DWELL_MS = 150
-/** Grace period before resuming, so moving between words doesn't stutter playback. */
-const RESUME_GRACE_MS = 400
+/** Grace period before resuming, so moving between words doesn't stutter playback.
+ *  Also bounds how long the popup stays on screen after the pointer leaves,
+ *  which is why controls.ts holds the card still for at least this long. */
+export const RESUME_GRACE_MS = 400
 const MAX_DEFINITIONS = 3
 const POPUP_MARGIN = 8
 

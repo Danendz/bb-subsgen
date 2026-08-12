@@ -1,5 +1,19 @@
-/** Whether the English line shares the subtitle card or sits in its own below it. */
+/** Whether the translated line shares the subtitle card or sits in its own below it. */
 export type TranslationLayout = 'inline' | 'card'
+
+/**
+ * Target language for the translated line.
+ *
+ * Both pairs are verified against Chrome's Translator API as directly
+ * supported (zh→en and zh→ru both resolve), so neither needs to pivot
+ * through a second translator. Adding a third means verifying it too.
+ */
+export type TranslationLang = 'en' | 'ru'
+
+export const TRANSLATION_LANGS: ReadonlyArray<{ code: TranslationLang; label: string }> = [
+  { code: 'en', label: 'English' },
+  { code: 'ru', label: 'Русский' },
+]
 
 export interface Settings {
   enabled: boolean
@@ -10,9 +24,12 @@ export interface Settings {
   backdropOpacity: number // 0-100
   positionPercent: number // distance from the bottom of the player, 0-85
   useTraditional: boolean
+  /** Step the card above Bilibili's control bar while the bar is showing. */
+  liftAboveControls: boolean
   showTranslation: boolean
-  translationFontSize: number // px, English line
+  translationFontSize: number // px, translated line
   translationLayout: TranslationLayout
+  translationLang: TranslationLang
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,11 +41,15 @@ export const DEFAULT_SETTINGS: Settings = {
   backdropOpacity: 60,
   positionPercent: 8,
   useTraditional: false,
+  // On by default: at the 8% default height the card lands underneath the
+  // timeline, so the collision this avoids is the normal case.
+  liftAboveControls: true,
   // Off by default: no language pack download, and no change for anyone who
   // hasn't asked for translation.
   showTranslation: false,
   translationFontSize: 16,
   translationLayout: 'inline',
+  translationLang: 'en',
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'

@@ -3,7 +3,9 @@ import {
   DEFAULT_SETTINGS,
   loadSettings,
   saveSettings,
+  TRANSLATION_LANGS,
   type Settings,
+  type TranslationLang,
   type TranslationLayout,
 } from '../shared/settings'
 import type { Status, StatusResponse } from '../shared/messages'
@@ -160,16 +162,36 @@ export function App() {
           suffix="%"
           onChange={(v) => update({ positionPercent: v })}
         />
+        <Toggle
+          label="Lift above player controls"
+          checked={settings.liftAboveControls}
+          onChange={(v) => update({ liftAboveControls: v })}
+        />
 
         <hr class="divider" />
 
         <Toggle
-          label="English translation"
+          label="Translation"
           checked={settings.showTranslation}
           onChange={(v) => update({ showTranslation: v })}
         />
 
         <div class={settings.showTranslation ? '' : 'disabled'}>
+          <label class="row">
+            <span>Language</span>
+            <select
+              value={settings.translationLang}
+              onChange={(e) =>
+                update({ translationLang: e.currentTarget.value as TranslationLang })
+              }
+            >
+              {TRANSLATION_LANGS.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <Slider
             label="Translation size"
             value={settings.translationFontSize}
