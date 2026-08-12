@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  applyReviewIn,
   captureSentenceIn,
   discoverWordIn,
   importRanksIn,
@@ -9,7 +10,15 @@ import {
   recordExposuresIn,
 } from './flashcards-store'
 import { openFlashcardsDb, request, STORES } from '../flashcards/db'
-import { sentenceId, wordId, type Exposure, type Item, type Video, type VideoWord } from '../flashcards/types'
+import {
+  sentenceId,
+  wordId,
+  type Exposure,
+  type Item,
+  type Review,
+  type Video,
+  type VideoWord,
+} from '../flashcards/types'
 
 async function db(): Promise<IDBDatabase> {
   return openFlashcardsDb(`test-${Math.random()}`)
@@ -189,6 +198,79 @@ describe('markKnownIn and knownWordsIn', () => {
     await markKnownIn(database, '我', true)
 
     expect(await knownWordsIn(database)).toEqual(['我'])
+  })
+})
+
+describe('applyReviewIn', () => {
+  async function seededWord(database: IDBDatabase): Promise<Item> {
+    await discoverWordIn(database, '学习', context('我在学习中文。'))
+    return (await get<Item>(database, STORES.items, wordId('学习')))!
+  }
+
+  test('reschedules the card and logs the review together', async () => {
+    // Both in one transaction: a schedule that moved with no log entry behind
+    // it is precisely the state the import merge cannot reconstruct, since
+    // replaying the log is what makes two histories combinable.
+    const database = await db()
+    const item = await seededWord(database)
+    await applyReviewIn(database, item, 'good', 'recognise', 1_000)
+
+    const stored = await get<Item>(database, STORES.items, wordId('学习'))
+    expect(stored?.interval).toBe(1)
+    expect(stored?.reps).toBe(1)
+
+    const reviews = await request<Review[]>(
+      database.transaction(STORES.reviews, 'readonly').objectStore(STORES.reviews).getAll(),
+    )
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0]).toMatchObject({
+      itemId: wordId('学习'),
+      grade: 'good',
+      style: 'recognise',
+      intervalBefore: 0,
+      intervalAfter: 1,
+    })
+  })
+
+  test('stamps introducedAt on the first review and never moves it', async () => {
+    // The daily intake limits count these, so a later review resetting it
+    // would hand back budget that was already spent.
+    const database = await db()
+    const first = await applyReviewIn(database, await seededWord(database), 'good', 'recognise', 1_000)
+    expect(first.introducedAt).toBe(1_000)
+
+    const second = await applyReviewIn(database, first, 'good', 'recognise', 90_000_000)
+    expect(second.introducedAt).toBe(1_000)
+  })
+
+  test('the review log accumulates rather than being overwritten', async () => {
+    const database = await db()
+    let item = await seededWord(database)
+    for (const at of [1_000, 2_000, 3_000]) {
+      item = await applyReviewIn(database, item, 'good', 'recognise', at)
+    }
+
+    const reviews = await request<Review[]>(
+      database.transaction(STORES.reviews, 'readonly').objectStore(STORES.reviews).getAll(),
+    )
+    expect(reviews.map((r) => r.at)).toEqual([1_000, 2_000, 3_000])
+  })
+
+  test('a lapse keeps the card in the session', async () => {
+    const database = await db()
+    const item = await seededWord(database)
+    const lapsed = await applyReviewIn(
+      database,
+      { ...item, interval: 30, reps: 5, state: 'review' },
+      'again',
+      'type',
+      1_000,
+    )
+
+    expect(lapsed.interval).toBe(0)
+    expect(lapsed.state).toBe('learning')
+    expect(lapsed.lapses).toBe(1)
+    expect(lapsed.due).toBeLessThan(1_000 + 86_400_000)
   })
 })
 

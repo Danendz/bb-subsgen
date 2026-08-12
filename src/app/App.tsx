@@ -1,10 +1,12 @@
 import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
+import { Review } from './Review'
 import { Videos } from './Videos'
 import { navigate, useRoute } from './hooks'
 
 const TABS = [
   { route: '/', label: 'Overview' },
+  { route: '/review', label: 'Review' },
   { route: '/dictionary', label: 'Dictionary' },
   { route: '/videos', label: 'Videos' },
 ]
@@ -44,7 +46,9 @@ export function App() {
 
       <Nav route={route} />
 
-      {route === '/dictionary' ? (
+      {route === '/review' ? (
+        <Review />
+      ) : route === '/dictionary' ? (
         <Dictionary />
       ) : route.startsWith('/videos') ? (
         <Videos bvid={video?.[1]} />

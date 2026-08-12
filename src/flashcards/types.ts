@@ -51,6 +51,15 @@ export interface Item {
   reps: number
   lapses: number
   createdAt: number
+  /**
+   * When this was first reviewed.
+   *
+   * Introduction is the moment a card is first served, not a separate promotion
+   * step — so this doubles as the record of *when* and as the flag for whether
+   * it has been introduced at all. Daily intake limits count these rather than
+   * a separate counter, which means the limits survive an import unchanged.
+   */
+  introducedAt?: number
   /** Every place this was met, most recent last. */
   contexts: Context[]
   /**

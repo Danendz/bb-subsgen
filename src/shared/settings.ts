@@ -56,6 +56,18 @@ export interface Settings {
   readerOrigins: string[]
   readerModifier: ReaderModifier
   readerSentenceTranslation: boolean
+  /** New cards let into the deck each day. Capture is generous; intake is not. */
+  newWordsPerDay: number
+  newSentencesPerDay: number
+  /**
+   * How long you can dwell on a line whose words you all know before it is
+   * taken as evidence you couldn't read it, in milliseconds.
+   *
+   * A guess, deliberately exposed: every dwell is also logged raw, so the real
+   * distribution can be looked at and this moved to where actual "I'm stuck"
+   * pauses sit rather than where it was first set.
+   */
+  struggleThresholdMs: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -81,6 +93,9 @@ export const DEFAULT_SETTINGS: Settings = {
   readerOrigins: [],
   readerModifier: 'shift',
   readerSentenceTranslation: true,
+  newWordsPerDay: 10,
+  newSentencesPerDay: 5,
+  struggleThresholdMs: 5000,
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'

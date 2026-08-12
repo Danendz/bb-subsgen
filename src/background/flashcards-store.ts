@@ -13,10 +13,14 @@
 
 import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
 import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
+import { schedule } from '../flashcards/scheduler'
 import {
   sentenceId,
   wordId,
   type Context,
+  type Grade,
+  type Review,
+  type ReviewStyle,
   type Exposure,
   type ExposureBatch,
   type Item,
@@ -184,6 +188,49 @@ export async function knownWordsIn(db: IDBDatabase): Promise<string[]> {
   return all.filter((item) => item.kind === 'word' && isKnown(item)).map((item) => item.text)
 }
 
+/**
+ * Records a review and reschedules the card.
+ *
+ * The item and the log entry go in one transaction: a schedule that moved with
+ * no log entry behind it would be exactly the state the import merge cannot
+ * reconstruct, since replay is what makes two histories combinable.
+ *
+ * Returns the rescheduled item so the caller can tell whether it has just
+ * crossed into "known" and the overlay needs to hear about it.
+ */
+export async function applyReviewIn(
+  db: IDBDatabase,
+  item: Item,
+  grade: Grade,
+  style: ReviewStyle,
+  now = Date.now(),
+): Promise<Item> {
+  const next: Item = {
+    ...item,
+    ...schedule(item, grade, now),
+    // Introduction is the first review, not a separate promotion step — which
+    // is what lets the daily intake limits be counted from the items
+    // themselves rather than from a counter that an import would have to merge.
+    introducedAt: item.introducedAt ?? now,
+  }
+
+  const review: Review = {
+    itemId: item.id,
+    at: now,
+    grade,
+    style,
+    intervalBefore: item.interval,
+    intervalAfter: next.interval,
+  }
+
+  const tx = db.transaction([STORES.items, STORES.reviews], 'readwrite')
+  tx.objectStore(STORES.items).put(next)
+  tx.objectStore(STORES.reviews).put(review)
+  await done(tx)
+
+  return next
+}
+
 export async function recordSignalIn(db: IDBDatabase, signal: Signal): Promise<void> {
   const tx = db.transaction(STORES.signals, 'readwrite')
   tx.objectStore(STORES.signals).put(signal)
@@ -238,6 +285,24 @@ export async function markKnown(headword: string, known: boolean): Promise<void>
 
 export async function recordSignal(signal: Signal): Promise<void> {
   return recordSignalIn(await flashcardsDb(), signal)
+}
+
+/**
+ * Reviews a card, republishing the known set only when this changed it.
+ *
+ * Refreshing unconditionally would read every item back and rewrite the mirror
+ * after each of a hundred reviews in a session, for a set that changes on maybe
+ * one of them.
+ */
+export async function applyReview(
+  item: Item,
+  grade: Grade,
+  style: ReviewStyle,
+  now = Date.now(),
+): Promise<Item> {
+  const next = await applyReviewIn(await flashcardsDb(), item, grade, style, now)
+  if (isKnown(item) !== isKnown(next)) await refreshKnownMirror()
+  return next
 }
 
 /**
