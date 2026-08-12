@@ -1,5 +1,7 @@
 import { adoptStyles } from './overlay'
-import { buildCard } from './card'
+import { buildCard, cardHeadwords, characterBreakdown } from './card'
+import { discoverWord, markKnown } from '../shared/flashcards-client'
+import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
 
 const DWELL_MS = 150
@@ -59,6 +61,10 @@ export interface HoverDeps {
   lookup: DefsLookup
   /** Read at popup-build time so live settings changes take effect. */
   isTraditional: () => boolean
+  showToneColors: () => boolean
+  /** The line currently on screen, snapshotted onto whatever gets discovered. */
+  currentContext: () => Context | null
+  known: () => Set<string>
 }
 
 export function attachHover({
@@ -66,6 +72,9 @@ export function attachHover({
   video,
   lookup,
   isTraditional,
+  showToneColors,
+  currentContext,
+  known,
 }: HoverDeps): () => void {
   const controller = new HoverPauseController()
   let dwellTimer: ReturnType<typeof setTimeout> | null = null
@@ -80,13 +89,31 @@ export function attachHover({
   }
 
   const openPopup = async (wordEl: HTMLElement, headword: string) => {
-    const entries = (await lookup([headword]))[headword] ?? []
+    // Asks for the characters alongside the word, in one batched round trip, so
+    // this card carries the same per-character breakdown the reader's does — it
+    // was asking for the headword alone and silently rendering a poorer card.
+    const useTraditional = isTraditional()
+    const found = await lookup(cardHeadwords(headword))
     closePopup()
     adoptStyles(shadowRoot)
 
+    // The popup opening is the interaction that counts as discovery: it follows
+    // a deliberate dwell, not a pointer crossing the line on its way elsewhere.
+    discoverWord(headword, currentContext() ?? undefined)
+
     popup = buildCard(
-      { headword, displayedPinyin: wordEl.dataset.pinyin ?? '', entries },
-      { useTraditional: isTraditional() },
+      {
+        headword,
+        displayedPinyin: wordEl.dataset.pinyin ?? '',
+        entries: found[headword] ?? [],
+        breakdown: characterBreakdown(headword, found, useTraditional),
+        known: known().has(headword),
+      },
+      {
+        useTraditional,
+        toneColors: showToneColors(),
+        onMarkKnown: (next) => markKnown(headword, next),
+      },
     )
     // Append before measuring — the popup needs layout to have a width.
     shadowRoot.appendChild(popup)

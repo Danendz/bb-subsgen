@@ -6,7 +6,7 @@
 //
 // CC-CEDICT is CC BY-SA 4.0 (https://cc-cedict.org). Attribution required
 // wherever this derived data is shown or redistributed.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { rankEntries } from '../src/lang/entries.ts'
 
@@ -19,6 +19,17 @@ interface CedictEntry {
 
 const SRC = path.join(import.meta.dirname, 'data/cedict_ts.u8')
 const OUT_DIR = path.join(import.meta.dirname, '../public/dict')
+
+// Both optional. Neither ships with the repo: unlike CC-CEDICT, whose licence
+// is known and attributed, a frequency or HSK list has to have its own
+// redistribution terms checked before it can be bundled. Without them every
+// rank is undefined, which costs frequency-ordered card introduction and the
+// HSK progress denominator, and nothing else.
+//
+//   data/frequency.txt  one headword per line, most frequent first (rank = line number)
+//   data/hsk.tsv        `headword<TAB>level` per line
+const FREQ_SRC = path.join(import.meta.dirname, 'data/frequency.txt')
+const HSK_SRC = path.join(import.meta.dirname, 'data/hsk.tsv')
 
 const LINE_RE = /^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+\/(.+)\/$/
 
@@ -77,6 +88,58 @@ function buildDefs(byHeadword: Map<string, CedictEntry[]>): Record<string, Cedic
   return Object.fromEntries(byHeadword)
 }
 
+/** Rank by line number; first occurrence wins, so a duplicated word keeps its best rank. */
+function readFrequency(): Map<string, number> {
+  const ranks = new Map<string, number>()
+  if (!existsSync(FREQ_SRC)) return ranks
+  let rank = 0
+  for (const line of readFileSync(FREQ_SRC, 'utf8').split(/\r?\n/)) {
+    // Tolerates `word<TAB>count` as well as a bare word, since frequency lists
+    // are distributed both ways.
+    const word = line.split(/\s+/)[0]?.trim()
+    if (!word || word.startsWith('#')) continue
+    rank += 1
+    if (!ranks.has(word)) ranks.set(word, rank)
+  }
+  return ranks
+}
+
+function readHsk(): Map<string, number> {
+  const levels = new Map<string, number>()
+  if (!existsSync(HSK_SRC)) return levels
+  for (const line of readFileSync(HSK_SRC, 'utf8').split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) continue
+    const [word, level] = line.split('\t')
+    const parsed = Number(level)
+    if (!word || !Number.isFinite(parsed)) continue
+    levels.set(word.trim(), parsed)
+  }
+  return levels
+}
+
+/**
+ * Joins whatever rank data exists onto the dictionary's own headwords.
+ *
+ * Restricted to words CC-CEDICT actually knows: a frequency list carries
+ * particles, fragments and proper nouns the extension can never render a card
+ * for, and carrying them would inflate the progress denominator with words that
+ * are unreachable by design.
+ */
+function buildRanks(
+  byHeadword: Map<string, CedictEntry[]>,
+  frequency: Map<string, number>,
+  hsk: Map<string, number>,
+): string {
+  const lines: string[] = []
+  for (const word of byHeadword.keys()) {
+    const rank = frequency.get(word)
+    const level = hsk.get(word)
+    if (rank === undefined && level === undefined) continue
+    lines.push(`${word}\t${rank ?? ''}\t${level ?? ''}`)
+  }
+  return lines.join('\n')
+}
+
 const src = readFileSync(SRC, 'utf8')
 const entries = parse(src)
 
@@ -87,3 +150,20 @@ writeFileSync(path.join(OUT_DIR, 'words.bin'), buildWords(byHeadword))
 writeFileSync(path.join(OUT_DIR, 'defs.json'), JSON.stringify(buildDefs(byHeadword)))
 
 console.log(`Parsed ${entries.length} CC-CEDICT entries`)
+
+const frequency = readFrequency()
+const hsk = readHsk()
+if (frequency.size || hsk.size) {
+  const ranks = buildRanks(byHeadword, frequency, hsk)
+  writeFileSync(path.join(OUT_DIR, 'rank.bin'), ranks)
+  console.log(
+    `Ranked ${ranks ? ranks.split('\n').length : 0} headwords ` +
+      `(${frequency.size} frequency, ${hsk.size} HSK)`,
+  )
+} else {
+  console.log(
+    'No frequency or HSK data — skipping rank.bin. ' +
+      'Add tools/data/frequency.txt and/or tools/data/hsk.tsv to enable ' +
+      'frequency-ordered card introduction and HSK progress.',
+  )
+}

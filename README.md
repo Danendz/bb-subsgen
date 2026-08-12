@@ -6,7 +6,7 @@ no backend, no account, works fully offline after install.
 Two ways in:
 
 - **Bilibili subtitles** — the player's subtitle track, re-rendered with pinyin
-  above each word and a dictionary card on hover.
+  above each word and a dictionary card on hover, characters broken down and all.
 - **Page reader** — hold Shift on any site you opt into and point at a word to
   get the same card, characters broken down and all. Select a phrase — by
   dragging or by double-clicking — for a segmented card with its translation,

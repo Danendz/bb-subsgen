@@ -8,9 +8,16 @@ import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './cont
 import { isWaiting, progressView, type ProgressState } from './progress'
 import { parseBvidFromUrl, fetchVideoInfo, watchBvidChange } from '../bilibili/resolve'
 import { fetchSubtitles, type Cue, type SubtitleTrack } from '../bilibili/subtitles'
-import { segment } from '../lang/segment'
+import { segment, type Token } from '../lang/segment'
 import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
 import { lookupDefs } from '../shared/dict-client'
+import {
+  captureSentence,
+  createExposureBuffer,
+  watchKnownSet,
+} from '../shared/flashcards-client'
+import { hanWords, isCapturableText, shouldCaptureLine } from '../flashcards/capture'
+import type { Context } from '../flashcards/types'
 import { createTranslator, isTranslatorSupported, translatorAvailability } from '../lang/translate'
 import {
   loadSettings,
@@ -38,7 +45,8 @@ declare global {
   }
 }
 
-async function loadCuesForCurrentVideo(): Promise<Cue[] | null> {
+/** Cues plus the video they belong to — the bvid is what every capture is filed under. */
+async function loadCuesForCurrentVideo(): Promise<{ cues: Cue[]; bvid: string } | null> {
   const bvid = parseBvidFromUrl(location.href)
   if (!bvid) return null
 
@@ -49,10 +57,11 @@ async function loadCuesForCurrentVideo(): Promise<Cue[] | null> {
   }
   console.log('[bb-subsgen] resolved', bvid, info)
 
-  return fetchSubtitles(
+  const cues = await fetchSubtitles(
     { aid: info.aid, cid: info.cid, bvid },
     window.__INITIAL_STATE__?.videoData?.subtitle?.list,
   )
+  return cues ? { cues, bvid } : null
 }
 
 function labelFor(lang: TranslationLang): string {
@@ -127,6 +136,12 @@ async function main() {
   // back to one already translated renders instantly instead of re-running the pass.
   const translations = new Map<TranslationLang, Map<number, string>>()
   let status: Status = 'loading'
+  // Mirrored from the worker; drives what the overlay stops annotating and
+  // which lines are still worth capturing.
+  let known = new Set<string>()
+  watchKnownSet((next) => {
+    known = next
+  })
 
   const cacheFor = (lang: TranslationLang): Map<number, string> => {
     let cache = translations.get(lang)
@@ -157,22 +172,50 @@ async function main() {
     status = 'loading'
     if (!settings.enabled) return
 
-    const cues = await loadCuesForCurrentVideo()
-    if (!cues) {
+    const loaded = await loadCuesForCurrentVideo()
+    if (!loaded) {
       status = 'no-track'
       console.log('[bb-subsgen] no subtitle track for this video')
       return
     }
+    const { cues, bvid } = loaded
     status = 'active'
 
     stopMount = mount(({ shadowRoot, video, container }) => {
+      let lastIndex = -1
+      // Kept beside lastIndex so the cue's words are segmented once per cue,
+      // rather than again for every capture that needs them.
+      let currentTokens: Token[] = []
+
+      const buffer = createExposureBuffer({ bvid, title: document.title, url: location.href })
+
+      /**
+       * Where a word or line was met, frozen for the card.
+       *
+       * The translation is whatever has landed by now: the pass runs ahead of
+       * playback so it is usually there, but a line captured in the first
+       * seconds of a video may snapshot an empty one. The app backfills those
+       * rather than the capture path blocking on a translator.
+       */
+      const contextFor = (index: number): Context => ({
+        text: cues[index].text,
+        translation: cacheFor(settings.translationLang).get(index) ?? '',
+        bvid,
+        start: cues[index].start,
+        url: location.href,
+        title: document.title,
+        at: Date.now(),
+      })
+
       const stopHover = attachHover({
         shadowRoot,
         video,
         lookup: lookupDefs,
         isTraditional: () => settings.useTraditional,
+        showToneColors: () => settings.showToneColors,
+        currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
+        known: () => known,
       })
-      let lastIndex = -1
       let progress: ProgressState = { phase: 'idle' }
       // Blank cues are never translated, so they'd otherwise make the pass
       // look permanently unfinished.
@@ -188,15 +231,36 @@ async function main() {
 
       const render = () => {
         if (lastIndex === -1) {
+          currentTokens = []
           clearCue(shadowRoot)
           return
         }
+        currentTokens = segment(cues[lastIndex].text, words)
         renderCue(
           shadowRoot,
-          segment(cues[lastIndex].text, words),
+          currentTokens,
           settings,
           cacheFor(settings.translationLang).get(lastIndex) ?? '',
         )
+      }
+
+      /**
+       * Counts a line as seen, and keeps it if it still has something to teach.
+       *
+       * One rule for every level: a line qualifies when it contains a word you
+       * don't yet know. As a beginner that is nearly every line, which is the
+       * point — you cannot pause every four seconds to curate. What stops this
+       * flooding the deck is that captures land in the intake pool and are
+       * rationed out, not that capture is stingy.
+       */
+      const onCueShown = () => {
+        if (lastIndex < 0) return
+        const seen = hanWords(currentTokens)
+        buffer.line(seen)
+
+        const { text } = cues[lastIndex]
+        if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
+        captureSentence(text, contextFor(lastIndex))
       }
 
       // Re-applied on every settings change, since watchControls only emits
@@ -223,10 +287,14 @@ async function main() {
         renderProgress()
       }
 
+      // Fires only when the active cue actually changes, which is why capture
+      // hangs off it rather than off render() — render also runs on every
+      // settings change, and would count the same line again each time.
       const stopSync = watchPlayback(video, cues, (index) => {
         lastIndex = index
         render()
         renderProgress()
+        onCueShown()
       })
 
       startTranslation = () => {
@@ -269,6 +337,9 @@ async function main() {
       startTranslation()
 
       return () => {
+        // First, so the last few lines of the session are posted before the
+        // listeners that would have flushed them are gone.
+        buffer.stop()
         stopHover()
         stopSync()
         stopControls()

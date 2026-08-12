@@ -1,0 +1,280 @@
+// Every write to the flashcards database, owned by the service worker.
+//
+// Content scripts cannot open this store at all — they run on the page's
+// IndexedDB origin — so they buffer and post batches here. See flashcards/db.ts.
+//
+// Each operation comes in two forms, following defs-store.ts: a `...In(db, …)`
+// core that tests drive against a throwaway database, and a thin wrapper that
+// resolves the memoized one.
+//
+// Note the shape of every read-modify-write below: `upsert` issues its put
+// inside the get's success handler rather than after an await. Awaiting mid
+// transaction lets it auto-commit, and the write silently never lands.
+
+import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
+import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
+import {
+  sentenceId,
+  wordId,
+  type Context,
+  type Exposure,
+  type ExposureBatch,
+  type Item,
+  type Rank,
+  type Signal,
+  type Video,
+  type VideoWord,
+} from '../flashcards/types'
+
+const RANKS_VERSION_KEY = 'bbSubsgenRanksVersion'
+const CURRENT_RANKS_VERSION = 1
+
+function newItem(id: string, kind: Item['kind'], text: string, now: number): Item {
+  return {
+    id,
+    kind,
+    text,
+    // Words are discovered because you didn't know them, so they enter the
+    // deck directly. Sentences land in the pool and are rationed out.
+    state: kind === 'word' ? 'new' : 'pool',
+    interval: 0,
+    ease: 2.5,
+    due: now,
+    reps: 0,
+    lapses: 0,
+    createdAt: now,
+    contexts: [],
+  }
+}
+
+/** Keeps a bounded, most-recent-last history of where a word was met. */
+const MAX_CONTEXTS = 20
+
+function withContext(item: Item, context: Context | undefined): Item {
+  if (!context) return item
+  // The same line met again is not a new context — it is the same evidence.
+  const seen = item.contexts.some(
+    (c) => c.text === context.text && c.bvid === context.bvid && c.url === context.url,
+  )
+  if (seen) return item
+  return { ...item, contexts: [...item.contexts, context].slice(-MAX_CONTEXTS) }
+}
+
+/**
+ * Folds a flush of exposures into the totals.
+ *
+ * One transaction across all three stores: a 30-minute video is roughly 3,000
+ * word instances, and a transaction per word would be the single heaviest thing
+ * the extension does.
+ */
+export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): Promise<void> {
+  const entries = Object.entries(batch.words)
+  if (!entries.length && !batch.video) return
+
+  const now = Date.now()
+  const stores = batch.video
+    ? [STORES.exposures, STORES.videoWords, STORES.videos]
+    : [STORES.exposures]
+  const tx = db.transaction(stores, 'readwrite')
+
+  const exposures = tx.objectStore(STORES.exposures)
+  for (const [headword, count] of entries) {
+    upsert<Exposure>(exposures, headword, (existing) =>
+      existing
+        ? { ...existing, count: existing.count + count, lastSeen: now }
+        : { headword, count, firstSeen: now, lastSeen: now },
+    )
+  }
+
+  if (batch.video) {
+    const { bvid, title, url } = batch.video
+
+    const videoWords = tx.objectStore(STORES.videoWords)
+    for (const [headword, count] of entries) {
+      upsert<VideoWord>(videoWords, [bvid, headword], (existing) =>
+        existing ? { ...existing, count: existing.count + count } : { bvid, headword, count },
+      )
+    }
+
+    upsert<Video>(tx.objectStore(STORES.videos), bvid, (existing) =>
+      existing
+        ? { ...existing, title, url, lastWatched: now, lines: existing.lines + batch.lines }
+        : { bvid, title, url, firstWatched: now, lastWatched: now, lines: batch.lines },
+    )
+  }
+
+  await done(tx)
+}
+
+/** Ranks are immutable once imported, so reading them in their own transaction is safe. */
+async function rankOf(db: IDBDatabase, headword: string): Promise<number | undefined> {
+  const store = db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks)
+  const rank = await request<Rank | undefined>(store.get(headword))
+  return rank?.rank
+}
+
+/**
+ * Adds a word to the deck, or records another sighting of one already there.
+ *
+ * Never demotes: discovering a word you had marked known leaves it known. You
+ * can hover a known word for its definition without that being a claim you have
+ * forgotten it.
+ */
+export async function discoverWordIn(
+  db: IDBDatabase,
+  headword: string,
+  context?: Context,
+): Promise<void> {
+  const rank = await rankOf(db, headword)
+  const id = wordId(headword)
+  const now = Date.now()
+
+  const tx = db.transaction(STORES.items, 'readwrite')
+  upsert<Item>(tx.objectStore(STORES.items), id, (existing) =>
+    withContext(existing ?? { ...newItem(id, 'word', headword, now), rank }, context),
+  )
+  await done(tx)
+}
+
+/** Captures a line into the intake pool. A line already held only gains the context. */
+export async function captureSentenceIn(
+  db: IDBDatabase,
+  text: string,
+  context: Context,
+  target?: string,
+): Promise<void> {
+  const id = sentenceId(text)
+  const now = Date.now()
+
+  const tx = db.transaction(STORES.items, 'readwrite')
+  upsert<Item>(tx.objectStore(STORES.items), id, (existing) =>
+    withContext(existing ?? { ...newItem(id, 'sentence', text.trim(), now), target }, context),
+  )
+  await done(tx)
+}
+
+/**
+ * Declares a word known, or takes that back.
+ *
+ * Marking known keeps any review history but stops scheduling it. Un-marking
+ * returns the word to the deck as new rather than restoring whatever interval
+ * it had — "I don't actually know this" is a stronger statement than a stale
+ * interval.
+ */
+export async function markKnownIn(
+  db: IDBDatabase,
+  headword: string,
+  known: boolean,
+): Promise<void> {
+  const id = wordId(headword)
+  const now = Date.now()
+
+  const tx = db.transaction(STORES.items, 'readwrite')
+  upsert<Item>(tx.objectStore(STORES.items), id, (existing) => {
+    const base = existing ?? newItem(id, 'word', headword, now)
+    return known ? { ...base, state: 'known' } : { ...base, state: 'new', interval: 0, due: now }
+  })
+  await done(tx)
+}
+
+/** Every word the overlay should stop annotating. */
+export async function knownWordsIn(db: IDBDatabase): Promise<string[]> {
+  const store = db.transaction(STORES.items, 'readonly').objectStore(STORES.items)
+  const all = await request<Item[]>(store.getAll())
+  return all.filter((item) => item.kind === 'word' && isKnown(item)).map((item) => item.text)
+}
+
+export async function recordSignalIn(db: IDBDatabase, signal: Signal): Promise<void> {
+  const tx = db.transaction(STORES.signals, 'readwrite')
+  tx.objectStore(STORES.signals).put(signal)
+  await done(tx)
+}
+
+/** Parses `headword\trank\thsk` lines; either numeric column may be blank. */
+export function parseRanks(raw: string): Rank[] {
+  const rows: Rank[] = []
+  for (const line of raw.split('\n')) {
+    if (!line) continue
+    const [headword, rank, hsk] = line.split('\t')
+    if (!headword) continue
+    rows.push({
+      headword,
+      ...(rank ? { rank: Number(rank) } : {}),
+      ...(hsk ? { hsk: Number(hsk) } : {}),
+    })
+  }
+  return rows
+}
+
+export async function importRanksIn(db: IDBDatabase, rows: Rank[]): Promise<void> {
+  const tx = db.transaction(STORES.ranks, 'readwrite')
+  const store = tx.objectStore(STORES.ranks)
+  for (const row of rows) store.put(row)
+  await done(tx)
+}
+
+// --- Wrappers over the memoized database ------------------------------------
+
+export async function recordExposures(batch: ExposureBatch): Promise<void> {
+  return recordExposuresIn(await flashcardsDb(), batch)
+}
+
+export async function discoverWord(headword: string, context?: Context): Promise<void> {
+  return discoverWordIn(await flashcardsDb(), headword, context)
+}
+
+export async function captureSentence(
+  text: string,
+  context: Context,
+  target?: string,
+): Promise<void> {
+  return captureSentenceIn(await flashcardsDb(), text, context, target)
+}
+
+export async function markKnown(headword: string, known: boolean): Promise<void> {
+  await markKnownIn(await flashcardsDb(), headword, known)
+  await refreshKnownMirror()
+}
+
+export async function recordSignal(signal: Signal): Promise<void> {
+  return recordSignalIn(await flashcardsDb(), signal)
+}
+
+/**
+ * Publishes the known set where content scripts can read it synchronously.
+ *
+ * Hiding pinyin is a per-token decision on every rendered line; a message round
+ * trip per line is not viable. Content scripts read this once and then follow
+ * `chrome.storage.onChanged`, the same pattern as `onSettingsChanged`.
+ */
+export async function refreshKnownMirror(): Promise<void> {
+  const known = await knownWordsIn(await flashcardsDb())
+  await chrome.storage.local.set({ [KNOWN_SET_KEY]: known })
+}
+
+/**
+ * Imports the frequency/HSK artifact once, if the build produced one.
+ *
+ * Optional by design: the dataset is the one piece of this feature that cannot
+ * be derived from CC-CEDICT, and its licensing has to be verified before it can
+ * ship. Without it every rank is undefined, which costs frequency-ordered
+ * introduction and the HSK progress denominator — and nothing else.
+ */
+export async function ensureRanksImported(): Promise<void> {
+  const { [RANKS_VERSION_KEY]: version } = await chrome.storage.local.get(RANKS_VERSION_KEY)
+  if (version === CURRENT_RANKS_VERSION) return
+
+  let raw: string
+  try {
+    const response = await fetch(chrome.runtime.getURL('dict/rank.bin'))
+    if (!response.ok) throw new Error(`rank.bin: ${response.status}`)
+    raw = await response.text()
+  } catch {
+    // No dataset built in. Not an error, and the flag stays unset so dropping
+    // one in later still imports it.
+    return
+  }
+
+  await importRanksIn(await flashcardsDb(), parseRanks(raw))
+  await chrome.storage.local.set({ [RANKS_VERSION_KEY]: CURRENT_RANKS_VERSION })
+}

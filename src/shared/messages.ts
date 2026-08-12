@@ -1,4 +1,5 @@
 import type { CedictEntry } from '../lang/dict'
+import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 
 export type Status = 'loading' | 'no-track' | 'active'
 
@@ -40,5 +41,37 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:lookup-defs' &&
     Array.isArray((msg as { headwords?: unknown }).headwords)
+  )
+}
+
+/**
+ * Everything a content script asks the worker to write.
+ *
+ * One union with one guard rather than a message type and predicate each: these
+ * are all fire-and-forget writes with the same handling, and the worker's
+ * dispatch reads better as a single switch. Nothing here expects a response —
+ * a dropped capture is not worth blocking a hover on.
+ */
+export type FlashcardsMessage =
+  | { type: 'bb-subsgen:record-exposures'; batch: ExposureBatch }
+  | { type: 'bb-subsgen:discover-word'; headword: string; context?: Context }
+  | { type: 'bb-subsgen:capture-sentence'; text: string; context: Context; target?: string }
+  | { type: 'bb-subsgen:mark-known'; headword: string; known: boolean }
+  | { type: 'bb-subsgen:record-signal'; signal: Signal }
+
+const FLASHCARDS_TYPES = new Set<string>([
+  'bb-subsgen:record-exposures',
+  'bb-subsgen:discover-word',
+  'bb-subsgen:capture-sentence',
+  'bb-subsgen:mark-known',
+  'bb-subsgen:record-signal',
+])
+
+export function isFlashcardsMessage(msg: unknown): msg is FlashcardsMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    typeof (msg as { type?: unknown }).type === 'string' &&
+    FLASHCARDS_TYPES.has((msg as { type: string }).type)
   )
 }

@@ -6,6 +6,9 @@ import {
   setCardTranslation,
 } from '../content/card'
 import { segment } from '../lang/segment'
+import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
+import { hanWords, selectionTarget, unknownIn } from '../flashcards/capture'
+import type { Context } from '../flashcards/types'
 import { blockAncestor, createBlockCache, indexOf, rangeOf, rootElement } from './block'
 import { caretAt } from './caret'
 import { createWordHighlight } from './highlight'
@@ -36,6 +39,8 @@ export interface ReaderDeps {
   words: () => Promise<Map<string, string>>
   /** Read live, so settings changes take effect without a reload. */
   settings: () => Settings
+  /** Words the reader should stop annotating, mirrored from the worker. */
+  known: () => Set<string>
 }
 
 /** Where an open card came from, so a repeat hover doesn't rebuild it. */
@@ -52,6 +57,7 @@ export function attachReader({
   translator,
   words,
   settings,
+  known,
 }: ReaderDeps): () => void {
   const { shadowRoot } = mount
   const highlight = createWordHighlight()
@@ -69,6 +75,25 @@ export function attachReader({
   const modifierHeld = (e: MouseEvent | KeyboardEvent): boolean =>
     e[MODIFIER_PROPERTY[settings().readerModifier]]
 
+  /**
+   * How long a card must stay open on one word before that counts as
+   * discovering it.
+   *
+   * Unlike the subtitle overlay, the reader has no dwell before it opens a card
+   * — it fires on the first frame the pointer is over a new word. Without this
+   * delay, sweeping the pointer across a paragraph with the modifier held would
+   * silently add every word it crossed to the deck. The card still appears
+   * instantly; only the claim that you read it waits.
+   */
+  const DISCOVERY_DWELL_MS = 500
+  let discoveryTimer: ReturnType<typeof setTimeout> | null = null
+
+  const cancelDiscovery = () => {
+    if (discoveryTimer === null) return
+    clearTimeout(discoveryTimer)
+    discoveryTimer = null
+  }
+
   /** Whether an event happened inside our own UI, rather than on the page. */
   const inOurUi = (e: Event): boolean => e.composedPath().includes(shadowRoot)
 
@@ -77,6 +102,7 @@ export function attachReader({
 
   /** Drops the card element but leaves the highlight alone. */
   const removeCard = () => {
+    cancelDiscovery()
     open?.element.remove()
     open = null
   }
@@ -134,6 +160,25 @@ export function attachReader({
   }
 
   /**
+   * Where something on this page was met.
+   *
+   * The translation is taken from the translator's cache rather than awaited —
+   * capture must not wait on a network-free but still asynchronous API, and an
+   * empty translation is backfillable later while a missed capture is not.
+   */
+  const pageContext = (sentence: string): Context | undefined => {
+    const text = sentence.trim()
+    if (!text) return undefined
+    return {
+      text,
+      translation: translator.cached(text) ?? '',
+      url: location.href,
+      title: document.title,
+      at: Date.now(),
+    }
+  }
+
+  /**
    * Builds and shows the card for a word.
    *
    * `anchor` is what the card must not cover — the word itself for a page
@@ -153,14 +198,28 @@ export function attachReader({
     if (token !== pending) return // a later hover superseded this one
 
     removeCard()
+
+    // Armed after removeCard, which cancels the previous word's timer — so a
+    // pointer sweeping across a line leaves nothing behind but the last word it
+    // actually rested on.
+    discoveryTimer = setTimeout(() => {
+      discoveryTimer = null
+      discoverWord(match.text, pageContext(sentence))
+    }, DISCOVERY_DWELL_MS)
+
     const card = buildCard(
       {
         headword: match.text,
         displayedPinyin: match.pinyin,
         entries: found[match.text] ?? [],
         breakdown: characterBreakdown(match.text, found, useTraditional),
+        known: known().has(match.text),
       },
-      { useTraditional, toneColors: showToneColors },
+      {
+        useTraditional,
+        toneColors: showToneColors,
+        onMarkKnown: (next) => markKnown(match.text, next),
+      },
     )
 
     shadowRoot.appendChild(card)
@@ -373,6 +432,32 @@ export function attachReader({
     void openCard(match, selectionCard.getBoundingClientRect(), '', identity)
   }
 
+  /**
+   * Files a selection into the right deck.
+   *
+   * Exactly one dictionary headword is a word; anything longer is a sentence.
+   * A sentence also discovers the unknown words inside it — selecting a phrase
+   * you couldn't read is a claim about its vocabulary as much as its grammar,
+   * and this is the playful half: dragging across text you don't understand
+   * quietly collects everything new in it. Words already known are skipped, or
+   * every selection would drag 的 and 我们 back in.
+   */
+  const captureSelection = (selected: string, list: Map<string, string>) => {
+    const target = selectionTarget(selected, list)
+    if (!target) return
+
+    const context = pageContext(target.text)
+    if (target.kind === 'word') {
+      discoverWord(target.text, context)
+      return
+    }
+
+    if (context) captureSentence(target.text, context)
+    for (const word of unknownIn(hanWords(segment(target.text, list)), known())) {
+      discoverWord(word, context)
+    }
+  }
+
   const buildSelectionCard = (text: string, anchor: Anchor) => {
     const config = settings()
     const card = document.createElement('div')
@@ -431,6 +516,7 @@ export function attachReader({
       closeSelectionCard()
       const card = buildSelectionCard(text, anchor)
       fillTranslation(card, text.trim(), token)
+      captureSelection(text, loaded)
     })
   }
 

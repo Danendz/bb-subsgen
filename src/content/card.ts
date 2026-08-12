@@ -181,6 +181,32 @@ export const CARD_STYLE = `
   white-space: nowrap;
 }
 
+/* Sits above the translation, so a translation arriving late grows the card
+   downward rather than shifting the button out from under the pointer. */
+.popup-actions {
+  display: flex;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.known-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa3b2;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.known-btn:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.known-btn.on { color: #7ee0a8; }
+.known-btn svg { display: block; }
+
 /* Sentence translation, always last so the card grows downward. */
 .popup-sentence {
   margin-top: 8px;
@@ -205,6 +231,37 @@ const CHECK_ICON =
   '<path d="M4 12.5l5.2 5.2L20 7"/></svg>'
 
 const COPIED_FEEDBACK_MS = 1100
+
+/**
+ * The "I already know this" toggle.
+ *
+ * Words enter the deck by being looked up — which happens precisely because you
+ * didn't know them — so without this the common words that actually clutter the
+ * screen would keep their pinyin forever, and hiding would only ever fire on the
+ * rare words you studied. This is how 的 and 我们 get out of the way.
+ */
+function buildKnownButton(known: boolean, onToggle: (next: boolean) => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = known ? 'known-btn on' : 'known-btn'
+  // Constant markup — never interpolates dictionary or page data.
+  button.innerHTML = `${CHECK_ICON}<span></span>`
+  button.querySelector('span')!.textContent = known ? 'Known' : 'I know this'
+
+  let state = known
+  button.addEventListener('click', (e) => {
+    // Same reason as the copy button: this click otherwise reaches Bilibili's
+    // player and toggles playback.
+    e.preventDefault()
+    e.stopPropagation()
+
+    state = !state
+    button.classList.toggle('on', state)
+    button.querySelector('span')!.textContent = state ? 'Known' : 'I know this'
+    onToggle(state)
+  })
+
+  return button
+}
 
 /** A small button that copies `text`, briefly showing a check on success. */
 function buildCopyButton(text: string, label: string): HTMLButtonElement {
@@ -339,11 +396,15 @@ export interface CardData {
   breakdown?: CharacterGloss[]
   /** Sentence translation; empty renders no section. */
   translation?: string
+  /** Whether the headword is already marked known, for the toggle's initial state. */
+  known?: boolean
 }
 
 export interface CardOptions {
   useTraditional: boolean
   toneColors?: boolean
+  /** Omitted renders no "I know this" button — which is what card tests want. */
+  onMarkKnown?: (known: boolean) => void
 }
 
 /**
@@ -354,7 +415,7 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { useTraditional, toneColors = true } = options
+  const { useTraditional, toneColors = true, onMarkKnown } = options
   const { headword, displayedPinyin = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
@@ -466,6 +527,13 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       chars.appendChild(row)
     }
     el.appendChild(chars)
+  }
+
+  if (onMarkKnown) {
+    const actions = document.createElement('div')
+    actions.className = 'popup-actions'
+    actions.appendChild(buildKnownButton(data.known ?? false, onMarkKnown))
+    el.appendChild(actions)
   }
 
   // Created unconditionally so a translation arriving later can be patched in
