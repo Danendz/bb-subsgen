@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "bb-subsgen",
   "version": "0.0.1",
-  "description": "Hover pinyin + CC-CEDICT glosses over Bilibili subtitles.",
-  "permissions": ["storage"],
+  "description": "Hover pinyin + CC-CEDICT glosses over Chinese text, on Bilibili subtitles and any site you opt into.",
+  "permissions": ["storage", "scripting"],
   "host_permissions": [
     "https://*.bilibili.com/*",
     "https://*.hdslb.com/*"
   ],
+  "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
@@ -17,6 +18,11 @@
       "matches": ["https://www.bilibili.com/video/*"],
       "js": ["src/content/main.ts"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.bilibili.com/*"],
+      "js": ["src/reader/main.ts"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
@@ -24,8 +30,8 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dict/words.bin", "dict/defs.json"],
-      "matches": ["https://www.bilibili.com/*"]
+      "resources": ["dict/words.bin"],
+      "matches": ["<all_urls>"]
     }
   ],
   "commands": {

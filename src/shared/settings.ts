@@ -15,6 +15,21 @@ export const TRANSLATION_LANGS: ReadonlyArray<{ code: TranslationLang; label: st
   { code: 'ru', label: 'Русский' },
 ]
 
+/**
+ * Key held to make the page reader look words up.
+ *
+ * Held rather than toggled: reading a page normally should cost nothing and
+ * show nothing, and a held key also means the mousemove handler does no work
+ * unless you've asked for a lookup.
+ */
+export type ReaderModifier = 'shift' | 'alt' | 'ctrl'
+
+export const READER_MODIFIERS: ReadonlyArray<{ code: ReaderModifier; label: string }> = [
+  { code: 'shift', label: 'Shift' },
+  { code: 'alt', label: 'Alt' },
+  { code: 'ctrl', label: 'Ctrl' },
+]
+
 export interface Settings {
   enabled: boolean
   showPinyin: boolean
@@ -30,6 +45,17 @@ export interface Settings {
   translationFontSize: number // px, translated line
   translationLayout: TranslationLayout
   translationLang: TranslationLang
+  /**
+   * Origins the page reader runs on, e.g. `https://zhihu.com`.
+   *
+   * Chrome's granted host permissions are the real gate — the reader can't be
+   * injected without one — but this is what the popup renders and what the
+   * content script checks, so revoking permission and switching the toggle off
+   * stay in step.
+   */
+  readerOrigins: string[]
+  readerModifier: ReaderModifier
+  readerSentenceTranslation: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -50,6 +76,11 @@ export const DEFAULT_SETTINGS: Settings = {
   translationFontSize: 16,
   translationLayout: 'inline',
   translationLang: 'en',
+  // Empty by default: the reader is opt-in per site and asks for the host
+  // permission at the moment you turn it on.
+  readerOrigins: [],
+  readerModifier: 'shift',
+  readerSentenceTranslation: true,
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'
