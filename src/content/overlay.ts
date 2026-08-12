@@ -10,17 +10,28 @@ const STYLE = `
   pointer-events: none;
 }
 
-.line {
+/* Owns the positioning, so the subtitle card and a standalone translation
+   card stack vertically and stay centered together. */
+.stack {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   width: fit-content;
   max-width: 90%;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
   box-sizing: border-box;
+  max-width: 100%;
   padding: 8px 14px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -33,8 +44,41 @@ const STYLE = `
 }
 
 /* clearCue() empties the children between cues; without this the padded
-   card would linger on screen as an empty box. */
+   card would linger on screen as an empty box. This is why renderCue rebuilds
+   .words every time instead of keeping it as a permanent child — a permanent
+   child would mean :empty never matches. */
 .line:empty { display: none; }
+
+.words {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.translation {
+  max-width: 100%;
+  text-align: center;
+  /* Muted, so it reads as secondary and doesn't compete with the tone colors. */
+  color: #b4b4b4;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* The element is created as soon as a cue renders, but the translation lands
+   asynchronously — hide it until there's text, so it claims no flex gap. */
+.translation:empty { display: none; }
+
+/* 'card' layout: the English line sits below the subtitle in its own card. */
+.translation.standalone {
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
 
 .word {
   display: flex;
@@ -189,15 +233,18 @@ export function adoptStyles(shadowRoot: ShadowRoot): void {
   }
 }
 
-function ensureLine(shadowRoot: ShadowRoot): HTMLElement {
+function ensureStack(shadowRoot: ShadowRoot): HTMLElement {
   adoptStyles(shadowRoot)
-  let line = shadowRoot.querySelector<HTMLElement>('.line')
-  if (!line) {
-    line = document.createElement('div')
+  let stack = shadowRoot.querySelector<HTMLElement>('.stack')
+  if (!stack) {
+    stack = document.createElement('div')
+    stack.className = 'stack'
+    const line = document.createElement('div')
     line.className = 'line'
-    shadowRoot.appendChild(line)
+    stack.appendChild(line)
+    shadowRoot.appendChild(stack)
   }
-  return line
+  return stack
 }
 
 /** Renders a pinyin run as tone-colored syllable spans. Shared by the line and the popup. */
@@ -237,18 +284,66 @@ function buildWordElement(token: Token, settings: Settings): HTMLElement {
   return word
 }
 
-export function renderCue(shadowRoot: ShadowRoot, tokens: Token[], settings: Settings): void {
-  const line = ensureLine(shadowRoot)
-  line.className = 'line'
-  line.style.setProperty('bottom', `${settings.positionPercent}%`)
-  line.style.setProperty('gap', `${settings.wordSpacing}px`)
-  line.style.setProperty('font-size', `${settings.fontSize}px`)
-  line.style.setProperty('background', `rgba(18, 20, 25, ${settings.backdropOpacity / 100})`)
-  line.replaceChildren(...tokens.map((token) => buildWordElement(token, settings)))
+function backdrop(settings: Settings): string {
+  return `rgba(18, 20, 25, ${settings.backdropOpacity / 100})`
+}
+
+function buildTranslationElement(settings: Settings, text: string): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'translation'
+  el.style.setProperty('font-size', `${settings.translationFontSize}px`)
+  if (settings.translationLayout === 'card') {
+    el.classList.add('standalone')
+    el.style.setProperty('background', backdrop(settings))
+  }
+  el.textContent = text
+  return el
+}
+
+export function renderCue(
+  shadowRoot: ShadowRoot,
+  tokens: Token[],
+  settings: Settings,
+  translation = '',
+): void {
+  const stack = ensureStack(shadowRoot)
+  const line = stack.querySelector<HTMLElement>('.line')!
+
+  stack.style.setProperty('bottom', `${settings.positionPercent}%`)
+  line.style.setProperty('background', backdrop(settings))
+
+  const words = document.createElement('div')
+  words.className = 'words'
+  words.style.setProperty('gap', `${settings.wordSpacing}px`)
+  words.style.setProperty('font-size', `${settings.fontSize}px`)
+  words.replaceChildren(...tokens.map((token) => buildWordElement(token, settings)))
+
+  // Rebuilt wholesale rather than kept around, so `.line:empty` still matches
+  // once clearCue empties it.
+  line.replaceChildren(words)
+  stack.querySelector(':scope > .translation')?.remove()
+
+  if (settings.showTranslation) {
+    const el = buildTranslationElement(settings, translation)
+    if (settings.translationLayout === 'card') stack.appendChild(el)
+    else line.appendChild(el)
+  }
+}
+
+/**
+ * Fills in the English line for the cue already on screen.
+ *
+ * Patches the single text node rather than re-rendering: a full renderCue would
+ * rebuild every `.word`, which destroys an open hover popup mid-read.
+ */
+export function setTranslation(shadowRoot: ShadowRoot, text: string): void {
+  const el = shadowRoot.querySelector<HTMLElement>('.translation')
+  if (el) el.textContent = text
 }
 
 export function clearCue(shadowRoot: ShadowRoot): void {
   shadowRoot.querySelector('.line')?.replaceChildren()
+  shadowRoot.querySelector('.stack > .translation')?.remove()
 }
 
 /** Headword for the word element under `el`, for hover lookups. Null if `el` isn't inside a word. */

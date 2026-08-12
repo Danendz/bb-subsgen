@@ -1,3 +1,6 @@
+/** Whether the English line shares the subtitle card or sits in its own below it. */
+export type TranslationLayout = 'inline' | 'card'
+
 export interface Settings {
   enabled: boolean
   showPinyin: boolean
@@ -7,6 +10,9 @@ export interface Settings {
   backdropOpacity: number // 0-100
   positionPercent: number // distance from the bottom of the player, 0-85
   useTraditional: boolean
+  showTranslation: boolean
+  translationFontSize: number // px, English line
+  translationLayout: TranslationLayout
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -18,6 +24,11 @@ export const DEFAULT_SETTINGS: Settings = {
   backdropOpacity: 60,
   positionPercent: 8,
   useTraditional: false,
+  // Off by default: no language pack download, and no change for anyone who
+  // hasn't asked for translation.
+  showTranslation: false,
+  translationFontSize: 16,
+  translationLayout: 'inline',
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'

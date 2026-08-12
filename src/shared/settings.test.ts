@@ -1,5 +1,21 @@
 import { describe, expect, test } from 'vitest'
-import { nextFontSize } from './settings'
+import { DEFAULT_SETTINGS, nextFontSize } from './settings'
+
+describe('translation defaults', () => {
+  test('translation is off until the user opts in', () => {
+    // Keeps the overlay unchanged for existing users, and means no language
+    // pack is ever downloaded unless the feature is actually wanted.
+    expect(DEFAULT_SETTINGS.showTranslation).toBe(false)
+  })
+
+  test('the English line defaults smaller than the hanzi, so it reads as secondary', () => {
+    expect(DEFAULT_SETTINGS.translationFontSize).toBeLessThan(DEFAULT_SETTINGS.fontSize)
+  })
+
+  test('the English line defaults to sharing the subtitle card', () => {
+    expect(DEFAULT_SETTINGS.translationLayout).toBe('inline')
+  })
+})
 
 describe('nextFontSize', () => {
   test('steps to the next size up', () => {

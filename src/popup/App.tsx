@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'preact/hooks'
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../shared/settings'
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type Settings,
+  type TranslationLayout,
+} from '../shared/settings'
 import type { Status, StatusResponse } from '../shared/messages'
 
 type TabStatus = Status | 'not-bilibili'
@@ -154,6 +160,37 @@ export function App() {
           suffix="%"
           onChange={(v) => update({ positionPercent: v })}
         />
+
+        <hr class="divider" />
+
+        <Toggle
+          label="English translation"
+          checked={settings.showTranslation}
+          onChange={(v) => update({ showTranslation: v })}
+        />
+
+        <div class={settings.showTranslation ? '' : 'disabled'}>
+          <Slider
+            label="Translation size"
+            value={settings.translationFontSize}
+            min={10}
+            max={32}
+            suffix="px"
+            onChange={(v) => update({ translationFontSize: v })}
+          />
+          <label class="row">
+            <span>Translation layout</span>
+            <select
+              value={settings.translationLayout}
+              onChange={(e) =>
+                update({ translationLayout: e.currentTarget.value as TranslationLayout })
+              }
+            >
+              <option value="inline">Same card</option>
+              <option value="card">Separate card</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <p class="hint">Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.</p>
