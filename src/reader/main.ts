@@ -7,6 +7,7 @@
 
 import { attachReader } from './reader'
 import { mountReader, type ReaderMount } from './mount'
+import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
 import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
 import { lookupDefs } from '../shared/dict-client'
@@ -51,8 +52,11 @@ async function main(): Promise<void> {
     if (detach) return
     mount = mountReader()
     translator = createSentenceTranslator({ lang: () => settings.translationLang })
+    // Torn down by `detach()` rather than here, so the page gets its own
+    // styling back on the same path that removes the listeners driving it.
     detach = attachReader({
       mount,
+      pageMode: createPageMode(),
       lookup: lookupDefs,
       translator,
       words: getWords,

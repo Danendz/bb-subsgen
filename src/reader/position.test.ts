@@ -1,5 +1,39 @@
 import { describe, expect, test } from 'vitest'
-import { placeCard, type Anchor, type Box } from './position'
+import { anchorFrom, placeCard, type Anchor, type Box } from './position'
+
+describe('anchorFrom', () => {
+  const rect = (left: number, top: number, right: number, bottom: number): Anchor => ({
+    left,
+    top,
+    right,
+    bottom,
+  })
+
+  test('keeps a real rect and ignores the pointer', () => {
+    expect(anchorFrom(rect(319, 66, 415, 84), 900, 900)).toEqual(rect(319, 66, 415, 84))
+  })
+
+  test('falls back to the pointer for an all-zero rect', () => {
+    // A selection crossing a shadow boundary can measure as nothing at all,
+    // and placeCard resolves an all-zero anchor to the top-left corner.
+    expect(anchorFrom(rect(0, 0, 0, 0), 640, 480)).toEqual(rect(640, 480, 640, 480))
+  })
+
+  test('keeps a rect with height but no width', () => {
+    // A cross-tree selection measures 0 wide but carries the right line, which
+    // is more useful than the pointer.
+    expect(anchorFrom(rect(395, 133, 395, 150), 900, 900)).toEqual(rect(395, 133, 395, 150))
+  })
+
+  test('keeps a rect with width but no height', () => {
+    expect(anchorFrom(rect(100, 200, 260, 200), 900, 900)).toEqual(rect(100, 200, 260, 200))
+  })
+
+  test('falls back for a collapsed rect away from the origin', () => {
+    // Zero area is the signal, not zero coordinates.
+    expect(anchorFrom(rect(500, 300, 500, 300), 640, 480)).toEqual(rect(640, 480, 640, 480))
+  })
+})
 
 const viewport = { width: 1000, height: 800 }
 const card = { width: 200, height: 120 }

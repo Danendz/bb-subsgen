@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test } from 'vitest'
-import { blockAncestor, createBlockCache, flattenBlock, locate, rangeOf } from './block'
+import {
+  blockAncestor,
+  createBlockCache,
+  flattenBlock,
+  locate,
+  rangeOf,
+  rootElement,
+} from './block'
 
 function render(html: string): HTMLElement {
   document.body.innerHTML = html
@@ -91,6 +98,66 @@ describe('blockAncestor', () => {
   test('returns the element itself when it is already a block', () => {
     const p = render('<p>学习中文</p>')
     expect(blockAncestor(p.firstChild!)).toBe(p)
+  })
+
+  test('stops at the shadow root when every ancestor inside it is inline', () => {
+    // A Bilibili comment exactly: span inside a p that the site styles inline,
+    // five shadow roots deep. `parentElement` is null at the boundary, so the
+    // walk used to run out and return null — which read as "no text here" and
+    // is why hovering a comment did nothing.
+    const host = render('<div></div>')
+    const shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p style="display: inline"><span>学习中文</span></p>'
+    const text = shadow.querySelector('span')!.firstChild!
+
+    expect(blockAncestor(text)).toBe(shadow)
+  })
+
+  test('prefers a block inside the shadow tree over the root itself', () => {
+    const host = render('<div></div>')
+    const shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<div class="body"><span>学习中文</span></div>'
+    const text = shadow.querySelector('span')!.firstChild!
+
+    expect(blockAncestor(text)).toBe(shadow.querySelector('.body'))
+  })
+
+  test('never crosses out of a shadow tree to the host', () => {
+    // Crossing would be worse than returning null: flattenBlock's TreeWalker
+    // doesn't descend into shadow roots, so a root chosen outside the tree
+    // flattens to text that doesn't contain the node the caret landed on.
+    const host = render('<section><div></div></section>')
+    const inner = host.querySelector('div')!
+    const shadow = inner.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<span>学习中文</span>'
+    const text = shadow.querySelector('span')!.firstChild!
+
+    const root = blockAncestor(text)
+    expect(root).toBe(shadow)
+    expect(root).not.toBe(host)
+  })
+})
+
+describe('rootElement', () => {
+  test('maps a shadow root to its host and leaves an element alone', () => {
+    const host = render('<div></div>')
+    const shadow = host.attachShadow({ mode: 'open' })
+    expect(rootElement(shadow)).toBe(host)
+    expect(rootElement(host)).toBe(host)
+  })
+})
+
+describe('flattenBlock across a shadow boundary', () => {
+  test('flattens a shadow root the same way it flattens an element', () => {
+    const host = render('<div></div>')
+    const shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p style="display: inline">他在<a href="#">北京大学</a>学习中文。</p>'
+
+    const block = flattenBlock(shadow)
+    expect(block.text).toBe('他在北京大学学习中文。')
+    // The range still has to span the </a>, which is the whole point of
+    // flattening — a shadow root changes nothing about that.
+    expect(rangeOf(block, 4, 8)?.toString()).toBe('大学学习')
   })
 })
 

@@ -16,6 +16,27 @@ export interface Anchor {
 
 export const CARD_MARGIN = 8
 
+/**
+ * The box a card should sit beside, given a selection's measured rect.
+ *
+ * A selection spanning a shadow-DOM boundary — every Bilibili comment is one —
+ * can measure as an empty rect, and an all-zero rect placed by `placeCard`
+ * resolves to `{8, 8}`: the top-left corner, every time, which is exactly what
+ * a selection card in the comments used to do.
+ *
+ * Falling back to the pointer is better than any guess at the text's position,
+ * because it's where the drag actually finished. A rect with height but no
+ * width is still worth keeping — it carries the right line.
+ */
+export function anchorFrom(rect: Anchor, pointerX: number, pointerY: number): Anchor {
+  const empty =
+    rect.right - rect.left <= 0 &&
+    rect.bottom - rect.top <= 0
+  if (!empty) return rect
+
+  return { left: pointerX, top: pointerY, right: pointerX, bottom: pointerY }
+}
+
 export interface Placement {
   left: number
   top: number

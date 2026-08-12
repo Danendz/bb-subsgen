@@ -21,19 +21,34 @@ export function containsHan(text: string): boolean {
  */
 export class ClickGuard {
   private origin: { x: number; y: number } | null = null
+  private before = ''
   private armed = false
 
-  pointerDown(x: number, y: number): void {
+  /** `selectedText` is what was already selected when the press landed. */
+  pointerDown(x: number, y: number, selectedText: string): void {
     this.origin = { x, y }
+    this.before = selectedText
     // A fresh press supersedes any pending suppression — otherwise a guard
     // armed by a drag that produced no click would eat an unrelated one later.
     this.armed = false
   }
 
   /**
-   * Records the end of a drag. Returns whether a selection card should open.
+   * Records the end of a press. Returns whether a selection card should open.
    *
    * `selectedText` is the document's selection at mouseup.
+   *
+   * Two ways to qualify, because neither covers the other. Movement catches a
+   * drag, including re-dragging text that was already selected. A changed
+   * selection catches double- and triple-click, which select a word or a whole
+   * sentence without the pointer travelling a single pixel — those produced no
+   * card at all while movement was the only test.
+   *
+   * Requiring one of the two is what keeps an ordinary click from arming. That
+   * matters most over a `user-select: none` control: clicking one does not
+   * collapse the selection the way clicking text does, so the selection is
+   * still there at mouseup and "some Han text is selected" alone would suppress
+   * the click and leave the button dead.
    */
   pointerUp(x: number, y: number, selectedText: string): boolean {
     const origin = this.origin
@@ -42,7 +57,9 @@ export class ClickGuard {
 
     const moved = Math.abs(x - origin.x) > DRAG_THRESHOLD_PX ||
       Math.abs(y - origin.y) > DRAG_THRESHOLD_PX
-    if (!moved || !containsHan(selectedText)) return false
+    const changed = selectedText !== this.before
+    if (!moved && !changed) return false
+    if (!containsHan(selectedText)) return false
 
     this.armed = true
     return true
@@ -59,5 +76,6 @@ export class ClickGuard {
   disarm(): void {
     this.armed = false
     this.origin = null
+    this.before = ''
   }
 }

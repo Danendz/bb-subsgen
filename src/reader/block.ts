@@ -18,12 +18,26 @@ interface Chunk {
   start: number
 }
 
+/**
+ * What a block gets flattened from.
+ *
+ * A `ShadowRoot` is a legitimate root because a `TreeWalker` never descends
+ * into one: a root chosen outside a shadow tree would flatten to text that
+ * doesn't contain the node we started from. See `blockAncestor`.
+ */
+export type BlockRoot = Element | ShadowRoot
+
+/** The element a block hangs off, so callers can run selector checks against it. */
+export function rootElement(root: BlockRoot): Element {
+  return root instanceof ShadowRoot ? root.host : root
+}
+
 export interface FlatBlock {
   /** The block's text with no element boundaries in it. */
   text: string
   chunks: Chunk[]
   /** What `text` was built from, for cache invalidation. */
-  root: Element
+  root: BlockRoot
   /**
    * `root.textContent` as it stood when this was built.
    *
@@ -78,20 +92,35 @@ const INLINE_DISPLAYS = new Set([
  * This is the unit we flatten: it's the largest span of text guaranteed to
  * read as one continuous passage, and small enough that flattening it on
  * every hover stays cheap.
+ *
+ * The walk stops dead at a shadow boundary and hands back the `ShadowRoot`
+ * rather than continuing up through the host. It has to: `parentElement` is
+ * null at the top of a shadow tree, and a Bilibili comment is all inline —
+ * `span` inside `p`, both `display: inline` — so the walk ran out and returned
+ * null, which is why comments were invisible to the reader. Crossing to the
+ * host instead would be worse than useless, because `flattenBlock`'s
+ * `TreeWalker` would then skip the shadow content entirely and produce text
+ * that doesn't contain the node the caret landed on.
  */
-export function blockAncestor(node: Node): Element | null {
+export function blockAncestor(node: Node): BlockRoot | null {
   let el = node.parentElement
   while (el) {
     if (el === document.body || el === document.documentElement) return el
     const display = getComputedStyle(el).display
     if (!INLINE_DISPLAYS.has(display)) return el
-    el = el.parentElement
+
+    const parent = el.parentElement
+    if (!parent) {
+      const root = el.getRootNode()
+      return root instanceof ShadowRoot ? root : null
+    }
+    el = parent
   }
   return null
 }
 
 /** Concatenates a block's text nodes, recording where each one landed. */
-export function flattenBlock(root: Element): FlatBlock {
+export function flattenBlock(root: BlockRoot): FlatBlock {
   const chunks: Chunk[] = []
   let text = ''
 
@@ -163,7 +192,7 @@ export function rangeOf(block: FlatBlock, start: number, end: number): Range | n
  * mutate underneath us, so the cache is keyed on the element and validated
  * against its current text rather than trusted indefinitely.
  */
-export function createBlockCache(): (root: Element) => FlatBlock {
+export function createBlockCache(): (root: BlockRoot) => FlatBlock {
   let cached: FlatBlock | null = null
 
   return (root) => {
