@@ -97,10 +97,9 @@ export function Overview() {
 
       {!ranks.length && (
         <div class="panel muted small">
-          No frequency or HSK data is built in, so cards are introduced in the order you found
-          them and there is no progress denominator. Add <code>tools/data/frequency.txt</code> or{' '}
-          <code>tools/data/hsk.tsv</code> and re-run <code>npm run build:dict</code> to enable
-          both — check the list's licence first.
+          No word list loaded, so new cards are introduced in the order you found them and there
+          is no denominator to measure progress against. Load one from{' '}
+          <a href="#/data">Data</a> — it explains where to get one.
         </div>
       )}
     </>

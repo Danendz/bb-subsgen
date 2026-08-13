@@ -4,7 +4,7 @@ import { knownSetOf, listItems } from '../flashcards/queries'
 import { buildQueue, queueCounts } from '../flashcards/queue'
 import { chooseTarget, clozeOf } from '../flashcards/cloze'
 import { hanWords, unknownIn } from '../flashcards/capture'
-import { applyReview } from '../background/flashcards-store'
+import { applyReview, rankMap } from '../background/flashcards-store'
 import { segment } from '../lang/segment'
 import { loadWords } from '../lang/dict'
 import { lookupDefs } from '../shared/dict-client'
@@ -62,8 +62,13 @@ function styleFor(item: Item, audio: boolean): ReviewStyle {
 export function Review() {
   const load = useCallback(async () => {
     const db = await flashcardsDb()
-    const [items, words, settings] = await Promise.all([listItems(db), loadWords(), loadSettings()])
-    return { items, words, settings, known: knownSetOf(items) }
+    const [items, words, settings, ranks] = await Promise.all([
+      listItems(db),
+      loadWords(),
+      loadSettings(),
+      rankMap(),
+    ])
+    return { items, words, settings, ranks, known: knownSetOf(items) }
   }, [])
   const { data, loading, reload } = useAsync(load)
 
@@ -79,6 +84,8 @@ export function Review() {
     [data],
   )
 
+  const rankOf = useCallback((headword: string) => data?.ranks.get(headword), [data])
+
   const counts = useMemo(
     () =>
       data
@@ -88,9 +95,10 @@ export function Review() {
             newWordsPerDay: data.settings.newWordsPerDay,
             newSentencesPerDay: data.settings.newSentencesPerDay,
             unknownCount,
+            rankOf,
           })
         : null,
-    [data, unknownCount],
+    [data, unknownCount, rankOf],
   )
 
   const current = queue?.[at] ?? null
@@ -120,6 +128,7 @@ export function Review() {
         newWordsPerDay: data.settings.newWordsPerDay,
         newSentencesPerDay: data.settings.newSentencesPerDay,
         unknownCount,
+        rankOf,
       }),
     )
     setAt(0)

@@ -9,7 +9,6 @@ import { lookupDefs } from './background/defs-store'
 import {
   captureSentence,
   discoverWord,
-  ensureRanksImported,
   markKnown,
   recordExposures,
   recordSignal,
@@ -66,11 +65,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // lives in chrome.storage.local — which survives the worker but not a fresh
 // install or a restored profile. Rebuilding it on startup keeps it honest
 // without making every read pay for a database round trip.
-chrome.runtime.onStartup.addListener(() => {
-  void refreshKnownMirror()
-  void ensureRanksImported()
-})
-chrome.runtime.onInstalled.addListener(() => {
-  void refreshKnownMirror()
-  void ensureRanksImported()
-})
+chrome.runtime.onStartup.addListener(() => void refreshKnownMirror())
+chrome.runtime.onInstalled.addListener(() => void refreshKnownMirror())

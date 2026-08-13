@@ -3,10 +3,11 @@ import {
   applyReviewIn,
   captureSentenceIn,
   discoverWordIn,
-  importRanksIn,
+  deleteWordListIn,
   knownWordsIn,
   markKnownIn,
-  parseRanks,
+  rankMapIn,
+  replaceWordListIn,
   recordExposuresIn,
 } from './flashcards-store'
 import { openFlashcardsDb, request, STORES } from '../flashcards/db'
@@ -15,6 +16,7 @@ import {
   wordId,
   type Exposure,
   type Item,
+  type Rank,
   type Review,
   type Video,
   type VideoWord,
@@ -121,19 +123,6 @@ describe('discoverWordIn', () => {
     expect((await get<Item>(database, STORES.items, wordId('我')))?.state).toBe('known')
   })
 
-  test('stamps the frequency rank when one has been imported', async () => {
-    const database = await db()
-    await importRanksIn(database, [{ headword: '学习', rank: 412, hsk: 1 }])
-    await discoverWordIn(database, '学习')
-
-    expect((await get<Item>(database, STORES.items, wordId('学习')))?.rank).toBe(412)
-  })
-
-  test('works with no rank data at all', async () => {
-    const database = await db()
-    await discoverWordIn(database, '学习')
-    expect((await get<Item>(database, STORES.items, wordId('学习')))?.rank).toBeUndefined()
-  })
 })
 
 describe('captureSentenceIn', () => {
@@ -274,24 +263,52 @@ describe('applyReviewIn', () => {
   })
 })
 
-describe('parseRanks', () => {
-  test('reads both columns', () => {
-    expect(parseRanks('我\t1\t1\n学习\t412\t2')).toEqual([
-      { headword: '我', rank: 1, hsk: 1 },
-      { headword: '学习', rank: 412, hsk: 2 },
-    ])
+describe('word lists', () => {
+  const rows = (...words: string[]) => words.map((headword, i) => ({ headword, value: i + 1 }))
+
+  test('a frequency upload is readable as a rank map', async () => {
+    const database = await db()
+    await replaceWordListIn(database, 'frequency', rows('的', '一', '是'))
+
+    expect(await rankMapIn(database)).toEqual(new Map([['的', 1], ['一', 2], ['是', 3]]))
   })
 
-  test('tolerates either column being absent', () => {
-    // The build emits whichever datasets were present, so a row can carry a
-    // frequency rank with no HSK level or the other way round.
-    expect(parseRanks('我\t1\t\n专业\t\t5')).toEqual([
-      { headword: '我', rank: 1 },
-      { headword: '专业', hsk: 5 },
-    ])
+  test('uploading a frequency list leaves HSK levels alone', async () => {
+    // The two lists share a row, so the clearing has to be per field or one
+    // upload would silently wipe the other list.
+    const database = await db()
+    await replaceWordListIn(database, 'hsk', [{ headword: '学习', value: 1 }])
+    await replaceWordListIn(database, 'frequency', rows('学习'))
+
+    const stored = await get<Rank>(database, STORES.ranks, '学习')
+    expect(stored).toEqual({ headword: '学习', hsk: 1, rank: 1 })
   })
 
-  test('skips blank lines and rows with no headword', () => {
-    expect(parseRanks('\n\t3\t1\n我\t1\t1\n')).toEqual([{ headword: '我', rank: 1, hsk: 1 }])
+  test('re-uploading drops words the new list does not contain', async () => {
+    // Otherwise a word from a replaced list keeps a rank that nothing supports.
+    const database = await db()
+    await replaceWordListIn(database, 'frequency', rows('的', '憔悴'))
+    await replaceWordListIn(database, 'frequency', rows('的'))
+
+    expect(await rankMapIn(database)).toEqual(new Map([['的', 1]]))
+  })
+
+  test('deleting one list keeps the other', async () => {
+    const database = await db()
+    await replaceWordListIn(database, 'hsk', [{ headword: '学习', value: 2 }])
+    await replaceWordListIn(database, 'frequency', rows('学习'))
+    await deleteWordListIn(database, 'frequency')
+
+    expect(await rankMapIn(database)).toEqual(new Map())
+    expect(await get<Rank>(database, STORES.ranks, '学习')).toEqual({ headword: '学习', hsk: 2 })
+  })
+
+  test('a row left with neither value is removed, not kept empty', async () => {
+    const database = await db()
+    await replaceWordListIn(database, 'frequency', rows('的'))
+    await deleteWordListIn(database, 'frequency')
+
+    const store = database.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks)
+    expect(await request<number>(store.count())).toBe(0)
   })
 })

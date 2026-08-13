@@ -59,6 +59,12 @@ overwrites: the review logs from both sides are combined and the schedule
 recomputed from them, so studying done on another machine still counts. You're
 only asked about words declared known on one side and not the other.
 
+No word list ships with the extension — every usable frequency or HSK list
+belongs to someone, so you supply your own and nothing is redistributed. Load
+one from the app's **Data** screen, which lists where to get them, what their
+licences are, and which file to take. Without one everything still works; new
+cards are simply introduced in the order you found them.
+
 ## Development
 
 ```sh
@@ -67,17 +73,6 @@ npm run build:dict   # regenerate public/dict/{words.bin,defs.json} from tools/d
 npm run dev
 npm test
 ```
-
-`build:dict` also emits `rank.bin` if you supply frequency or HSK data, which
-enables frequency-ordered card introduction and the HSK progress bars. Neither
-list ships with the repo — unlike CC-CEDICT, their redistribution terms need
-checking first. Drop in either or both and re-run it:
-
-- `tools/data/frequency.txt` — one word per line, most frequent first
-- `tools/data/hsk.tsv` — `word<TAB>level` per line
-
-Without them everything still works; cards are simply introduced in the order
-you found them.
 
 Load `dist/` as an unpacked extension via `chrome://extensions`.
 

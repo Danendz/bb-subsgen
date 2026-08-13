@@ -15,6 +15,7 @@ import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
 import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
+import type { ListKind } from '../flashcards/wordlist'
 import {
   sentenceId,
   wordId,
@@ -30,9 +31,6 @@ import {
   type Video,
   type VideoWord,
 } from '../flashcards/types'
-
-const RANKS_VERSION_KEY = 'bbSubsgenRanksVersion'
-const CURRENT_RANKS_VERSION = 1
 
 function newItem(id: string, kind: Item['kind'], text: string, now: number): Item {
   return {
@@ -111,32 +109,29 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
   await done(tx)
 }
 
-/** Ranks are immutable once imported, so reading them in their own transaction is safe. */
-async function rankOf(db: IDBDatabase, headword: string): Promise<number | undefined> {
-  const store = db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks)
-  const rank = await request<Rank | undefined>(store.get(headword))
-  return rank?.rank
-}
-
 /**
  * Adds a word to the deck, or records another sighting of one already there.
  *
  * Never demotes: discovering a word you had marked known leaves it known. You
  * can hover a known word for its definition without that being a claim you have
  * forgotten it.
+ *
+ * Deliberately stores no frequency rank. A word list is uploaded whenever the
+ * user gets round to it, usually long after words have been collected, so a
+ * rank captured here would be missing on exactly the cards that need ordering.
+ * The queue looks rank up instead — see `buildQueue`.
  */
 export async function discoverWordIn(
   db: IDBDatabase,
   headword: string,
   context?: Context,
 ): Promise<void> {
-  const rank = await rankOf(db, headword)
   const id = wordId(headword)
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
   upsert<Item>(tx.objectStore(STORES.items), id, (existing) =>
-    withContext(existing ?? { ...newItem(id, 'word', headword, now), rank }, context),
+    withContext(existing ?? newItem(id, 'word', headword, now), context),
   )
   await done(tx)
 }
@@ -297,27 +292,88 @@ export async function restoreIn(db: IDBDatabase, backup: Backup): Promise<void> 
   await done(tx)
 }
 
-/** Parses `headword\trank\thsk` lines; either numeric column may be blank. */
-export function parseRanks(raw: string): Rank[] {
-  const rows: Rank[] = []
-  for (const line of raw.split('\n')) {
-    if (!line) continue
-    const [headword, rank, hsk] = line.split('\t')
-    if (!headword) continue
-    rows.push({
-      headword,
-      ...(rank ? { rank: Number(rank) } : {}),
-      ...(hsk ? { hsk: Number(hsk) } : {}),
-    })
-  }
-  return rows
-}
+// --- User-supplied word lists ------------------------------------------------
 
-export async function importRanksIn(db: IDBDatabase, rows: Rank[]): Promise<void> {
+/** The `Rank` field each kind of list owns. Neither may disturb the other. */
+const FIELD: Record<ListKind, 'rank' | 'hsk'> = { frequency: 'rank', hsk: 'hsk' }
+
+/**
+ * Replaces one kind of list, leaving the other kind's values alone.
+ *
+ * Both live on the same `ranks` row, so a frequency upload has to clear the old
+ * `rank` across every row before writing the new one — otherwise words dropped
+ * from the new list would keep a stale rank forever. Rows left holding neither
+ * value are removed rather than kept as empty shells.
+ */
+export async function replaceWordListIn(
+  db: IDBDatabase,
+  kind: ListKind,
+  rows: Array<{ headword: string; value: number }>,
+): Promise<void> {
+  const field = FIELD[kind]
+  const other = kind === 'frequency' ? 'hsk' : 'rank'
+
+  const existing = await request<Rank[]>(
+    db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks).getAll(),
+  )
+  const kept = new Map<string, Rank>()
+  for (const row of existing) {
+    // Only what the other list contributed survives this upload.
+    if (row[other] !== undefined) kept.set(row.headword, { headword: row.headword, [other]: row[other] })
+  }
+  for (const { headword, value } of rows) {
+    const row = kept.get(headword) ?? { headword }
+    kept.set(headword, { ...row, [field]: value })
+  }
+
   const tx = db.transaction(STORES.ranks, 'readwrite')
   const store = tx.objectStore(STORES.ranks)
-  for (const row of rows) store.put(row)
+  store.clear()
+  for (const row of kept.values()) store.put(row)
   await done(tx)
+}
+
+/** Drops one kind of list, keeping whatever the other contributed. */
+export async function deleteWordListIn(db: IDBDatabase, kind: ListKind): Promise<void> {
+  await replaceWordListIn(db, kind, [])
+}
+
+/** headword → frequency rank, for ordering the review queue. */
+export async function rankMapIn(db: IDBDatabase): Promise<Map<string, number>> {
+  const rows = await request<Rank[]>(
+    db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks).getAll(),
+  )
+  const ranks = new Map<string, number>()
+  for (const row of rows) {
+    if (row.rank !== undefined) ranks.set(row.headword, row.rank)
+  }
+  return ranks
+}
+
+export interface WordListMeta {
+  name: string
+  count: number
+  uploadedAt: number
+}
+
+const WORD_LIST_META_KEY = 'bbSubsgenWordLists'
+
+/**
+ * What is loaded, mirrored into extension storage.
+ *
+ * Kept beside the data rather than derived from it: "how many rows and from
+ * which file" is not recoverable by counting a store two lists share.
+ */
+export async function wordListMeta(): Promise<Partial<Record<ListKind, WordListMeta>>> {
+  const stored = await chrome.storage.local.get(WORD_LIST_META_KEY)
+  return (stored[WORD_LIST_META_KEY] as Partial<Record<ListKind, WordListMeta>>) ?? {}
+}
+
+export async function setWordListMeta(kind: ListKind, meta: WordListMeta | null): Promise<void> {
+  const all = await wordListMeta()
+  if (meta) all[kind] = meta
+  else delete all[kind]
+  await chrome.storage.local.set({ [WORD_LIST_META_KEY]: all })
 }
 
 // --- Wrappers over the memoized database ------------------------------------
@@ -387,29 +443,20 @@ export async function refreshKnownMirror(): Promise<void> {
   await chrome.storage.local.set({ [KNOWN_SET_KEY]: known })
 }
 
-/**
- * Imports the frequency/HSK artifact once, if the build produced one.
- *
- * Optional by design: the dataset is the one piece of this feature that cannot
- * be derived from CC-CEDICT, and its licensing has to be verified before it can
- * ship. Without it every rank is undefined, which costs frequency-ordered
- * introduction and the HSK progress denominator — and nothing else.
- */
-export async function ensureRanksImported(): Promise<void> {
-  const { [RANKS_VERSION_KEY]: version } = await chrome.storage.local.get(RANKS_VERSION_KEY)
-  if (version === CURRENT_RANKS_VERSION) return
+export async function replaceWordList(
+  kind: ListKind,
+  rows: Array<{ headword: string; value: number }>,
+  meta: WordListMeta,
+): Promise<void> {
+  await replaceWordListIn(await flashcardsDb(), kind, rows)
+  await setWordListMeta(kind, meta)
+}
 
-  let raw: string
-  try {
-    const response = await fetch(chrome.runtime.getURL('dict/rank.bin'))
-    if (!response.ok) throw new Error(`rank.bin: ${response.status}`)
-    raw = await response.text()
-  } catch {
-    // No dataset built in. Not an error, and the flag stays unset so dropping
-    // one in later still imports it.
-    return
-  }
+export async function deleteWordList(kind: ListKind): Promise<void> {
+  await deleteWordListIn(await flashcardsDb(), kind)
+  await setWordListMeta(kind, null)
+}
 
-  await importRanksIn(await flashcardsDb(), parseRanks(raw))
-  await chrome.storage.local.set({ [RANKS_VERSION_KEY]: CURRENT_RANKS_VERSION })
+export async function rankMap(): Promise<Map<string, number>> {
+  return rankMapIn(await flashcardsDb())
 }

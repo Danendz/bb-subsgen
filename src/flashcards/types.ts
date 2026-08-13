@@ -62,11 +62,6 @@ export interface Item {
   introducedAt?: number
   /** Every place this was met, most recent last. */
   contexts: Context[]
-  /**
-   * Frequency rank at capture, denormalised so intake ordering is an index
-   * scan rather than a join against `ranks` for every candidate.
-   */
-  rank?: number
 }
 
 /** How a review was asked. Logged so recognition and production can be split later. */

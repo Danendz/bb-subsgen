@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
 import { buildQueue, queueCounts } from './queue'
 import { DAY_MS, startOfDay } from './scheduler'
 import type { Item } from './types'
@@ -28,7 +28,13 @@ const sentence = (text: string, extra: Partial<Item> = {}) =>
 /** Everything unknown unless the test says otherwise. */
 const unknownCount = (item: Item) => (item.text.match(/\d+/)?.[0] ? Number(item.text.match(/\d+/)![0]) : 1)
 
-const limits = { newWordsPerDay: 10, newSentencesPerDay: 5 }
+/** Ranks live outside the card now, exactly as an uploaded list does. */
+const RANKS = new Map<string, number>()
+const rankOf = (headword: string) => RANKS.get(headword)
+
+const limits = { newWordsPerDay: 10, newSentencesPerDay: 5, rankOf }
+
+beforeEach(() => RANKS.clear())
 
 describe('buildQueue', () => {
   test('serves cards that came due, oldest first', () => {
@@ -58,11 +64,8 @@ describe('buildQueue', () => {
   })
 
   test('introduces new words most frequent first', () => {
-    const items = [
-      word('憔悴', { rank: 22000 }),
-      word('因为', { rank: 300 }),
-      word('学习', { rank: 412 }),
-    ]
+    RANKS.set('憔悴', 22000).set('因为', 300).set('学习', 412)
+    const items = [word('憔悴'), word('因为'), word('学习')]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount }).map((i) => i.text)).toEqual([
       '因为',
       '学习',
@@ -74,7 +77,8 @@ describe('buildQueue', () => {
     // No rank means the word is outside the frequency list, which is evidence
     // of rarity. Treating it as rank 0 would promote exactly the obscure
     // vocabulary the ordering exists to defer.
-    const items = [word('生僻'), word('因为', { rank: 300 })]
+    RANKS.set('因为', 300)
+    const items = [word('生僻'), word('因为')]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount }).map((i) => i.text)).toEqual([
       '因为',
       '生僻',
@@ -82,16 +86,19 @@ describe('buildQueue', () => {
   })
 
   test('respects the daily budget for new words', () => {
-    const items = Array.from({ length: 30 }, (_, i) => word(`词${i}`, { rank: i }))
+    const items = Array.from({ length: 30 }, (_, i) => {
+      RANKS.set(`词${i}`, i)
+      return word(`词${i}`)
+    })
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(10)
   })
 
   test('counts what was already introduced today against the budget', () => {
     const items = [
       ...Array.from({ length: 8 }, (_, i) =>
-        word(`旧${i}`, { rank: i, introducedAt: startOfDay(NOW) + 3600_000, state: 'review', due: NOW + DAY_MS }),
+        word(`旧${i}`, { introducedAt: startOfDay(NOW) + 3600_000, state: 'review', due: NOW + DAY_MS }),
       ),
-      ...Array.from({ length: 10 }, (_, i) => word(`新${i}`, { rank: 100 + i })),
+      ...Array.from({ length: 10 }, (_, i) => word(`新${i}`)),
     ]
     // Eight already met today leaves room for two more, not ten.
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(2)
@@ -100,7 +107,7 @@ describe('buildQueue', () => {
   test('yesterday introductions do not count against today', () => {
     const items = [
       word('昨天', { introducedAt: startOfDay(NOW) - 2 * 3600_000, state: 'review', due: NOW + DAY_MS }),
-      word('今天', { rank: 5 }),
+      word('今天'),
     ]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount }).map((i) => i.text)).toEqual([
       '今天',
@@ -122,6 +129,7 @@ describe('buildQueue', () => {
       newWordsPerDay: 0,
       newSentencesPerDay: 2,
       unknownCount,
+      rankOf,
     })
     expect(queue.map((i) => i.text)).toEqual(['易1', '中3'])
   })
@@ -140,7 +148,7 @@ describe('buildQueue', () => {
       word('待见'),
     ]
     expect(
-      buildQueue({ items, now: NOW, newWordsPerDay: 1, newSentencesPerDay: 0, unknownCount }),
+      buildQueue({ items, now: NOW, newWordsPerDay: 1, newSentencesPerDay: 0, unknownCount, rankOf }),
     ).toEqual([])
   })
 
@@ -161,7 +169,7 @@ describe('queueCounts', () => {
   test('breaks the session down before it starts', () => {
     const items = [
       word('复习', { state: 'review', due: NOW - DAY_MS }),
-      word('新词', { rank: 1 }),
+      word('新词'),
       sentence('句1'),
       sentence('句2'),
     ]

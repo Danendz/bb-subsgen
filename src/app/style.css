@@ -261,3 +261,69 @@ input:focus { outline: 2px solid #2f5fb3; outline-offset: -1px; }
   margin-top: 12px;
 }
 .grades button { padding: 10px; }
+
+/* Word lists ---------------------------------------------------------------- */
+
+.preview {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #33353f;
+  border-radius: 10px;
+  background: #15171c;
+}
+.preview .line-zh { margin: 6px 0; font-size: 20px; }
+
+details.help {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #23252c;
+}
+details.help summary {
+  cursor: pointer;
+  color: #9aa3b2;
+  font-size: 13px;
+}
+details.help summary:hover { color: #eef0f4; }
+details.help h4 {
+  margin: 16px 0 4px;
+  font-size: 13px;
+}
+details.help p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
+
+/* The one thing a user can get wrong invisibly, so it does not read as prose. */
+.callout {
+  padding: 10px 12px;
+  border-left: 3px solid #6ea8fe;
+  border-radius: 0 8px 8px 0;
+  background: #15171c;
+}
+
+table.sources {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+table.sources th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a92a3;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid #2a2c34;
+}
+table.sources td {
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid #23252c;
+  vertical-align: top;
+}
+
+details.help pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #15171c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+details.help code { font-size: 12px; }

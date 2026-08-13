@@ -29,9 +29,9 @@ export interface Backup {
  * Dwell samples and the frequency table are deliberately absent.
  *
  * Signals exist to calibrate one threshold against the machine they were
- * recorded on, and ranks are rebuilt from the extension's own build artifact —
- * carrying either would bloat the file with data the destination can regenerate
- * or should not inherit.
+ * recorded on, and a word list is uploaded per browser and shared by every deck —
+ * carrying either would bloat the file with data the destination either already
+ * has or should not inherit.
  */
 export function emptyBackup(): Backup {
   return {
@@ -154,7 +154,6 @@ function mergeItem(local: Item, incoming: Item, prefer: 'local' | 'incoming'): I
     // The earliest sighting is the true one; the later file just met it again.
     createdAt: Math.min(local.createdAt, incoming.createdAt),
     introducedAt: min(local.introducedAt, incoming.introducedAt),
-    rank: local.rank ?? incoming.rank,
     target: local.target ?? incoming.target,
     contexts: mergeContexts(local, incoming),
     // When a declaration is overruled, the state has to come from the side that
