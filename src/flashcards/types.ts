@@ -45,6 +45,20 @@ export interface Item {
   target?: string
   /** Days. */
   interval: number
+  /**
+   * Rung on the mastery ladder, 0-6. See `LADDER` in scheduler.ts.
+   *
+   * Optional because cards written before the ladder existed do not have one;
+   * `levelOf` derives it from the interval they already earned, so no migration
+   * is needed and the value is persisted on the card's next review.
+   */
+  level?: number
+  /**
+   * SM-2 ease, no longer read by the scheduler.
+   *
+   * Kept on the record so exports written by older versions stay readable and so
+   * a future scheduler could use it again. The ladder has no use for it.
+   */
   ease: number
   /** Epoch ms. */
   due: number
@@ -67,7 +81,25 @@ export interface Item {
 /** How a review was asked. Logged so recognition and production can be split later. */
 export type ReviewStyle = 'recognise' | 'type' | 'audio' | 'cloze'
 
-/** SM-2 grades, narrowed to the four buttons a review screen actually shows. */
+/**
+ * What the study session asks of you.
+ *
+ * `mixed` is not a fourth kind of question — it rotates the other three off the
+ * card's review count, so a word is met from a different angle each sitting
+ * rather than the same one three times running.
+ */
+export type StudyMode = 'remember' | 'type' | 'audio' | 'mixed'
+
+/** Which cards a session draws from. */
+export type StudyInclude = 'words' | 'sentences' | 'both'
+
+/**
+ * How a review went.
+ *
+ * The screen offers two answers and only ever logs `again` or `good`. `hard` and
+ * `easy` are retained because the log is append-only and still holds rows from
+ * the four-button era — replaying that history has to keep meaning something.
+ */
 export type Grade = 'again' | 'hard' | 'good' | 'easy'
 
 /**

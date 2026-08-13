@@ -1,84 +1,141 @@
 import { describe, expect, test } from 'vitest'
-import { DAY_MS, schedule, startOfDay } from './scheduler'
+import { DAY_MS, LADDER, MAX_LEVEL, levelOf, schedule, startOfDay } from './scheduler'
 
-const fresh = { interval: 0, ease: 2.5, reps: 0, lapses: 0 }
+const fresh = { interval: 0, level: 0, ease: 2.5, reps: 0, lapses: 0 }
 const NOW = Date.UTC(2026, 7, 12, 12, 0, 0)
 
+/** Applies a run of grades, the way a session actually would. */
+function run(start: typeof fresh, grades: Array<'again' | 'good'>) {
+  let item = { ...start, ...schedule(start, grades[0], NOW) }
+  for (const grade of grades.slice(1)) item = { ...item, ...schedule(item, grade, NOW) }
+  return item
+}
+
 describe('schedule', () => {
-  test('a new card answered well comes back tomorrow', () => {
+  test('a new card answered right comes back tomorrow', () => {
     const next = schedule(fresh, 'good', NOW)
+    expect(next.level).toBe(1)
     expect(next.interval).toBe(1)
     expect(next.due).toBe(NOW + DAY_MS)
     expect(next.state).toBe('review')
-    expect(next.reps).toBe(1)
   })
 
-  test('the second and third good answers follow 1 / 6 / x ease', () => {
-    const first = schedule(fresh, 'good', NOW)
-    const second = schedule(first, 'good', NOW)
-    const third = schedule(second, 'good', NOW)
-
-    expect([first.interval, second.interval, third.interval]).toEqual([1, 6, 15])
+  test('right answers walk up the ladder one rung at a time', () => {
+    const intervals: number[] = []
+    let item = fresh
+    for (let i = 0; i < MAX_LEVEL; i++) {
+      item = { ...item, ...schedule(item, 'good', NOW) }
+      intervals.push(item.interval)
+    }
+    expect(intervals).toEqual([1, 3, 7, 16, 35, 90])
   })
 
-  test('again keeps the card in the session instead of burying it', () => {
-    // Forgetting something and then not seeing it for a week is how a deck
+  test('the ladder caps rather than growing forever', () => {
+    const topped = run(fresh, Array(20).fill('good'))
+    expect(topped.level).toBe(MAX_LEVEL)
+    expect(topped.interval).toBe(LADDER[MAX_LEVEL])
+  })
+
+  test('a wrong answer keeps the card in the session instead of burying it', () => {
+    // Forgetting something and then not seeing it for two weeks is how a deck
     // quietly stops teaching.
-    const mature = { interval: 40, ease: 2.5, reps: 6, lapses: 0 }
-    const next = schedule(mature, 'again', NOW)
+    const mature = run(fresh, ['good', 'good', 'good', 'good', 'good'])
+    expect(mature.level).toBe(5)
 
-    expect(next.interval).toBe(0)
-    expect(next.due).toBeGreaterThan(NOW)
+    const lapsed = schedule(mature, 'again', NOW)
+    expect(lapsed.due).toBeGreaterThan(NOW)
+    expect(lapsed.due).toBeLessThan(NOW + DAY_MS)
+    expect(lapsed.state).toBe('learning')
+    expect(lapsed.lapses).toBe(1)
+  })
+
+  test('a wrong answer costs one rung, not the whole ladder', () => {
+    const mature = run(fresh, Array(5).fill('good'))
+    expect(schedule(mature, 'again', NOW).level).toBe(mature.level - 1)
+  })
+
+  test('getting a new card wrong never promotes it', () => {
+    // The demotion floors at 0 rather than at the first day-rung. Flooring at 1
+    // would schedule a card you just failed for tomorrow.
+    const next = schedule(fresh, 'again', NOW)
+    expect(next.level).toBe(0)
     expect(next.due).toBeLessThan(NOW + DAY_MS)
     expect(next.state).toBe('learning')
-    expect(next.lapses).toBe(1)
-    expect(next.reps).toBe(0)
   })
 
-  test('again lowers ease and easy raises it', () => {
-    expect(schedule(fresh, 'again', NOW).ease).toBeCloseTo(2.3)
-    expect(schedule(fresh, 'hard', NOW).ease).toBeCloseTo(2.35)
-    expect(schedule(fresh, 'good', NOW).ease).toBeCloseTo(2.5)
-    expect(schedule(fresh, 'easy', NOW).ease).toBeCloseTo(2.65)
+  test('a lapsed card climbs back to where it was', () => {
+    const mature = run(fresh, Array(5).fill('good'))
+    const recovered = run(mature, ['again', 'good'])
+    expect(recovered.level).toBe(mature.level)
+    expect(recovered.interval).toBe(mature.interval)
+    expect(recovered.state).toBe('review')
   })
 
-  test('ease is clamped, so a card can never become a treadmill', () => {
-    // Below ~1.3 intervals stop growing meaningfully and the card returns
-    // forever at the same spacing.
-    let item = { interval: 10, ease: 1.4, reps: 5, lapses: 0 }
-    for (let i = 0; i < 5; i++) item = { ...item, ...schedule(item, 'again', NOW) }
-    expect(item.ease).toBe(1.3)
-
-    let easy = { interval: 10, ease: 2.7, reps: 5, lapses: 0 }
-    for (let i = 0; i < 5; i++) easy = { ...easy, ...schedule(easy, 'easy', NOW) }
-    expect(easy.ease).toBe(2.8)
-  })
-
-  test('hard always moves forward, so it stays distinct from again', () => {
-    // A "hard" that returned the same interval would be indistinguishable from
-    // forgetting, and the card would never leave the low intervals.
-    const item = { interval: 3, ease: 1.3, reps: 4, lapses: 0 }
-    expect(schedule(item, 'hard', NOW).interval).toBeGreaterThan(item.interval)
-  })
-
-  test('easy outruns good from the same position', () => {
-    const item = { interval: 10, ease: 2.5, reps: 4, lapses: 0 }
-    expect(schedule(item, 'easy', NOW).interval).toBeGreaterThan(
-      schedule(item, 'good', NOW).interval,
-    )
-  })
-
-  test('every grade but again schedules at least a day out', () => {
-    const lapsed = { interval: 0, ease: 1.3, reps: 0, lapses: 3 }
-    for (const grade of ['hard', 'good', 'easy'] as const) {
-      expect(schedule(lapsed, grade, NOW).interval).toBeGreaterThanOrEqual(1)
+  test('level and interval never disagree', () => {
+    let item = fresh
+    for (const grade of ['good', 'good', 'again', 'good', 'again', 'again', 'good'] as const) {
+      item = { ...item, ...schedule(item, grade, NOW) }
+      expect(item.interval).toBe(LADDER[item.level])
     }
   })
 
+  test('reps count every asking, so the mixed-mode rotation keeps moving', () => {
+    // Resetting reps on a lapse would pin a difficult card to one question style
+    // forever — exactly the card that most needs meeting from another angle.
+    const item = run(fresh, ['good', 'again', 'good', 'again'])
+    expect(item.reps).toBe(4)
+    expect(item.lapses).toBe(2)
+  })
+
   test('lapses accumulate and survive later successes', () => {
-    const first = schedule({ interval: 20, ease: 2.5, reps: 5, lapses: 2 }, 'again', NOW)
-    expect(first.lapses).toBe(3)
-    expect(schedule(first, 'good', NOW).lapses).toBe(3)
+    const item = run(fresh, ['good', 'good', 'again', 'good', 'good'])
+    expect(item.lapses).toBe(1)
+  })
+
+  test('crossing into known is a rung, not a coincidence', () => {
+    // MATURE_INTERVAL_DAYS is 21; L5 is the first rung to clear it.
+    expect(LADDER.findIndex((days) => days >= 21)).toBe(5)
+  })
+
+  describe('grades from the four-button era, met during replay', () => {
+    test('hard holds position rather than inventing a rung', () => {
+      const item = run(fresh, ['good', 'good'])
+      const next = schedule(item, 'hard', NOW)
+      expect(next.level).toBe(item.level)
+      expect(next.state).toBe('review')
+    })
+
+    test('easy climbs, same as good', () => {
+      const item = run(fresh, ['good', 'good'])
+      expect(schedule(item, 'easy', NOW).level).toBe(item.level + 1)
+    })
+  })
+})
+
+describe('levelOf', () => {
+  test('a stored level wins', () => {
+    expect(levelOf({ interval: 90, level: 2 })).toBe(2)
+  })
+
+  test('a card written before the ladder lands on its nearest rung', () => {
+    // The whole migration: nothing is rewritten, the level is derived from the
+    // interval the card already earned.
+    expect(levelOf({ interval: 0 })).toBe(0)
+    expect(levelOf({ interval: 1 })).toBe(1)
+    expect(levelOf({ interval: 30 })).toBe(5)
+    expect(levelOf({ interval: 200 })).toBe(6)
+  })
+
+  test('nearest, not the rung below', () => {
+    // 30 days is closer to 35 than to 16, so an SM-2 card that had all but
+    // reached maturity is not demoted for sitting between rungs.
+    expect(Math.abs(LADDER[5] - 30)).toBeLessThan(Math.abs(LADDER[4] - 30))
+    expect(levelOf({ interval: 30 })).toBe(5)
+  })
+
+  test('a stored level is clamped to the ladder', () => {
+    expect(levelOf({ interval: 0, level: 99 })).toBe(MAX_LEVEL)
+    expect(levelOf({ interval: 0, level: -3 })).toBe(0)
   })
 })
 

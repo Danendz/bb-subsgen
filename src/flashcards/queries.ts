@@ -4,7 +4,8 @@
 
 import { request, STORES } from './db'
 import { isKnown } from './known'
-import type { Exposure, Item, Rank, Video, VideoWord } from './types'
+import { previousDay, startOfDay } from './scheduler'
+import type { Exposure, Item, Rank, Review, Video, VideoWord } from './types'
 
 function all<T>(db: IDBDatabase, store: string): Promise<T[]> {
   return request<T[]>(db.transaction(store, 'readonly').objectStore(store).getAll())
@@ -44,6 +45,56 @@ export function videoWords(db: IDBDatabase, bvid: string): Promise<VideoWord[]> 
 /** The words the overlay stops annotating — the same rule the mirror publishes. */
 export function knownSetOf(items: Item[]): Set<string> {
   return new Set(items.filter((item) => item.kind === 'word' && isKnown(item)).map((i) => i.text))
+}
+
+/**
+ * Days studied in an unbroken run, counting back from today.
+ *
+ * Derived from the review log rather than stored. A streak kept as its own
+ * counter is state that can disagree with the history behind it, and worse, it
+ * is state an import would have to merge — there is no honest way to combine
+ * two machines' streak counters, but there is an obvious way to combine their
+ * review logs, which is what this reads.
+ *
+ * Walks the `by-at` index backwards and stops at the first missing day, so it
+ * costs the length of the streak rather than the length of the history.
+ */
+export function studyStreak(db: IDBDatabase, now = Date.now()): Promise<number> {
+  const index = db
+    .transaction(STORES.reviews, 'readonly')
+    .objectStore(STORES.reviews)
+    .index('by-at')
+
+  return new Promise((resolve, reject) => {
+    const req = index.openCursor(null, 'prev')
+    let counting: number | null = null
+    let streak = 0
+
+    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return resolve(streak)
+
+      const day = startOfDay((cursor.value as Review).at)
+
+      if (counting === null) {
+        // Today's streak is intact until the day is over, so a log that stops
+        // yesterday still counts. Anything older means it has already lapsed.
+        const today = startOfDay(now)
+        if (day !== today && day !== previousDay(today)) return resolve(0)
+        counting = day
+        streak = 1
+      } else if (day === previousDay(counting)) {
+        counting = day
+        streak += 1
+      } else if (day !== counting) {
+        // A gap. Everything below it belongs to an older run.
+        return resolve(streak)
+      }
+
+      cursor.continue()
+    }
+  })
 }
 
 export interface HskProgress {

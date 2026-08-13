@@ -53,8 +53,10 @@ describe('replay', () => {
       review('学习', DAY0 + 7 * DAY_MS),
     ])
 
+    // Three rungs climbed from the bottom: 1, 3, 7 days.
     expect(rebuilt.reps).toBe(3)
-    expect(rebuilt.interval).toBe(15)
+    expect(rebuilt.level).toBe(3)
+    expect(rebuilt.interval).toBe(7)
     expect(rebuilt.state).toBe('review')
   })
 

@@ -10,7 +10,8 @@ import {
   replaceWordListIn,
   recordExposuresIn,
 } from './flashcards-store'
-import { openFlashcardsDb, request, STORES } from '../flashcards/db'
+import { done, openFlashcardsDb, request, STORES } from '../flashcards/db'
+import { studyStreak } from '../flashcards/queries'
 import {
   sentenceId,
   wordId,
@@ -256,7 +257,10 @@ describe('applyReviewIn', () => {
       1_000,
     )
 
-    expect(lapsed.interval).toBe(0)
+    // The card had no stored level, so its rung came from the interval it had
+    // already earned: 30 days is nearest L5. A lapse costs one rung and brings
+    // it back inside the sitting.
+    expect(lapsed.level).toBe(4)
     expect(lapsed.state).toBe('learning')
     expect(lapsed.lapses).toBe(1)
     expect(lapsed.due).toBeLessThan(1_000 + 86_400_000)
@@ -310,5 +314,67 @@ describe('word lists', () => {
 
     const store = database.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks)
     expect(await request<number>(store.count())).toBe(0)
+  })
+})
+
+describe('studyStreak', () => {
+  const AT_NOON = (daysAgo: number, now: number) => {
+    const date = new Date(now)
+    date.setDate(date.getDate() - daysAgo)
+    date.setHours(12, 0, 0, 0)
+    return date.getTime()
+  }
+
+  async function logReviews(database: IDBDatabase, now: number, daysAgo: number[]) {
+    const tx = database.transaction(STORES.reviews, 'readwrite')
+    for (const days of daysAgo) {
+      tx.objectStore(STORES.reviews).put({
+        itemId: 'w:学',
+        at: AT_NOON(days, now),
+        grade: 'good',
+        style: 'recognise',
+        intervalBefore: 0,
+        intervalAfter: 1,
+      })
+    }
+    await done(tx)
+  }
+
+  const NOW = Date.UTC(2026, 7, 12, 18, 0, 0)
+
+  test('an empty log is not a streak', async () => {
+    expect(await studyStreak(await db(), NOW)).toBe(0)
+  })
+
+  test('counts consecutive days back from today', async () => {
+    const database = await db()
+    await logReviews(database, NOW, [0, 1, 2, 3])
+    expect(await studyStreak(database, NOW)).toBe(4)
+  })
+
+  test('several reviews on one day are still one day', async () => {
+    const database = await db()
+    await logReviews(database, NOW, [0, 0, 0, 1, 1])
+    expect(await studyStreak(database, NOW)).toBe(2)
+  })
+
+  test('stops at the first missing day', async () => {
+    const database = await db()
+    await logReviews(database, NOW, [0, 1, 3, 4, 5])
+    expect(await studyStreak(database, NOW)).toBe(2)
+  })
+
+  test('a streak survives until today is over', async () => {
+    // Opening the app in the morning before studying must not read as a broken
+    // streak — you have not missed the day yet.
+    const database = await db()
+    await logReviews(database, NOW, [1, 2, 3])
+    expect(await studyStreak(database, NOW)).toBe(3)
+  })
+
+  test('a log that stops before yesterday has lapsed', async () => {
+    const database = await db()
+    await logReviews(database, NOW, [2, 3, 4])
+    expect(await studyStreak(database, NOW)).toBe(0)
   })
 })

@@ -94,13 +94,22 @@ export function replay(item: Item, reviews: Review[]): Item {
   const ordered = reviews.filter((r) => r.itemId === item.id).sort((a, b) => a.at - b.at)
   if (!ordered.length) return { ...item, introducedAt: undefined }
 
-  let state = { interval: 0, ease: 2.5, reps: 0, lapses: 0 }
+  // Starts at the bottom of the ladder, not at the item's current position: the
+  // point of a replay is to derive the schedule from the log alone, so whatever
+  // either side happened to have stored is deliberately ignored.
+  let state = { interval: 0, level: 0, ease: 2.5, reps: 0, lapses: 0 }
   let due = item.due
   let itemState: Item['state'] = item.state
 
   for (const review of ordered) {
     const next = schedule(state, review.grade, review.at)
-    state = { interval: next.interval, ease: next.ease, reps: next.reps, lapses: next.lapses }
+    state = {
+      interval: next.interval,
+      level: next.level,
+      ease: next.ease,
+      reps: next.reps,
+      lapses: next.lapses,
+    }
     due = next.due
     itemState = next.state
   }
