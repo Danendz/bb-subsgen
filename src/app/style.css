@@ -1,27 +1,103 @@
+/* The study app's visual language.
+ *
+ * The palette is the Mandarin tone palette. Those five colours are already in
+ * this codebase — src/lang/tone.ts, the MDBG convention the subtitle overlay
+ * colours pinyin with — and this stylesheet had been reaching for three of them
+ * by hand for its verdicts and links without ever saying so. Naming them here
+ * makes that deliberate: colour means tone, the app and the overlay cannot
+ * drift apart, and a learner reads the same signal in both places.
+ *
+ * The one colour from outside that system is Bilibili's pink, reserved for the
+ * action you take. It is the only thing on screen that is not either a tone or
+ * a surface, which is what makes it read as "press this".
+ */
+
+@font-face {
+  font-family: 'Fredoka';
+  src: url('/fonts/fredoka-latin.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Declares the page as already dark. Without this Chrome's auto dark mode
+     rewrites every colour it thinks is too light — it was turning the action
+     pink into a muddy crimson — and form controls render in the light theme. */
+  color-scheme: dark;
+
+  /* Tones. Identical to TONE_COLORS in src/lang/tone.ts — change both or neither. */
+  --tone-1: #ff8a8a; /* flat   */
+  --tone-2: #ffc46b; /* rising */
+  --tone-3: #7ee0a8; /* dipping */
+  --tone-4: #8ab6ff; /* falling */
+  --tone-5: #c3c8d0; /* neutral */
+
+  /* Meaning, drawn from the tones rather than invented alongside them. */
+  --right: var(--tone-3);
+  --wrong: var(--tone-1);
+  --warn: var(--tone-2);
+  --link: var(--tone-4);
+
+  /* Action. */
+  --action: #fb7299;
+  --action-deep: #b84a70;
+  --action-ink: #24101a;
+
+  /* Surfaces: warm ink, with enough distance between them to read as depth. */
+  --ink: #17131d;
+  --raised: #221c2b;
+  --inset: #1b1624;
+  --edge: #332a40;
+  --edge-lit: #4c3e5e;
+
+  --text: #f3eefa;
+  --text-2: #c8bed6;
+  --text-3: #9285a6;
+
+  --r-sm: 8px;
+  --r: 14px;
+  --r-lg: 20px;
+  --pill: 999px;
+
+  /* Depth on a pressable thing, and how far it sinks. */
+  --lip: 4px;
+
+  --display: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --hanzi: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font: 14px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #eef0f4;
-  background: #131418;
+  min-height: 100vh;
+  font: 14px/1.5 var(--body);
+  color: var(--text);
+  background: var(--ink);
+  /* A single quiet wash, so the page has a light source rather than being a
+     flat field. */
+  background-image: radial-gradient(120% 70% at 50% -10%, #2a2036 0%, transparent 60%);
+  background-attachment: fixed;
 }
 
-a { color: #8ab6ff; }
+a { color: var(--link); }
 
 .shell {
   max-width: 900px;
   margin: 0 auto;
-  padding: 28px 24px 64px;
+  padding: 28px 24px 80px;
 }
 
 h1 {
-  font-size: 19px;
+  font: 600 26px/1.2 var(--display);
   margin: 0 0 2px;
+  letter-spacing: -0.01em;
 }
 .subtitle {
-  margin: 0 0 20px;
-  color: #8a92a3;
+  margin: 0 0 22px;
+  color: var(--text-3);
   font-size: 13px;
 }
 
@@ -30,47 +106,49 @@ h1 {
 nav {
   display: flex;
   gap: 4px;
-  margin-bottom: 22px;
-  border-bottom: 1px solid #2a2c34;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--edge);
 }
 nav a {
-  padding: 8px 12px;
+  padding: 9px 14px;
   border-bottom: 2px solid transparent;
-  color: #9aa3b2;
+  color: var(--text-3);
   text-decoration: none;
-  font-size: 13px;
+  font: 500 13px var(--display);
+  transition: color 0.15s;
 }
-nav a:hover { color: #eef0f4; }
+nav a:hover { color: var(--text); }
 nav a.on {
-  color: #fff;
-  border-bottom-color: #6ea8fe;
+  color: var(--text);
+  border-bottom-color: var(--action);
 }
 
-/* Cards and rows ------------------------------------------------------------ */
+/* Surfaces ------------------------------------------------------------------ */
 
 .panel {
-  padding: 14px 16px;
-  border: 1px solid #2a2c34;
-  border-radius: 12px;
-  background: #191b21;
+  padding: 16px 18px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
 }
-.panel + .panel { margin-top: 10px; }
+.panel + .panel { margin-top: 12px; }
 
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
-.stat { text-align: left; }
+/* The stacking margin is for panels in a column; inside a grid the gap already
+   does that job and the margin just pushes every panel but the first down. */
+.stats .panel + .panel { margin-top: 0; }
 .stat .n {
   display: block;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.2;
+  font: 600 30px/1.1 var(--display);
+  font-variant-numeric: tabular-nums;
 }
 .stat .label {
-  color: #8a92a3;
+  color: var(--text-3);
   font-size: 12px;
 }
 
@@ -78,75 +156,124 @@ nav a.on {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 0;
-  border-bottom: 1px solid #23252c;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--edge);
 }
 .row:last-child { border-bottom: none; }
 .row .grow { flex: 1; min-width: 0; }
 
-.hanzi {
-  font-size: 17px;
-  font-weight: 600;
-}
-.pinyin {
-  color: #c3c8d0;
-  font-size: 13px;
-  white-space: nowrap;
-}
+.hanzi { font: 600 17px var(--hanzi); }
 .gloss {
-  color: #9aa3b2;
+  color: var(--text-3);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.muted { color: #8a92a3; }
+.muted { color: var(--text-3); }
 .small { font-size: 12px; }
 
-/* Chinese lines get room to breathe; glosses stay tight. */
 .line-zh {
-  font-size: 15px;
-  line-height: 1.6;
+  font: 15px/1.7 var(--hanzi);
 }
+
+/* Pinyin, coloured by tone. The colour is the information. */
+
+.pinyin {
+  color: var(--tone-5);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pinyin .syl + .syl { margin-left: 0.3em; }
+.t1 { color: var(--tone-1); }
+.t2 { color: var(--tone-2); }
+.t3 { color: var(--tone-3); }
+.t4 { color: var(--tone-4); }
+.t5 { color: var(--tone-5); }
 
 /* Controls ------------------------------------------------------------------ */
 
 button {
-  font: inherit;
-  color: inherit;
-  background: #23252c;
-  border: 1px solid #33353f;
-  border-radius: 7px;
-  padding: 5px 10px;
+  font: 500 14px var(--display);
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-bottom: var(--lip) solid var(--edge-lit);
+  border-radius: var(--r-sm);
+  padding: 8px 14px;
   cursor: pointer;
+  transition: background 0.12s, transform 0.06s, border-color 0.12s;
 }
-button:hover { background: #2d3038; }
-button.primary {
-  background: #2f5fb3;
-  border-color: #3a6cc4;
-}
-button.primary:hover { background: #3568c4; }
-button.on {
-  color: #7ee0a8;
-  border-color: #2f5a44;
-}
-button:disabled { opacity: 0.45; cursor: default; }
+button:hover:not(:disabled) { background: #291f33; }
 
-.icon-btn {
-  padding: 4px 8px;
+/* Pressing something ought to move it. The lip shrinks by exactly what the
+   button drops, so the outer edge stays put and only the face travels. */
+button:active:not(:disabled) {
+  transform: translateY(calc(var(--lip) - 2px));
+  border-bottom-width: 2px;
+}
+button:disabled { opacity: 0.4; cursor: default; }
+
+button.primary {
+  background: var(--action);
+  color: var(--action-ink);
+  border-color: var(--action);
+  border-bottom-color: var(--action-deep);
+}
+button.primary:hover:not(:disabled) { background: #fc85a7; }
+
+button.big {
+  font-size: 17px;
+  padding: 14px 34px;
+  border-radius: var(--r);
+}
+
+button.ghost {
+  background: none;
+  border: 1px solid var(--edge);
+  border-bottom-width: 1px;
+  color: var(--text-3);
+  padding: 6px 12px;
   font-size: 13px;
 }
+button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--edge-lit); }
+button.ghost:active:not(:disabled) { transform: none; }
 
-input[type="search"], input[type="text"] {
+button.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font: 13px var(--body);
+  text-decoration: underline;
+  padding: 6px;
+  margin-top: 12px;
+}
+button.link-btn:hover { color: var(--text); background: none; }
+button.link-btn:active { transform: none; }
+
+.icon-btn { padding: 5px 10px; font-size: 13px; }
+
+button.on {
+  color: var(--right);
+  border-color: #2f5a44;
+}
+
+input[type='search'],
+input[type='text'] {
   font: inherit;
   color: inherit;
-  background: #191b21;
-  border: 1px solid #33353f;
-  border-radius: 7px;
-  padding: 7px 10px;
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
   width: 100%;
 }
-input:focus { outline: 2px solid #2f5fb3; outline-offset: -1px; }
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
 
 .toolbar {
   display: flex;
@@ -156,146 +283,453 @@ input:focus { outline: 2px solid #2f5fb3; outline-offset: -1px; }
 }
 .toolbar .grow { flex: 1; }
 
-/* Progress bars ------------------------------------------------------------- */
+/* Progress bars (overview, videos) ------------------------------------------ */
 
 .bar {
-  height: 6px;
-  border-radius: 3px;
-  background: #2a2c34;
+  height: 7px;
+  border-radius: var(--pill);
+  background: var(--inset);
   overflow: hidden;
 }
 .bar > i {
   display: block;
   height: 100%;
-  border-radius: 3px;
-  background: #6ea8fe;
+  border-radius: var(--pill);
+  background: var(--link);
 }
-.bar.good > i { background: #7ee0a8; }
-.bar.warn > i { background: #ffc46b; }
+.bar.good > i { background: var(--right); }
+.bar.warn > i { background: var(--warn); }
 
 .hsk-row {
   display: grid;
   grid-template-columns: 70px 1fr 90px;
   align-items: center;
   gap: 12px;
-  padding: 7px 0;
+  padding: 8px 0;
 }
 
-/* Empty states -------------------------------------------------------------- */
+/* Empty states and tags ----------------------------------------------------- */
 
 .empty {
-  padding: 34px 20px;
+  padding: 38px 20px;
   text-align: center;
-  color: #8a92a3;
-  border: 1px dashed #2a2c34;
-  border-radius: 12px;
+  color: var(--text-3);
+  border: 1px dashed var(--edge);
+  border-radius: var(--r);
 }
 .empty p { margin: 0 0 6px; }
 
 .tag {
   display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #23252c;
-  color: #9aa3b2;
-  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: var(--pill);
+  background: var(--inset);
+  color: var(--text-3);
+  font: 500 11px var(--display);
 }
-.tag.known { color: #7ee0a8; }
-.tag.pool { color: #ffc46b; }
+.tag.known { color: var(--right); }
+.tag.pool { color: var(--warn); }
 
-/* Review -------------------------------------------------------------------- */
+/* Review: the start screen -------------------------------------------------- */
 
-.review-card {
-  min-height: 220px;
+.streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 6px 14px;
+  border-radius: var(--pill);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  font: 500 13px var(--display);
+  color: var(--warn);
+}
+
+.setup-panel { padding: 14px 18px; }
+
+.setup-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.summary-text {
+  flex: 1;
+  min-width: 0;
+  font: 500 14px var(--display);
+  color: var(--text-2);
+}
+
+.setup {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--edge);
+  display: grid;
+  gap: 20px;
+}
+.setup-group { border: none; margin: 0; padding: 0; }
+.setup-group legend {
+  padding: 0 0 10px;
+  font: 500 12px var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.choices.row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+
+.choice {
   display: flex;
   flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 11px 14px;
+  background: var(--inset);
+}
+.choice-label { font: 500 14px var(--display); }
+.choice-hint { font: 12px var(--body); color: var(--text-3); }
+.choice.on {
+  background: color-mix(in srgb, var(--action) 16%, var(--inset));
+  border-color: var(--action);
+  border-bottom-color: var(--action-deep);
+  color: var(--text);
+}
+.choice.on .choice-hint { color: var(--text-2); }
+
+.size-readout {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 10px;
+  border-radius: var(--pill);
+  background: var(--action);
+  color: var(--action-ink);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.size-range {
+  width: 100%;
+  accent-color: var(--action);
+}
+.setup-note { margin: 8px 0 0; }
+
+.start {
+  margin-top: 22px;
+  text-align: center;
+}
+.start p { margin: 10px 0 0; }
+
+/* Review: the session ------------------------------------------------------- */
+
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+/* The signature: progress as the tones of what you have actually settled. A
+   generic fill would say how far through you are; this says what it was. */
+.tonebar {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  height: 10px;
+}
+.tonebar .seg {
+  flex: 1;
+  border-radius: var(--pill);
+  background: var(--inset);
+  transition: background 0.35s ease-out;
+}
+.tonebar .seg.t1 { background: var(--tone-1); }
+.tonebar .seg.t2 { background: var(--tone-2); }
+.tonebar .seg.t3 { background: var(--tone-3); }
+.tonebar .seg.t4 { background: var(--tone-4); }
+.tonebar .seg.t5 { background: var(--tone-5); }
+
+.combo {
+  font: 500 13px var(--display);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.combo.hot { color: var(--warn); }
+
+.card {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 28px 20px;
+  padding: 30px 24px;
+  border-width: 2px;
+  transition: border-color 0.2s;
 }
-.review-prompt { padding: 12px 0; }
+.card.right { border-color: var(--right); }
+.card.wrong { border-color: var(--wrong); }
+
+.task {
+  margin: 0 0 22px;
+  font: 500 12px var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.prompt { margin-bottom: 22px; }
+.prompt p { margin: 0 0 12px; }
 
 .hanzi-xl {
-  font-size: 44px;
-  font-weight: 600;
-  line-height: 1.3;
+  font: 600 clamp(40px, 9vw, 60px) / 1.25 var(--hanzi);
+  letter-spacing: 0.04em;
 }
-.gloss-prompt {
-  font-size: 17px;
-  color: #c3c8d0;
-  margin-bottom: 14px;
+.hanzi-line {
+  font: 500 clamp(20px, 4vw, 27px) / 1.7 var(--hanzi);
 }
-.review-prompt input { max-width: 320px; margin: 0 auto; text-align: center; font-size: 19px; }
+.gloss-prompt,
+.translation-prompt {
+  font: 400 19px/1.5 var(--body);
+  color: var(--text-2);
+  max-width: 30ch;
+  margin-inline: auto;
+}
 
-/* The gap a cloze leaves has to read as "something belongs here", not as a
-   typographic accident, so it is underlined rather than blank. */
+/* A gap has to read as "something belongs here", not as a typographic accident. */
 .blank {
-  border-bottom: 2px solid #6ea8fe;
-  margin: 0 2px;
+  border-bottom: 3px solid var(--action);
+  margin: 0 3px;
 }
 
-.review-answer {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #2a2c34;
-}
-.gloss-full {
-  margin: 4px 0 10px;
-  color: #eef0f4;
-}
-.review-context {
-  margin: 12px 0 4px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: #15171c;
-  text-align: left;
-}
-.verdict { margin: 6px 0; font-size: 13px; }
-.verdict.ok { color: #7ee0a8; }
-.verdict.no { color: #ffc46b; }
-
-.grades {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+button.speak {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  color: var(--link);
 }
-.grades button { padding: 10px; }
+button.speak.big {
+  font-size: 18px;
+  padding: 18px 30px;
+  border-radius: var(--r);
+}
 
-/* Word lists ---------------------------------------------------------------- */
+/* The word bank ------------------------------------------------------------- */
+
+.bank { width: 100%; max-width: 520px; }
+
+.bank-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  align-content: flex-start;
+  min-height: 62px;
+  padding: 10px;
+  border-radius: var(--r);
+  background: var(--inset);
+  /* A rule under the slot, so an empty bank still looks like somewhere things
+     go rather than like a blank box. */
+  border-bottom: 2px solid var(--edge);
+}
+.bank-placeholder {
+  color: var(--text-3);
+  font-size: 13px;
+  align-self: center;
+}
+
+.bank-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.tile {
+  font: 500 20px var(--hanzi);
+  padding: 9px 16px;
+  background: var(--raised);
+  border-radius: var(--r-sm);
+}
+/* Kept in the layout rather than removed: tiles reflowing on every tap makes
+   the remaining ones a moving target. */
+.tile.spent {
+  opacity: 0;
+  pointer-events: none;
+}
+.tile.placed {
+  background: color-mix(in srgb, var(--action) 14%, var(--raised));
+  border-color: var(--edge-lit);
+  animation: place 0.18s ease-out;
+}
+/* The line you built is the thing being marked, so it has to stay readable
+   after the bank locks. */
+.tile.placed:disabled { opacity: 1; }
+
+@keyframes place {
+  from { transform: translateY(6px) scale(0.94); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+
+.answer-input {
+  max-width: 380px;
+  text-align: center;
+  font-size: 20px;
+}
+
+/* The reveal ---------------------------------------------------------------- */
+
+.reveal {
+  width: 100%;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--edge);
+  animation: rise 0.22s ease-out;
+}
+
+@keyframes rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.verdict {
+  margin: 0 0 14px;
+  font: 600 17px var(--display);
+}
+.verdict.ok { color: var(--right); }
+.verdict.no { color: var(--wrong); }
+.verdict:empty { display: none; }
+
+.answer-hanzi {
+  margin: 0 0 6px;
+  font: 600 30px var(--hanzi);
+}
+.meaning {
+  margin: 8px 0 14px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.context {
+  margin: 16px auto 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  text-align: left;
+  max-width: 520px;
+}
+.context p { margin: 0; }
+
+/* Mastery: the ladder made visible, since the ladder is now the whole state. */
+.mastery {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 16px 0 4px;
+}
+.pips { display: inline-flex; gap: 4px; }
+.pip {
+  width: 22px;
+  height: 5px;
+  border-radius: var(--pill);
+  background: var(--edge);
+}
+.pip.lit { background: var(--right); }
+/* A rung just lost reads as a warning rather than as progress. */
+.pips.lost .pip.lit { background: var(--warn); }
+
+/* In a list of a few hundred rows the same meter has to be much quieter. */
+.pips.compact { gap: 2px; }
+.pips.compact .pip { width: 8px; height: 4px; }
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 18px;
+}
+.actions button { flex: 1; max-width: 260px; padding: 14px; font-size: 16px; }
+
+button.right-btn {
+  background: var(--right);
+  color: var(--action-ink);
+  border-color: var(--right);
+  border-bottom-color: #4a9b6c;
+}
+button.right-btn:hover:not(:disabled) { background: #94e8b8; }
+
+button.wrong-btn {
+  background: var(--inset);
+  color: var(--text-2);
+}
+
+/* The summary --------------------------------------------------------------- */
+
+.done {
+  text-align: center;
+  padding: 40px 24px;
+}
+.done-title {
+  margin: 0 0 22px;
+  font: 600 26px var(--display);
+}
+.done .tonebar { margin: 0 auto 24px; max-width: 420px; }
+
+.summary {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.summary b {
+  display: block;
+  font: 600 26px var(--display);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Word lists and help ------------------------------------------------------- */
 
 .preview {
-  margin-top: 10px;
-  padding: 12px 14px;
-  border: 1px solid #33353f;
-  border-radius: 10px;
-  background: #15171c;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  background: var(--inset);
 }
 .preview .line-zh { margin: 6px 0; font-size: 20px; }
 
 details.help {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #23252c;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--edge);
 }
 details.help summary {
   cursor: pointer;
-  color: #9aa3b2;
-  font-size: 13px;
+  color: var(--text-3);
+  font: 500 13px var(--display);
 }
-details.help summary:hover { color: #eef0f4; }
-details.help h4 {
-  margin: 16px 0 4px;
-  font-size: 13px;
-}
-details.help p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
+details.help summary:hover { color: var(--text); }
+details.help h4 { margin: 16px 0 4px; font-size: 13px; }
+details.help p { margin: 0 0 8px; font-size: 13px; }
 
 /* The one thing a user can get wrong invisibly, so it does not read as prose. */
 .callout {
-  padding: 10px 12px;
-  border-left: 3px solid #6ea8fe;
-  border-radius: 0 8px 8px 0;
-  background: #15171c;
+  padding: 12px 14px;
+  border-left: 3px solid var(--action);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--inset);
 }
 
 table.sources {
@@ -305,25 +739,49 @@ table.sources {
 }
 table.sources th {
   text-align: left;
-  font-size: 11px;
+  font: 500 11px var(--display);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8a92a3;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
   padding: 4px 8px 4px 0;
-  border-bottom: 1px solid #2a2c34;
+  border-bottom: 1px solid var(--edge);
 }
 table.sources td {
   padding: 8px 8px 8px 0;
-  border-bottom: 1px solid #23252c;
+  border-bottom: 1px solid var(--edge);
   vertical-align: top;
 }
 
 details.help pre {
   overflow-x: auto;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #15171c;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
   font-size: 12px;
   line-height: 1.5;
 }
 details.help code { font-size: 12px; }
+
+/* ---------------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .shell { padding: 20px 16px 60px; }
+  .card { min-height: 240px; padding: 24px 16px; }
+  .actions { flex-direction: column-reverse; }
+  .actions button { max-width: none; }
+  .hud { flex-wrap: wrap; }
+  /* Too narrow to sit between the button and the counter, so it takes its own
+     row underneath them. */
+  .tonebar { order: 3; flex-basis: 100%; margin-top: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  button:active:not(:disabled) { transform: none; }
+}
