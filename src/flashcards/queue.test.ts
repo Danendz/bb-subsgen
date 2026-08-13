@@ -190,3 +190,90 @@ describe('queueCounts', () => {
     expect(counts.newSentences).toBe(5)
   })
 })
+
+describe('include', () => {
+  const mixed = () => [
+    word('复习', { state: 'review', due: NOW - DAY_MS }),
+    word('新词'),
+    sentence('句子'),
+  ]
+
+  test('words only leaves sentences out entirely', () => {
+    const queue = buildQueue({ items: mixed(), now: NOW, ...limits, unknownCount, include: 'words' })
+    expect(queue.every((item) => item.kind === 'word')).toBe(true)
+    expect(queue.map((i) => i.text)).toEqual(['复习', '新词'])
+  })
+
+  test('sentences only leaves words out entirely', () => {
+    const queue = buildQueue({
+      items: mixed(),
+      now: NOW,
+      ...limits,
+      unknownCount,
+      include: 'sentences',
+    })
+    expect(queue.map((i) => i.text)).toEqual(['句子'])
+  })
+
+  test('both is the default, so callers that do not care are unaffected', () => {
+    const items = mixed()
+    expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toEqual(
+      buildQueue({ items, now: NOW, ...limits, unknownCount, include: 'both' }),
+    )
+  })
+
+  test('counts follow the filter, so the number matches what you would study', () => {
+    const counts = queueCounts({
+      items: mixed(),
+      now: NOW,
+      ...limits,
+      unknownCount,
+      include: 'words',
+    })
+    expect(counts).toEqual({ due: 1, newWords: 1, newSentences: 0, pooled: 0 })
+  })
+
+  test('a kind you excluded today keeps tomorrow’s intake for the other kind', () => {
+    // Budgets are counted per kind, so studying only words cannot quietly spend
+    // the sentence allowance.
+    const items = [word('新词'), sentence('句1'), sentence('句2')]
+    const wordsOnly = queueCounts({ items, now: NOW, ...limits, unknownCount, include: 'words' })
+    const everything = queueCounts({ items, now: NOW, ...limits, unknownCount })
+    expect(wordsOnly.newWords).toBe(everything.newWords)
+  })
+})
+
+describe('limit', () => {
+  const backlog = () =>
+    Array.from({ length: 40 }, (_, i) =>
+      word(`旧${i}`, { state: 'review', due: NOW - (40 - i) * DAY_MS }),
+    )
+
+  test('caps the session at the requested number of cards', () => {
+    expect(buildQueue({ items: backlog(), now: NOW, ...limits, unknownCount, limit: 5 })).toHaveLength(5)
+  })
+
+  test('keeps the top of the queue, not a sample of it', () => {
+    // A short session on a backlog is the most overdue cards, in order — the
+    // cap is applied after the priority ordering, never instead of it.
+    const queue = buildQueue({ items: backlog(), now: NOW, ...limits, unknownCount, limit: 3 })
+    expect(queue.map((i) => i.text)).toEqual(['旧0', '旧1', '旧2'])
+  })
+
+  test('a backlog crowds out new material rather than adding to it', () => {
+    const items = [...backlog(), word('新词')]
+    const queue = buildQueue({ items, now: NOW, ...limits, unknownCount, limit: 10 })
+    expect(queue.some((item) => item.state === 'new')).toBe(false)
+  })
+
+  test('asking for more than exists gives what exists', () => {
+    const items = [word('复习', { state: 'review', due: NOW - DAY_MS })]
+    expect(buildQueue({ items, now: NOW, ...limits, unknownCount, limit: 50 })).toHaveLength(1)
+  })
+
+  test('counts report what is available, not what the cap allows', () => {
+    // The shortfall is the one thing about a backlog worth seeing.
+    const counts = queueCounts({ items: backlog(), now: NOW, ...limits, unknownCount, limit: 5 })
+    expect(counts.due).toBe(40)
+  })
+})

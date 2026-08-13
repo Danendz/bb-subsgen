@@ -5,7 +5,7 @@
 
 import { graduationOrder } from './capture'
 import { startOfDay } from './scheduler'
-import type { Item } from './types'
+import type { Item, StudyInclude } from './types'
 
 export interface QueueLimits {
   newWordsPerDay: number
@@ -15,6 +15,17 @@ export interface QueueLimits {
 export interface QueueInput extends QueueLimits {
   items: Item[]
   now: number
+  /** Which kinds of card this session draws from. Defaults to both. */
+  include?: StudyInclude
+  /**
+   * Most cards to draw, counted as distinct cards.
+   *
+   * Applied last, after the priority order below has decided what matters most,
+   * so a short session is the *top* of the queue rather than a sample of it.
+   * Absent means no cap, which is what every caller did before sessions had a
+   * size.
+   */
+  limit?: number
   /** Unknown words in a pooled sentence — what orders the intake. */
   unknownCount: (item: Item) => number
   /**
@@ -27,6 +38,20 @@ export interface QueueInput extends QueueLimits {
    * reorders the existing deck immediately, and a deletion un-does it.
    */
   rankOf: (headword: string) => number | undefined
+}
+
+/**
+ * The cards this session is allowed to touch.
+ *
+ * Applied before anything else, so the daily budgets and the priority order are
+ * all computed against the same restricted deck. Filtering by kind cannot
+ * disturb the budgets, which are counted per kind anyway: studying only words
+ * today leaves tomorrow's sentence intake exactly where it was.
+ */
+function included(items: Item[], include: StudyInclude): Item[] {
+  if (include === 'both') return items
+  const kind = include === 'words' ? 'word' : 'sentence'
+  return items.filter((item) => item.kind === kind)
 }
 
 /** Cards waiting because they came due, oldest first. */
@@ -105,15 +130,20 @@ export function buildQueue({
   newSentencesPerDay,
   unknownCount,
   rankOf,
+  include = 'both',
+  limit,
 }: QueueInput): Item[] {
-  const wordBudget = newWordsPerDay - introducedToday(items, now, 'word')
-  const sentenceBudget = newSentencesPerDay - introducedToday(items, now, 'sentence')
+  const pool = included(items, include)
+  const wordBudget = newWordsPerDay - introducedToday(pool, now, 'word')
+  const sentenceBudget = newSentencesPerDay - introducedToday(pool, now, 'sentence')
 
-  return [
-    ...due(items, now),
-    ...newWords(items, wordBudget, rankOf),
-    ...newSentences(items, sentenceBudget, unknownCount),
+  const queue = [
+    ...due(pool, now),
+    ...newWords(pool, wordBudget, rankOf),
+    ...newSentences(pool, sentenceBudget, unknownCount),
   ]
+
+  return limit === undefined ? queue : queue.slice(0, Math.max(0, limit))
 }
 
 export interface QueueCounts {
@@ -123,9 +153,17 @@ export interface QueueCounts {
   pooled: number
 }
 
-/** What the app shows before you start, so a session has a visible size. */
+/**
+ * What the app shows before you start, so a session has a visible size.
+ *
+ * Deliberately ignores `limit`: these are what is *available*, and the start
+ * screen needs both numbers to say "42 waiting, studying 20". Applying the cap
+ * here would make the shortfall invisible, which is the one thing about a
+ * backlog worth knowing.
+ */
 export function queueCounts(input: QueueInput): QueueCounts {
-  const { items, now, newWordsPerDay, newSentencesPerDay, unknownCount, rankOf } = input
+  const { now, newWordsPerDay, newSentencesPerDay, unknownCount, rankOf } = input
+  const items = included(input.items, input.include ?? 'both')
   return {
     due: due(items, now).length,
     newWords: newWords(items, newWordsPerDay - introducedToday(items, now, 'word'), rankOf)

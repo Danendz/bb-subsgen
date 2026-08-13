@@ -1,3 +1,5 @@
+import type { StudyInclude, StudyMode } from '../flashcards/types'
+
 /** Whether the translated line shares the subtitle card or sits in its own below it. */
 export type TranslationLayout = 'inline' | 'card'
 
@@ -68,6 +70,19 @@ export interface Settings {
   /** New cards let into the deck each day. Capture is generous; intake is not. */
   newWordsPerDay: number
   newSentencesPerDay: number
+  /** How the study session asks its questions. */
+  studyMode: StudyMode
+  /** Which cards it draws from. */
+  studyInclude: StudyInclude
+  /**
+   * Cards per session, counted as distinct cards drawn.
+   *
+   * A card answered wrong comes back inside the same session without inflating
+   * this, so the number is a promise about how much you are taking on rather
+   * than a count of keystrokes. Without it a backlog produces a session you
+   * cannot finish, which is the one thing that stops people opening the app.
+   */
+  studySessionSize: number
   /**
    * How long you can dwell on a line whose words you all know before it is
    * taken as evidence you couldn't read it, in milliseconds.
@@ -105,7 +120,22 @@ export const DEFAULT_SETTINGS: Settings = {
   quizMode: false,
   newWordsPerDay: 10,
   newSentencesPerDay: 5,
+  // Mixed by default: meeting a word from a different angle each sitting is
+  // better practice than any single mode, and it is the behaviour that existed
+  // before the modes were choosable, so nobody's sessions change unasked.
+  studyMode: 'mixed',
+  studyInclude: 'both',
+  studySessionSize: 20,
   struggleThresholdMs: 5000,
+}
+
+/** Bounds for `studySessionSize`, shared by the picker and the queue. */
+export const MIN_SESSION_SIZE = 5
+export const MAX_SESSION_SIZE = 50
+
+export function clampSessionSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_SETTINGS.studySessionSize
+  return Math.min(MAX_SESSION_SIZE, Math.max(MIN_SESSION_SIZE, Math.round(size)))
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'
