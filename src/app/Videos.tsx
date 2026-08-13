@@ -5,7 +5,7 @@ import { coverageOf, fraction, type Coverage } from '../flashcards/capture'
 import { lookupDefs } from '../shared/dict-client'
 import { parseDefinitions } from '../lang/definitions'
 import { rankEntries } from '../lang/entries'
-import { toDiacriticPhrase } from '../lang/tone'
+import { Pinyin } from './pinyin'
 import type { VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { canSpeak, speak } from './speak'
@@ -144,9 +144,7 @@ function VideoDetail({ bvid }: { bvid: string }) {
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
-              <span class="pinyin">
-                {primary ? toDiacriticPhrase(primary.pinyin) : ''}
-              </span>
+              <Pinyin pinyin={primary?.pinyin ?? ''} />
               <span class="grow gloss">
                 {primary
                   ? parseDefinitions(primary.definitions).definitions.slice(0, 2).join('; ')
