@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { chooseTarget, clozeOf } from './cloze'
+import { chooseTarget } from './cloze'
 
 describe('chooseTarget', () => {
   const words = ['我', '在', '学习', '中文']
@@ -31,31 +31,5 @@ describe('chooseTarget', () => {
   test('ignores an explicit target that is not in the line', () => {
     // The line can be re-captured from elsewhere, or trimmed since capture.
     expect(chooseTarget(words, new Set(['我', '在', '中文']), '朋友')).toBe('学习')
-  })
-})
-
-describe('clozeOf', () => {
-  test('splits around the target', () => {
-    expect(clozeOf('我在学习中文。', '学习')).toEqual({
-      before: '我在',
-      blank: '学习',
-      after: '中文。',
-    })
-  })
-
-  test('handles a target at either end', () => {
-    expect(clozeOf('我很好', '我')).toEqual({ before: '', blank: '我', after: '很好' })
-    expect(clozeOf('我很好', '好')).toEqual({ before: '我很', blank: '好', after: '' })
-  })
-
-  test('blanks only the first occurrence', () => {
-    // Blanking both would remove the repetition that often gives the answer
-    // away, but it would also make the sentence read as two different gaps.
-    expect(clozeOf('好好学习', '好')).toEqual({ before: '', blank: '好', after: '好学习' })
-  })
-
-  test('returns null when the target is not there', () => {
-    expect(clozeOf('我很好', '朋友')).toBeNull()
-    expect(clozeOf('我很好', '')).toBeNull()
   })
 })

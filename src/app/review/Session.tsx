@@ -8,9 +8,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { applyReview } from '../../background/flashcards-store'
 import { hanWords } from '../../flashcards/capture'
-import { chooseTarget, clozeOf } from '../../flashcards/cloze'
+import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
-import { LADDER, levelOf, MAX_LEVEL } from '../../flashcards/scheduler'
+import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
 import { segment } from '../../lang/segment'
@@ -21,6 +21,7 @@ import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
 import { canSpeak, speak } from '../speak'
 import { WordBank } from './WordBank'
+import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
 
 /** Rewind, so the jump-back lands before the line rather than on top of it. */
@@ -49,6 +50,11 @@ function timestamp(seconds: number): string {
 
 export interface SessionProps {
   queue: Item[]
+  /**
+   * Ids drawn as practice rather than owed. Getting one right does not move it —
+   * see `reschedules` — so the card has to know which it is before it grades.
+   */
+  extra: Set<string>
   words: Map<string, string>
   known: Set<string>
   /** Known words, as an array, to draw distractor tiles from. */
@@ -57,14 +63,34 @@ export interface SessionProps {
   onFinish: () => void
 }
 
-export function Session({ queue: initial, words, known, distractorPool, mode, onFinish }: SessionProps) {
+export function Session({
+  queue: initial,
+  extra: drawnAsExtra,
+  words,
+  known,
+  distractorPool,
+  mode,
+  onFinish,
+}: SessionProps) {
   const [queue, setQueue] = useState<Item[]>(initial)
+  // Held as state because failing a practice card takes it out: it has lapsed,
+  // so it is owed now, and the retry it earns inside this sitting has to count
+  // the way a scheduled card's does.
+  const [extra, setExtra] = useState<Set<string>>(drawnAsExtra)
   const [at, setAt] = useState(0)
   const [checked, setChecked] = useState(false)
   const [placed, setPlaced] = useState<number[]>([])
   const [typed, setTyped] = useState('')
   const [typingEscape, setTypingEscape] = useState(false)
-  const [outcome, setOutcome] = useState<{ right: boolean; from: number; to: number } | null>(null)
+  const [outcome, setOutcome] = useState<{
+    right: boolean
+    from: number
+    to: number
+    /** The card's due date after grading, which practice leaves where it was. */
+    due: number
+    /** Whether the answer was allowed to move the card at all. */
+    counted: boolean
+  } | null>(null)
 
   const [right, setRight] = useState(0)
   const [combo, setCombo] = useState(0)
@@ -75,10 +101,29 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
   const current = queue[at] ?? null
   const inputRef = useRef<HTMLInputElement | null>(null)
 
-  const loadDefs = useCallback(
-    () => lookupDefs(current && current.kind === 'word' ? [current.text] : []),
-    [current?.text],
+  // The Chinese line this card puts on screen: a word's example, or the
+  // sentence itself. Named here because both the definitions and the renderer
+  // need it, and because for a word card it is not the card's own text.
+  const line =
+    current === null
+      ? ''
+      : current.kind === 'word'
+        ? (current.contexts[current.contexts.length - 1]?.text ?? '')
+        : current.text
+
+  // Every word on screen, in one batched round trip. A lookup per word would be
+  // a message per word, and the line is known in full before it is rendered.
+  const headwords = useMemo(
+    () => [
+      ...new Set([
+        ...(current?.kind === 'word' ? [current.text] : []),
+        ...hanWords(segment(line, words)),
+      ]),
+    ],
+    [current?.id, line, words],
   )
+
+  const loadDefs = useCallback(() => lookupDefs(headwords), [headwords.join('|')])
   const { data: defs } = useAsync(loadDefs)
 
   const card = useMemo(() => {
@@ -179,9 +224,16 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
     if (!current || !card || outcome) return
     const grade: Grade = wasRight ? 'good' : 'again'
     const from = levelOf(current)
-    const next = await applyReview(current, grade, card.exercise.style)
+    const drilled = extra.has(current.id)
+    const next = await applyReview(current, grade, card.exercise.style, Date.now(), drilled)
 
-    setOutcome({ right: wasRight, from, to: levelOf(next) })
+    setOutcome({
+      right: wasRight,
+      from,
+      to: levelOf(next),
+      due: next.due,
+      counted: reschedules({ grade, extra: drilled }),
+    })
 
     if (wasRight) {
       const run = combo + 1
@@ -196,6 +248,15 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
       // out of it. It does not change the denominator: the session promised a
       // number of cards, not a number of answers.
       setQueue((q) => [...q, next])
+      // And it comes back as an ordinary card. It has lapsed, which means it is
+      // owed rather than optional, so getting it right this time counts.
+      if (drilled) {
+        setExtra((ids) => {
+          const rest = new Set(ids)
+          rest.delete(current.id)
+          return rest
+        })
+      }
     }
   }
 
@@ -291,7 +352,6 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
   }
 
   const { exercise, context, translation, target, bank } = card
-  const cloze = target ? clozeOf(current.text, target) : null
   const pinyin = primary?.pinyin ?? ''
 
   return (
@@ -326,12 +386,10 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
           <div class="prompt">
             <p class="translation-prompt">{translation}</p>
           </div>
-        ) : exercise.cue === 'cloze' && cloze ? (
+        ) : exercise.cue === 'cloze' && target ? (
           <div class="prompt">
             <p class="hanzi-line">
-              {cloze.before}
-              <span class="blank">{'　'.repeat(Math.max(1, cloze.blank.length))}</span>
-              {cloze.after}
+              <Line text={current.text} words={words} known={known} defs={defs} blank={target} />
             </p>
             <button class="speak" onClick={() => speak(current.text)}>
               <span aria-hidden="true">♪</span> Play again
@@ -339,7 +397,15 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
           </div>
         ) : (
           <div class="prompt">
-            <p class={current.kind === 'word' ? 'hanzi-xl' : 'hanzi-line'}>{current.text}</p>
+            {/* A question shows the characters and nothing else; the reading and
+                the meaning are there to be asked for, not volunteered. */}
+            <p class={current.kind === 'word' ? 'hanzi-xl' : 'hanzi-line'}>
+              {current.kind === 'word' ? (
+                current.text
+              ) : (
+                <Line text={current.text} words={words} known={known} defs={defs} />
+              )}
+            </p>
           </div>
         )}
 
@@ -401,7 +467,15 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
             {/* The characters are the answer only when they were not the
                 question. Repeating them under a prompt that already showed them
                 just makes the card say the same thing twice. */}
-            {exercise.cue !== 'hanzi' && <p class="answer-hanzi">{current.text}</p>}
+            {exercise.cue !== 'hanzi' && (
+              <p class="answer-hanzi">
+                {current.kind === 'word' ? (
+                  current.text
+                ) : (
+                  <Line text={current.text} words={words} known={known} defs={defs} readings />
+                )}
+              </p>
+            )}
             {pinyin && <Pinyin pinyin={pinyin} />}
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
@@ -417,11 +491,27 @@ export function Session({ queue: initial, words, known, distractorPool, mode, on
               </button>
             )}
 
-            {outcome && <Mastery from={outcome.from} to={outcome.to} />}
+            {outcome && (
+              <Mastery
+                from={outcome.from}
+                to={outcome.to}
+                due={outcome.due}
+                counted={outcome.counted}
+              />
+            )}
 
             {current.kind === 'word' && context && (
               <div class="context">
-                <p class="hanzi-line">{context.text}</p>
+                <p class="hanzi-line">
+                  <Line
+                    text={context.text}
+                    words={words}
+                    known={known}
+                    defs={defs}
+                    mark={current.text}
+                    readings
+                  />
+                </p>
                 {context.translation && <p class="muted small">{context.translation}</p>}
               </div>
             )}
@@ -495,18 +585,39 @@ function ToneBar({ tones, total }: { tones: number[]; total: number }) {
   )
 }
 
-/** Where the card sits on the ladder, and which way it just moved. */
-function Mastery({ from, to }: { from: number; to: number }) {
-  const days = LADDER[to]
+/**
+ * Where the card sits on the ladder, and which way it just moved.
+ *
+ * Reads the card's own due date rather than the rung's nominal spacing: a card
+ * met as practice keeps whatever due date it already had, so quoting `LADDER[to]`
+ * would announce 35 days on a card that is genuinely back in twelve.
+ */
+function Mastery({
+  from,
+  to,
+  due,
+  counted,
+}: {
+  from: number
+  to: number
+  due: number
+  counted: boolean
+}) {
+  const days = Math.round((due - Date.now()) / DAY_MS)
+  const when =
+    to === MAX_LEVEL && counted
+      ? 'Mastered'
+      : days < 1
+        ? 'Back in a few minutes'
+        : `${counted ? 'Back' : 'Still due'} in ${days} day${days === 1 ? '' : 's'}`
+
   return (
     <div class={`mastery ${to > from ? 'up' : to < from ? 'down' : ''}`}>
       <Pips level={to} lost={to < from} />
       <span class="small muted">
-        {to === MAX_LEVEL
-          ? 'Mastered'
-          : days === 0
-            ? 'Back in a few minutes'
-            : `Back in ${days} day${days === 1 ? '' : 's'}`}
+        {/* Said plainly, because a card that gives no feedback about why it
+            didn't move invites the question of whether the answer registered. */}
+        {counted ? when : `Practice · ${when}`}
       </span>
     </div>
   )

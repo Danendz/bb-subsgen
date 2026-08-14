@@ -7,8 +7,8 @@
 
 import { useCallback, useMemo, useState } from 'preact/hooks'
 import { flashcardsDb } from '../flashcards/db'
-import { knownSetOf, listItems, studyStreak } from '../flashcards/queries'
-import { buildQueue, queueCounts } from '../flashcards/queue'
+import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards/queries'
+import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
 import { hanWords, unknownIn } from '../flashcards/capture'
 import { rankMap } from '../background/flashcards-store'
 import { segment } from '../lang/segment'
@@ -23,18 +23,29 @@ import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 export function Review() {
   const load = useCallback(async () => {
     const db = await flashcardsDb()
-    const [items, words, settings, ranks, streak] = await Promise.all([
+    const [items, words, settings, ranks, streak, exposures] = await Promise.all([
       listItems(db),
       loadWords(),
       loadSettings(),
       rankMap(),
       studyStreak(db),
+      listExposures(db),
     ])
-    return { items, words, settings, ranks, streak, known: knownSetOf(items) }
+    return {
+      items,
+      words,
+      settings,
+      ranks,
+      streak,
+      known: knownSetOf(items),
+      // What orders the word pool. Passively collected words have no other
+      // claim on your attention than how often you have actually met them.
+      seen: new Map(exposures.map((e) => [e.headword, e.count])),
+    }
   }, [])
   const { data, loading, reload } = useAsync(load)
 
-  const [queue, setQueue] = useState<Item[] | null>(null)
+  const [session, setSession] = useState<QueueSession | null>(null)
   const [editing, setEditing] = useState(false)
   const [override, setOverride] = useState<Partial<SessionSetup>>({})
 
@@ -45,6 +56,8 @@ export function Review() {
   )
 
   const rankOf = useCallback((headword: string) => data?.ranks.get(headword), [data])
+
+  const seenCount = useCallback((headword: string) => data?.seen.get(headword) ?? 0, [data])
 
   // The saved setup, with anything changed this visit laid over the top. Kept
   // local as well as saved so the panel responds immediately rather than after
@@ -73,9 +86,10 @@ export function Review() {
             include: setup.studyInclude,
             unknownCount,
             rankOf,
+            seenCount,
           })
         : null,
-    [data, setup, unknownCount, rankOf],
+    [data, setup, unknownCount, rankOf, seenCount],
   )
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
@@ -88,8 +102,8 @@ export function Review() {
   }
 
   const start = () => {
-    setQueue(
-      buildQueue({
+    setSession(
+      buildSession({
         items: data.items,
         now: Date.now(),
         newWordsPerDay: data.settings.newWordsPerDay,
@@ -98,29 +112,36 @@ export function Review() {
         limit: setup.studySessionSize,
         unknownCount,
         rankOf,
+        seenCount,
       }),
     )
   }
 
-  if (queue && queue.length > 0) {
+  if (session && session.cards.length > 0) {
     return (
       <Session
-        key={queue[0]?.id}
-        queue={queue}
+        key={session.cards[0]?.id}
+        queue={session.cards}
+        extra={session.extra}
         words={data.words}
         known={data.known}
         distractorPool={distractorPool}
         mode={setup.studyMode}
         onFinish={() => {
-          setQueue(null)
+          setSession(null)
           reload()
         }}
       />
     )
   }
 
-  const waiting = counts.due + counts.newWords + counts.newSentences
-  const studying = Math.min(waiting, setup.studySessionSize)
+  // What is owed, and then what the rest of the session is made of. Split apart
+  // because they are different promises: the scheduled cards are the day's work,
+  // the practice is only there so the session is never empty.
+  const owed = counts.due + counts.newWords + counts.newSentences
+  const scheduled = Math.min(owed, setup.studySessionSize)
+  const drilled = Math.min(counts.practice, setup.studySessionSize - scheduled)
+  const studying = scheduled + drilled
 
   return (
     <>
@@ -160,19 +181,20 @@ export function Review() {
         {editing && <Setup setup={setup} canSpeak={canSpeak()} onChange={change} />}
       </div>
 
-      {waiting > 0 ? (
+      {studying > 0 ? (
         <div class="start">
           <button class="primary big" onClick={start}>
             Start studying
           </button>
           <p class="small muted">
             {studying} card{studying === 1 ? '' : 's'}
-            {waiting > studying ? ` of ${waiting} waiting` : ''}
+            {drilled > 0 ? ` · ${scheduled} scheduled, ${drilled} practice` : ''}
+            {owed > scheduled ? ` · ${owed} waiting` : ''}
           </p>
         </div>
       ) : (
         <div class="empty">
-          <p>Nothing due.</p>
+          <p>Nothing to study yet.</p>
           <p class="small">
             {counts.pooled > 0
               ? `${counts.pooled} lines are waiting their turn — they are let in a few a day, easiest first.`

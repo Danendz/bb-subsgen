@@ -13,7 +13,7 @@
 
 import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
 import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
-import { schedule } from '../flashcards/scheduler'
+import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
 import type { ListKind } from '../flashcards/wordlist'
 import {
@@ -32,14 +32,32 @@ import {
   type VideoWord,
 } from '../flashcards/types'
 
-function newItem(id: string, kind: Item['kind'], text: string, now: number): Item {
+/**
+ * Where a newly collected item starts.
+ *
+ * Both kinds get an intake pool, and what decides between pool and deck is how
+ * the thing was found rather than what it is. Stopping on a word is a deliberate
+ * act and a scarce one, so it earns a place in the deck directly. A word met
+ * inside a line that scrolled past is evidence of nothing yet — an evening's
+ * watching turns up hundreds — so it waits with the lines, and `buildQueue`
+ * rations both.
+ */
+function initialState(kind: Item['kind'], passive: boolean): Item['state'] {
+  return kind === 'word' && !passive ? 'new' : 'pool'
+}
+
+function newItem(
+  id: string,
+  kind: Item['kind'],
+  text: string,
+  now: number,
+  passive = false,
+): Item {
   return {
     id,
     kind,
     text,
-    // Words are discovered because you didn't know them, so they enter the
-    // deck directly. Sentences land in the pool and are rationed out.
-    state: kind === 'word' ? 'new' : 'pool',
+    state: initialState(kind, passive),
     interval: 0,
     ease: 2.5,
     due: now,
@@ -110,46 +128,85 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
 }
 
 /**
- * Adds a word to the deck, or records another sighting of one already there.
+ * Adds a word, or records another sighting of one already collected.
  *
- * Never demotes: discovering a word you had marked known leaves it known. You
- * can hover a known word for its definition without that being a claim you have
- * forgotten it.
+ * Never demotes: discovering a word you had marked known leaves it known, and a
+ * word already in the deck is not pushed back into the pool by passing it in a
+ * subtitle. You can hover a known word for its definition without that being a
+ * claim you have forgotten it.
+ *
+ * Promotes in one direction only. Stopping on a word that was waiting in the
+ * pool moves it into the deck — that lookup is exactly the evidence the pool was
+ * waiting for, and it is the one thing that should let a word jump the queue.
  *
  * Deliberately stores no frequency rank. A word list is uploaded whenever the
  * user gets round to it, usually long after words have been collected, so a
  * rank captured here would be missing on exactly the cards that need ordering.
  * The queue looks rank up instead — see `buildQueue`.
  */
+function discoveredWord(
+  existing: Item | undefined,
+  headword: string,
+  now: number,
+  passive: boolean,
+  context: Context | undefined,
+): Item {
+  if (!existing) return withContext(newItem(wordId(headword), 'word', headword, now, passive), context)
+  const promoted = !passive && existing.state === 'pool' ? { ...existing, state: 'new' as const } : existing
+  return withContext(promoted, context)
+}
+
 export async function discoverWordIn(
   db: IDBDatabase,
   headword: string,
   context?: Context,
+  passive = false,
 ): Promise<void> {
-  const id = wordId(headword)
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
-  upsert<Item>(tx.objectStore(STORES.items), id, (existing) =>
-    withContext(existing ?? newItem(id, 'word', headword, now), context),
+  upsert<Item>(tx.objectStore(STORES.items), wordId(headword), (existing) =>
+    discoveredWord(existing, headword, now, passive, context),
   )
   await done(tx)
 }
 
-/** Captures a line into the intake pool. A line already held only gains the context. */
+/**
+ * Captures a line into the intake pool, with the words in it you don't yet know.
+ *
+ * Both in one transaction, because they are one event. A line is kept precisely
+ * *because* it holds words you can't read (`shouldCaptureLine`), so collecting
+ * the line and leaving its vocabulary behind builds a pool of sentences waiting
+ * on words that nothing is feeding you — `graduationOrder` only releases a line
+ * once its unknowns are few. Those words are passive discoveries: they join the
+ * pool rather than the deck, and are rationed the same way the lines are.
+ *
+ * Anything already held only gains the context.
+ */
 export async function captureSentenceIn(
   db: IDBDatabase,
   text: string,
   context: Context,
   target?: string,
+  words: string[] = [],
 ): Promise<void> {
   const id = sentenceId(text)
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
-  upsert<Item>(tx.objectStore(STORES.items), id, (existing) =>
+  const store = tx.objectStore(STORES.items)
+
+  upsert<Item>(store, id, (existing) =>
     withContext(existing ?? { ...newItem(id, 'sentence', text.trim(), now), target }, context),
   )
+  // Deduped: a line repeating a word is one card, and two `upsert`s on the same
+  // key in one transaction both read before either writes.
+  for (const word of new Set(words)) {
+    upsert<Item>(store, wordId(word), (existing) =>
+      discoveredWord(existing, word, now, true, context),
+    )
+  }
+
   await done(tx)
 }
 
@@ -200,15 +257,22 @@ export async function applyReviewIn(
   grade: Grade,
   style: ReviewStyle,
   now = Date.now(),
+  extra = false,
 ): Promise<Item> {
-  const next: Item = {
-    ...item,
-    ...schedule(item, grade, now),
-    // Introduction is the first review, not a separate promotion step — which
-    // is what lets the daily intake limits be counted from the items
-    // themselves rather than from a counter that an import would have to merge.
-    introducedAt: item.introducedAt ?? now,
-  }
+  const next: Item = reschedules({ grade, extra })
+    ? {
+        ...item,
+        ...schedule(item, grade, now),
+        // Introduction is the first review, not a separate promotion step — which
+        // is what lets the daily intake limits be counted from the items
+        // themselves rather than from a counter that an import would have to merge.
+        introducedAt: item.introducedAt ?? now,
+      }
+    : // Asked, but not moved. `reps` is raised because that is exactly what it
+      // records, and because it is what rotates the question style in mixed
+      // mode — a card you drill should be met from a different angle each time
+      // rather than the same one until it next comes due.
+      { ...item, reps: item.reps + 1 }
 
   const review: Review = {
     itemId: item.id,
@@ -217,6 +281,9 @@ export async function applyReviewIn(
     style,
     intervalBefore: item.interval,
     intervalAfter: next.interval,
+    // Set only when true, so a scheduled review is written exactly as it always
+    // was and the log gains no field on the rows that do not need one.
+    ...(extra ? { extra: true } : {}),
   }
 
   const tx = db.transaction([STORES.items, STORES.reviews], 'readwrite')
@@ -382,16 +449,21 @@ export async function recordExposures(batch: ExposureBatch): Promise<void> {
   return recordExposuresIn(await flashcardsDb(), batch)
 }
 
-export async function discoverWord(headword: string, context?: Context): Promise<void> {
-  return discoverWordIn(await flashcardsDb(), headword, context)
+export async function discoverWord(
+  headword: string,
+  context?: Context,
+  passive?: boolean,
+): Promise<void> {
+  return discoverWordIn(await flashcardsDb(), headword, context, passive)
 }
 
 export async function captureSentence(
   text: string,
   context: Context,
   target?: string,
+  words?: string[],
 ): Promise<void> {
-  return captureSentenceIn(await flashcardsDb(), text, context, target)
+  return captureSentenceIn(await flashcardsDb(), text, context, target, words)
 }
 
 export async function markKnown(headword: string, known: boolean): Promise<void> {
@@ -425,8 +497,9 @@ export async function applyReview(
   grade: Grade,
   style: ReviewStyle,
   now = Date.now(),
+  extra = false,
 ): Promise<Item> {
-  const next = await applyReviewIn(await flashcardsDb(), item, grade, style, now)
+  const next = await applyReviewIn(await flashcardsDb(), item, grade, style, now, extra)
   if (isKnown(item) !== isKnown(next)) await refreshKnownMirror()
   return next
 }

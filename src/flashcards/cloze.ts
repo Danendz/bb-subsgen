@@ -1,11 +1,5 @@
 // Turning a captured line into a question.
 
-export interface Cloze {
-  before: string
-  blank: string
-  after: string
-}
-
 /**
  * Which word to blank out of a sentence.
  *
@@ -25,16 +19,4 @@ export function chooseTarget(
 
   const unknown = [...new Set(words.filter((word) => !known.has(word)))]
   return unknown.length === 1 ? unknown[0] : null
-}
-
-/** Splits `text` around the first occurrence of `target`. Null if it isn't there. */
-export function clozeOf(text: string, target: string): Cloze | null {
-  if (!target) return null
-  const at = text.indexOf(target)
-  if (at === -1) return null
-  return {
-    before: text.slice(0, at),
-    blank: target,
-    after: text.slice(at + target.length),
-  }
 }

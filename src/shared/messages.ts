@@ -55,7 +55,22 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
 export type FlashcardsMessage =
   | { type: 'bb-subsgen:record-exposures'; batch: ExposureBatch }
   | { type: 'bb-subsgen:discover-word'; headword: string; context?: Context }
-  | { type: 'bb-subsgen:capture-sentence'; text: string; context: Context; target?: string }
+  | {
+      type: 'bb-subsgen:capture-sentence'
+      text: string
+      context: Context
+      target?: string
+      /**
+       * Unknown words in the line, pooled alongside it.
+       *
+       * Carried on this message rather than sent as a `discover-word` each is
+       * what keeps capture affordable: a subtitle line changes every few seconds
+       * and holds a handful of unknown words, so per-word messages would be
+       * roughly one round trip and one transaction per second for the length of
+       * a video — the cost `createExposureBuffer` exists to avoid.
+       */
+      words?: string[]
+    }
   | { type: 'bb-subsgen:mark-known'; headword: string; known: boolean }
   | { type: 'bb-subsgen:record-signal'; signal: Signal }
 

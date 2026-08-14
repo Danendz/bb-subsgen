@@ -435,12 +435,14 @@ export function attachReader({
   /**
    * Files a selection into the right deck.
    *
-   * Exactly one dictionary headword is a word; anything longer is a sentence.
-   * A sentence also discovers the unknown words inside it — selecting a phrase
-   * you couldn't read is a claim about its vocabulary as much as its grammar,
-   * and this is the playful half: dragging across text you don't understand
-   * quietly collects everything new in it. Words already known are skipped, or
-   * every selection would drag 的 and 我们 back in.
+   * Exactly one dictionary headword is a word, and goes straight into the deck.
+   * Anything longer is a sentence, and collects the unknown words inside it too
+   * — selecting a phrase you couldn't read is a claim about its vocabulary as
+   * much as its grammar, and this is the playful half: dragging across text you
+   * don't understand quietly collects everything new in it. Those words wait in
+   * the pool rather than joining the deck, which is what lets the gesture stay
+   * this generous. Words already known are skipped, or every selection would
+   * drag 的 and 我们 back in.
    */
   const captureSelection = (selected: string, list: Map<string, string>) => {
     const target = selectionTarget(selected, list)
@@ -452,9 +454,13 @@ export function attachReader({
       return
     }
 
-    if (context) captureSentence(target.text, context)
-    for (const word of unknownIn(hanWords(segment(target.text, list)), known())) {
-      discoverWord(word, context)
+    if (context) {
+      captureSentence(
+        target.text,
+        context,
+        undefined,
+        unknownIn(hanWords(segment(target.text, list)), known()),
+      )
     }
   }
 

@@ -12,9 +12,29 @@
 // and no lost history. That is also what makes importing another browser's
 // export a merge rather than an overwrite.
 
-import type { Grade, Item, ItemState } from './types'
+import type { Grade, Item, ItemState, Review } from './types'
 
 export const DAY_MS = 86_400_000
+
+/**
+ * Whether a review moves the card, or only records that it was asked.
+ *
+ * Extra practice is drawn from cards that are not due, so a correct answer says
+ * you know it *today* — which the interval never disputed. Letting that climb
+ * the ladder would mean mastery could be drilled for rather than remembered,
+ * and with practice filling the tail of every session it would be climbed daily.
+ *
+ * A wrong answer is not symmetrical: failing a card ahead of its due date is
+ * direct evidence the interval was too long, so it lapses like any other.
+ *
+ * Lives here rather than in the store because `replay` has to reach the same
+ * verdict — the log is the source of truth, and two browsers that disagreed
+ * about which rows moved the card would rebuild different schedules from the
+ * same history.
+ */
+export function reschedules(review: Pick<Review, 'grade' | 'extra'>): boolean {
+  return !review.extra || review.grade === 'again'
+}
 
 /**
  * Days at each rung.

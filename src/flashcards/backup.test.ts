@@ -78,6 +78,63 @@ describe('replay', () => {
     const rebuilt = replay(word('学习'), [review('中文', DAY0), review('学习', DAY0)])
     expect(rebuilt.reps).toBe(1)
   })
+
+  describe('extra practice', () => {
+    const drill = (text: string, at: number, grade: Review['grade'] = 'good'): Review => ({
+      ...review(text, at, grade),
+      extra: true,
+    })
+
+    test('a correct drill replays as though it were not there', () => {
+      // The store and the replay have to reach the same verdict, or importing
+      // would rebuild a schedule the browser that recorded it never had.
+      const log = [review('学习', DAY0), review('学习', DAY0 + DAY_MS)]
+      const drilled = replay(word('学习'), [...log, drill('学习', DAY0 + 2 * DAY_MS)])
+      const clean = replay(word('学习'), log)
+
+      expect(drilled.level).toBe(clean.level)
+      expect(drilled.interval).toBe(clean.interval)
+      expect(drilled.due).toBe(clean.due)
+      expect(drilled.state).toBe(clean.state)
+    })
+
+    test('but it is still counted as having been asked', () => {
+      const rebuilt = replay(word('学习'), [review('学习', DAY0), drill('学习', DAY0 + DAY_MS)])
+      expect(rebuilt.reps).toBe(2)
+    })
+
+    test('a failed drill replays as an ordinary lapse', () => {
+      const climb = [DAY0, DAY0 + DAY_MS, DAY0 + 4 * DAY_MS].map((at) => review('学习', at))
+      const rebuilt = replay(word('学习'), [...climb, drill('学习', DAY0 + 5 * DAY_MS, 'again')])
+
+      expect(rebuilt.level).toBe(2)
+      expect(rebuilt.lapses).toBe(1)
+      expect(rebuilt.state).toBe('learning')
+    })
+
+    test('introducedAt comes from the first review that moved the card', () => {
+      // A card is introduced by being scheduled; being drilled is not the same
+      // event, and the daily intake limits count these.
+      const rebuilt = replay(word('学习'), [
+        drill('学习', DAY0),
+        review('学习', DAY0 + DAY_MS),
+      ])
+      expect(rebuilt.introducedAt).toBe(DAY0 + DAY_MS)
+    })
+
+    test('survives an export and import unchanged', () => {
+      const local = backup({
+        items: [word('学习', { state: 'review', interval: 3, level: 2 })],
+        reviews: [review('学习', DAY0), review('学习', DAY0 + DAY_MS)],
+      })
+      const merged = merge(local, backup({ reviews: [drill('学习', DAY0 + 2 * DAY_MS)] }), {
+        prefer: 'local',
+      })
+
+      expect(merged.items[0].interval).toBe(replay(word('学习'), local.reviews).interval)
+      expect(merged.items[0].reps).toBe(3)
+    })
+  })
 })
 
 describe('merge', () => {
@@ -197,6 +254,45 @@ describe('merge', () => {
       options,
     )
     expect(merged.items[0].contexts).toHaveLength(2)
+  })
+
+  describe('the intake pool', () => {
+    test('a pooled word imports as pooled', () => {
+      const merged = merge(
+        backup({ items: [word('憔悴', { state: 'pool' })] }),
+        backup({ items: [word('憔悴', { state: 'pool' })] }),
+        options,
+      )
+      expect(merged.items[0].state).toBe('pool')
+    })
+
+    test('a lookup on the other machine takes the word out of the pool', () => {
+      // Which browser you happen to import into is not a fact about the card.
+      const watched = backup({ items: [word('憔悴', { state: 'pool' })] })
+      const studied = backup({ items: [word('憔悴', { state: 'new' })] })
+
+      expect(merge(watched, studied, options).items[0].state).toBe('new')
+      expect(merge(studied, watched, options).items[0].state).toBe('new')
+    })
+
+    test('a pooled word that was studied elsewhere gets its schedule', () => {
+      const merged = merge(
+        backup({ items: [word('憔悴', { state: 'pool' })] }),
+        backup({ items: [word('憔悴')], reviews: [review('憔悴', DAY0)] }),
+        options,
+      )
+      expect(merged.items[0].state).toBe('review')
+      expect(merged.items[0].reps).toBe(1)
+    })
+
+    test('leaving the pool does not override a discarded declaration', () => {
+      // The overrule still has to come from the side that did not declare it,
+      // or importing would reinstate the "known" the user just discarded.
+      const local = backup({ items: [word('我', { state: 'known' })] })
+      const incoming = backup({ items: [word('我', { state: 'pool' })] })
+      expect(merge(local, incoming, { prefer: 'incoming' }).items[0].state).toBe('pool')
+      expect(merge(local, incoming, { prefer: 'local' }).items[0].state).toBe('known')
+    })
   })
 
   test('a declared known word survives replay', () => {

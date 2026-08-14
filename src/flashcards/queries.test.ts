@@ -45,11 +45,45 @@ describe('deckCounts', () => {
       sentence('我在学习中文。'),
       sentence('他很好。', { state: 'new' }),
     ]
-    expect(deckCounts(items)).toEqual({ words: 3, known: 2, sentences: 2, pool: 1 })
+    expect(deckCounts(items)).toEqual({
+      words: 3,
+      known: 2,
+      sentences: 2,
+      pool: 1,
+      wordPool: 0,
+    })
+  })
+
+  test('the two pools are counted apart', () => {
+    // Summing them would report a backlog without saying which kind, and the
+    // two are rationed by different rules — comprehensibility against exposure.
+    const items = [
+      word('忧郁', { state: 'pool' }),
+      word('憔悴', { state: 'pool' }),
+      word('学习'),
+      sentence('我在学习中文。'),
+    ]
+    expect(deckCounts(items)).toMatchObject({ words: 3, wordPool: 2, pool: 1, sentences: 1 })
+  })
+
+  test('a pooled word still counts as collected', () => {
+    // The Overview's "words collected" is about what capture has found, not
+    // about what has reached the deck — the pool is the rest of that number.
+    expect(deckCounts([word('忧郁', { state: 'pool' })])).toMatchObject({
+      words: 1,
+      wordPool: 1,
+      known: 0,
+    })
   })
 
   test('an empty deck counts to zero rather than throwing', () => {
-    expect(deckCounts([])).toEqual({ words: 0, known: 0, sentences: 0, pool: 0 })
+    expect(deckCounts([])).toEqual({
+      words: 0,
+      known: 0,
+      sentences: 0,
+      pool: 0,
+      wordPool: 0,
+    })
   })
 })
 

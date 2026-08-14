@@ -627,6 +627,85 @@ button.speak.big {
 }
 .context p { margin: 0; }
 
+/* A line, word by word ------------------------------------------------------ */
+
+/* Laid out as a wrapping row of stacked words rather than as running text, so a
+   reading can sit above each one. Same shape as the subtitle overlay's line. */
+.line-words {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.line-word {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 2px;
+  border-radius: 6px;
+}
+.line-word.askable { cursor: help; }
+.line-word.askable:hover,
+.line-word.askable:focus-visible { background: var(--edge); }
+.line-word.punct { align-self: flex-end; }
+
+/* Subordinate to the characters — at equal size the two rows blur into one run. */
+.line-word .ruby {
+  font-size: 0.46em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+/* Withheld, not removed: a line of mixed known and unknown words has to keep
+   its characters on one baseline, or reading it becomes the puzzle. */
+.line-word .ruby.withheld { visibility: hidden; }
+
+/* The word this card is about, inside its example. Deliberately not the .blank
+   treatment: that rule already means "the word that is missing", and one mark
+   cannot carry both that and "the word that is here". */
+.line-word .zh.marked {
+  font-weight: 600;
+  color: var(--action);
+}
+
+/* Asked for, never volunteered — which is why this is the only place a meaning
+   appears on a question. CSS-driven so hover, tap and keyboard focus all reach
+   it without three separate handlers. */
+.word-tip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 5;
+  display: none;
+  width: max-content;
+  max-width: 220px;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  text-align: left;
+  white-space: normal;
+}
+.line-word.askable:hover > .word-tip,
+.line-word.askable:focus-visible > .word-tip { display: block; }
+
+.tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.tip-word { font: 600 17px var(--hanzi); }
+.tip-gloss {
+  display: block;
+  font: 400 13px/1.45 var(--body);
+  color: var(--text-2);
+}
+
 /* Mastery: the ladder made visible, since the ladder is now the whole state. */
 .mastery {
   display: flex;

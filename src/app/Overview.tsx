@@ -57,7 +57,8 @@ export function Overview() {
         <Stat n={counts.words} label="words collected" />
         <Stat n={counts.known} label="words known" />
         <Stat n={counts.sentences} label="sentences" />
-        <Stat n={counts.pool} label="waiting in the pool" />
+        <Stat n={counts.wordPool} label="words in the pool" />
+        <Stat n={counts.pool} label="lines in the pool" />
       </div>
 
       {ranked.length > 0 && (

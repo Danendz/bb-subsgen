@@ -10,7 +10,7 @@
 // not the other. There is no evidence that can settle those, so they are the
 // one thing the user is asked about — once, globally.
 
-import { schedule } from './scheduler'
+import { reschedules, schedule } from './scheduler'
 import type { Exposure, Item, Review, Video, VideoWord } from './types'
 
 export const BACKUP_VERSION = 1
@@ -89,6 +89,10 @@ function min(a: number | undefined, b: number | undefined): number | undefined {
  * authoritative, so combining two logs and replaying gives a well-defined
  * answer instead of a choice between two stale intervals. It is also what would
  * let SM-2 be swapped for something better without a migration.
+ *
+ * Extra practice is replayed by the same rule the store applies when it writes
+ * it (`reschedules`), so an imported deck lands exactly where the browser that
+ * recorded the history had it.
  */
 export function replay(item: Item, reviews: Review[]): Item {
   const ordered = reviews.filter((r) => r.itemId === item.id).sort((a, b) => a.at - b.at)
@@ -100,8 +104,16 @@ export function replay(item: Item, reviews: Review[]): Item {
   let state = { interval: 0, level: 0, ease: 2.5, reps: 0, lapses: 0 }
   let due = item.due
   let itemState: Item['state'] = item.state
+  // The first review that moved the card, not simply the first row. A card is
+  // introduced by being scheduled; being drilled is not the same event.
+  let introducedAt: number | undefined
 
   for (const review of ordered) {
+    if (!reschedules(review)) {
+      state = { ...state, reps: state.reps + 1 }
+      continue
+    }
+
     const next = schedule(state, review.grade, review.at)
     state = {
       interval: next.interval,
@@ -112,9 +124,10 @@ export function replay(item: Item, reviews: Review[]): Item {
     }
     due = next.due
     itemState = next.state
+    introducedAt ??= review.at
   }
 
-  return { ...item, ...state, due, state: itemState, introducedAt: ordered[0].at }
+  return { ...item, ...state, due, state: itemState, introducedAt }
 }
 
 export interface Conflict {
@@ -147,6 +160,28 @@ export function conflictsOf(local: Backup, incoming: Backup): Conflict[] {
   return conflicts
 }
 
+/**
+ * Which side's state survives the merge.
+ *
+ * When a declaration is overruled, the state has to come from the side that did
+ * *not* declare it — falling back to the other would quietly reinstate the very
+ * "known" the user just chose to discard.
+ *
+ * Past that, the local side wins except when it holds the card in the pool. The
+ * pool is the weakest state a card can be in: collected, with nothing yet having
+ * happened to it. Taking the local state unconditionally would let importing on
+ * the machine that only ever watched undo a lookup made on the machine you
+ * study on — and which browser you happen to import into is not a fact about
+ * the card. Leaving the pool is one-way here for the same reason it is one-way
+ * in `discoveredWord`.
+ */
+function mergeState(local: Item, incoming: Item, declaredKnown: boolean): Item['state'] {
+  if (declaredKnown) return 'known'
+  if (local.state === 'known') return incoming.state
+  if (incoming.state === 'known') return local.state
+  return local.state === 'pool' ? incoming.state : local.state
+}
+
 function mergeItem(local: Item, incoming: Item, prefer: 'local' | 'incoming'): Item {
   const declaredKnown =
     local.state === 'known' && incoming.state === 'known'
@@ -165,11 +200,7 @@ function mergeItem(local: Item, incoming: Item, prefer: 'local' | 'incoming'): I
     introducedAt: min(local.introducedAt, incoming.introducedAt),
     target: local.target ?? incoming.target,
     contexts: mergeContexts(local, incoming),
-    // When a declaration is overruled, the state has to come from the side that
-    // did *not* declare it — falling back to the local state would quietly
-    // reinstate the very "known" the user just chose to discard. Both sides
-    // declaring it lands in the first branch, so exactly one can be 'known' here.
-    state: declaredKnown ? 'known' : local.state === 'known' ? incoming.state : local.state,
+    state: mergeState(local, incoming, declaredKnown),
   }
 }
 

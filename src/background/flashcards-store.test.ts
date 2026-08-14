@@ -124,6 +124,62 @@ describe('discoverWordIn', () => {
     expect((await get<Item>(database, STORES.items, wordId('我')))?.state).toBe('known')
   })
 
+  test('a passive discovery waits in the pool', async () => {
+    // A word met in a line that scrolled past is evidence of nothing yet — an
+    // evening's watching turns up hundreds.
+    const database = await db()
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
+
+    const item = await get<Item>(database, STORES.items, wordId('憔悴'))
+    expect(item?.state).toBe('pool')
+    expect(item?.contexts).toHaveLength(1)
+  })
+
+  test('a passive discovery never pushes a card back out of the deck', async () => {
+    const database = await db()
+    await discoverWordIn(database, '学习', context('我在学习中文。'))
+    await discoverWordIn(database, '学习', context('他学习得很好。'), true)
+
+    expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('new')
+  })
+
+  test('a passive discovery does not disturb a word in review', async () => {
+    const database = await db()
+    await discoverWordIn(database, '学习')
+    const item = (await get<Item>(database, STORES.items, wordId('学习')))!
+    await applyReviewIn(database, item, 'good', 'recognise')
+
+    await discoverWordIn(database, '学习', context('他学习得很好。'), true)
+    expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('review')
+  })
+
+  test('stopping on a word pulls it out of the pool', async () => {
+    // The lookup is exactly the evidence the pool was waiting for, and it is
+    // the one thing that should let a word jump the queue.
+    const database = await db()
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'))
+
+    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('new')
+  })
+
+  test('promoting out of the pool keeps the contexts already collected', async () => {
+    const database = await db()
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
+    await discoverWordIn(database, '憔悴', context('她面容憔悴。'))
+
+    const item = await get<Item>(database, STORES.items, wordId('憔悴'))
+    expect(item?.state).toBe('new')
+    expect(item?.contexts).toHaveLength(2)
+  })
+
+  test('a passive discovery of a pooled word leaves it pooled', async () => {
+    const database = await db()
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
+    await discoverWordIn(database, '憔悴', context('她面容憔悴。'), true)
+
+    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('pool')
+  })
 })
 
 describe('captureSentenceIn', () => {
@@ -151,6 +207,66 @@ describe('captureSentenceIn', () => {
     expect((await get<Item>(database, STORES.items, sentenceId('我在学习中文。')))?.target).toBe(
       '学习',
     )
+  })
+
+  test('pools the words that made the line worth keeping', async () => {
+    // A line is kept precisely because it holds words you can't read. Leaving
+    // that vocabulary behind is what built a pool of sentences waiting on words
+    // nothing was teaching.
+    const database = await db()
+    const line = '他面容憔悴。'
+    await captureSentenceIn(database, line, context(line), undefined, ['面容', '憔悴'])
+
+    expect((await get<Item>(database, STORES.items, sentenceId(line)))?.state).toBe('pool')
+    for (const word of ['面容', '憔悴']) {
+      const item = await get<Item>(database, STORES.items, wordId(word))
+      expect(item?.kind).toBe('word')
+      expect(item?.state).toBe('pool')
+      // The line the word was met in travels with it, same as a hover.
+      expect(item?.contexts.map((c) => c.text)).toEqual([line])
+    }
+  })
+
+  test('the words go in with the line, in one transaction', async () => {
+    const database = await db()
+    const line = '他面容憔悴。'
+    await captureSentenceIn(database, line, context(line), undefined, ['憔悴'])
+
+    const all = await request<Item[]>(
+      database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
+    )
+    expect(all.map((i) => i.id).sort()).toEqual([sentenceId(line), wordId('憔悴')].sort())
+  })
+
+  test('a word already in the deck is not demoted by the line it appears in', async () => {
+    const database = await db()
+    await discoverWordIn(database, '憔悴', context('她面容憔悴。'))
+    await captureSentenceIn(database, '他面容憔悴。', context('他面容憔悴。'), undefined, ['憔悴'])
+
+    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('new')
+  })
+
+  test('a word repeated in the line is one card', async () => {
+    const database = await db()
+    const line = '我买了我的书。'
+    await captureSentenceIn(database, line, context(line), undefined, ['我', '买', '我', '书'])
+
+    const all = await request<Item[]>(
+      database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
+    )
+    expect(all.filter((i) => i.kind === 'word')).toHaveLength(3)
+    expect((await get<Item>(database, STORES.items, wordId('我')))?.contexts).toHaveLength(1)
+  })
+
+  test('a line whose words you all know pools nothing extra', async () => {
+    // The struggle-dwell path passes no words, and needs none.
+    const database = await db()
+    await captureSentenceIn(database, '你好吗？', context('你好吗？'))
+
+    const all = await request<Item[]>(
+      database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
+    )
+    expect(all).toHaveLength(1)
   })
 })
 
@@ -264,6 +380,89 @@ describe('applyReviewIn', () => {
     expect(lapsed.state).toBe('learning')
     expect(lapsed.lapses).toBe(1)
     expect(lapsed.due).toBeLessThan(1_000 + 86_400_000)
+  })
+
+  describe('extra practice', () => {
+    /** A settled card, drilled before it is due. */
+    const settled = (item: Item): Item => ({
+      ...item,
+      state: 'review',
+      level: 4,
+      interval: 16,
+      reps: 5,
+      introducedAt: 1_000,
+      due: 9_000_000,
+    })
+
+    test('getting it right leaves the schedule exactly where it was', async () => {
+      // Answering early shows you know it today, which is not the claim the
+      // interval was making. Letting that climb the ladder would mean mastery
+      // could be drilled for rather than remembered.
+      const database = await db()
+      const before = settled(await seededWord(database))
+      const after = await applyReviewIn(database, before, 'good', 'recognise', 1_000, true)
+
+      expect(after.level).toBe(before.level)
+      expect(after.interval).toBe(before.interval)
+      expect(after.due).toBe(before.due)
+      expect(after.state).toBe(before.state)
+      expect(after.lapses).toBe(before.lapses)
+    })
+
+    test('but it still counts as having been asked', async () => {
+      // `reps` is what rotates the question style in mixed mode, so a drilled
+      // card is met from a different angle each time rather than the same one.
+      const database = await db()
+      const before = settled(await seededWord(database))
+      const after = await applyReviewIn(database, before, 'good', 'recognise', 1_000, true)
+
+      expect(after.reps).toBe(before.reps + 1)
+    })
+
+    test('getting it wrong is an ordinary lapse', async () => {
+      // Failing a card ahead of its due date is direct evidence the interval
+      // was too long, so there is nothing to hold back.
+      const database = await db()
+      const before = settled(await seededWord(database))
+      const after = await applyReviewIn(database, before, 'again', 'recognise', 1_000, true)
+
+      expect(after.level).toBe(3)
+      expect(after.state).toBe('learning')
+      expect(after.lapses).toBe(1)
+      expect(after.due).toBeLessThan(1_000 + 86_400_000)
+    })
+
+    test('is written to the log either way, so the streak stays honest', async () => {
+      const database = await db()
+      const item = settled(await seededWord(database))
+      await applyReviewIn(database, item, 'good', 'recognise', 1_000, true)
+
+      const reviews = await request<Review[]>(
+        database.transaction(STORES.reviews, 'readonly').objectStore(STORES.reviews).getAll(),
+      )
+      expect(reviews).toHaveLength(1)
+      expect(reviews[0].extra).toBe(true)
+    })
+
+    test('a scheduled review is written exactly as it always was', async () => {
+      // The field is set only when true, so the log gains nothing on the rows
+      // that do not need it and older exports stay identical.
+      const database = await db()
+      await applyReviewIn(database, await seededWord(database), 'good', 'recognise', 1_000)
+
+      const reviews = await request<Review[]>(
+        database.transaction(STORES.reviews, 'readonly').objectStore(STORES.reviews).getAll(),
+      )
+      expect('extra' in reviews[0]).toBe(false)
+    })
+
+    test('does not introduce a card that practice should never have reached', async () => {
+      const database = await db()
+      const item = await seededWord(database)
+      const after = await applyReviewIn(database, item, 'good', 'recognise', 1_000, true)
+
+      expect(after.introducedAt).toBeUndefined()
+    })
   })
 })
 

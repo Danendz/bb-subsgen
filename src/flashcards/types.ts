@@ -116,6 +116,18 @@ export interface Review {
   style: ReviewStyle
   intervalBefore: number
   intervalAfter: number
+  /**
+   * Practice drawn from outside the schedule — see `practice` in queue.ts.
+   *
+   * A correct one only counts as the card having been *asked*: answering early
+   * shows you know it now, which is not the claim the interval was making.
+   * Getting it wrong is different, and is treated as an ordinary lapse, because
+   * failing a card early is real evidence the interval was too long.
+   *
+   * Optional so every row written before practice existed stays valid and is
+   * read as a scheduled review, which is what it was.
+   */
+  extra?: boolean
 }
 
 export interface Exposure {

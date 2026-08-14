@@ -25,7 +25,7 @@ import {
   recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
-import { hanWords, isCapturableText, shouldCaptureLine } from '../flashcards/capture'
+import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
 import { createTranslator, isTranslatorSupported, translatorAvailability } from '../lang/translate'
 import {
@@ -300,6 +300,11 @@ async function main() {
        * point — you cannot pause every four seconds to curate. What stops this
        * flooding the deck is that captures land in the intake pool and are
        * rationed out, not that capture is stingy.
+       *
+       * The words that made the line qualify go with it. Keeping the line and
+       * dropping its vocabulary is what left the pool full of sentences waiting
+       * on words nothing was teaching — they pool too, and the same rationing
+       * covers both.
        */
       const onCueShown = () => {
         engagedMs = 0
@@ -311,7 +316,7 @@ async function main() {
 
         const { text } = cues[lastIndex]
         if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
-        captureSentence(text, contextFor(lastIndex))
+        captureSentence(text, contextFor(lastIndex), undefined, unknownIn(seen, known))
         captured = true
       }
 
@@ -322,6 +327,9 @@ async function main() {
        * this is the other path in, for a line whose words you all know but
        * whose grammar you evidently didn't. Those are the most valuable
        * sentences in the pool, and nothing else in the design would find them.
+       *
+       * Passes no words, and needs none: reaching here means every word in the
+       * line is already known, so there is nothing left to collect.
        */
       const captureCurrentLine = () => {
         if (captured || lastIndex < 0) return

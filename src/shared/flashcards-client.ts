@@ -25,8 +25,21 @@ export function discoverWord(headword: string, context?: Context): void {
   send({ type: 'bb-subsgen:discover-word', headword, context })
 }
 
-export function captureSentence(text: string, context: Context, target?: string): void {
-  send({ type: 'bb-subsgen:capture-sentence', text, context, target })
+/**
+ * Keeps a line, and the words in it you don't yet know.
+ *
+ * One message rather than a capture plus a `discoverWord` per word: a line
+ * changes every few seconds, so per-word messages would run at roughly one a
+ * second for the length of a video. The worker writes all of it in a single
+ * transaction — see `captureSentenceIn`.
+ */
+export function captureSentence(
+  text: string,
+  context: Context,
+  target?: string,
+  words?: string[],
+): void {
+  send({ type: 'bb-subsgen:capture-sentence', text, context, target, words })
 }
 
 export function markKnown(headword: string, known: boolean): void {
