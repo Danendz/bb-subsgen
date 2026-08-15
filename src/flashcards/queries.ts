@@ -2,7 +2,8 @@
 // them. Only the service worker and the study app can call these — content
 // scripts run on the page's IndexedDB origin. See db.ts.
 
-import { request, STORES } from './db'
+import { STORES } from './db'
+import { request } from '../shared/idb'
 import { isKnown } from './known'
 import { previousDay, startOfDay } from './scheduler'
 import type { Exposure, Item, Rank, Review, Video, VideoWord } from './types'

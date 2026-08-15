@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { done, openFlashcardsDb, request, STORES } from './db'
+import { openFlashcardsDb, STORES } from './db'
+import { done, request } from '../shared/idb'
 import type { Item } from './types'
 
 /**

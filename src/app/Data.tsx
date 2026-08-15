@@ -17,6 +17,7 @@ import {
 } from '../background/flashcards-store'
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
 import { WordListHelp } from './WordListHelp'
+import { LlmLog } from './LlmLog'
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10)
@@ -328,6 +329,8 @@ export function Data() {
           <button onClick={() => void clearEverything()}>Clear</button>
         </div>
       </div>
+
+      <LlmLog />
     </>
   )
 }

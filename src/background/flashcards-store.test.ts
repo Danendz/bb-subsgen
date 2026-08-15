@@ -10,7 +10,8 @@ import {
   replaceWordListIn,
   recordExposuresIn,
 } from './flashcards-store'
-import { done, openFlashcardsDb, request, STORES } from '../flashcards/db'
+import { openFlashcardsDb, STORES } from '../flashcards/db'
+import { done, request } from '../shared/idb'
 import { studyStreak } from '../flashcards/queries'
 import {
   grammarId,

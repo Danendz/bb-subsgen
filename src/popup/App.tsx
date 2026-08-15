@@ -19,6 +19,9 @@ import {
   originOf,
   readerEnabledFor,
 } from '../shared/reader-sites'
+import { hasLlmPermission, requestLlmPermission } from '../shared/llm-permission'
+import { listModels, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
+import { log } from '../llm/log'
 import type { Status, StatusResponse } from '../shared/messages'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
@@ -135,6 +138,41 @@ function Slider({
 }
 
 /**
+ * A model picker whose options are whatever the server reported.
+ *
+ * The saved value is always offered even when the list doesn't contain it, so a
+ * model that is configured but not currently loaded stays visible rather than
+ * silently resetting to nothing.
+ */
+function ModelSelect({
+  label,
+  value,
+  models,
+  onChange,
+}: {
+  label: string
+  value: string
+  models: string[]
+  onChange: (v: string) => void
+}) {
+  const options = Array.from(new Set([value, ...models].filter(Boolean)))
+
+  return (
+    <label class="row">
+      <span>{label}</span>
+      <select class="model" value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+        <option value="">Not set</option>
+        {options.map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/**
  * The Chinese voices this browser has, best first.
  *
  * `getVoices()` comes back empty on the first call and fills in later. In a
@@ -169,11 +207,24 @@ export function App() {
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
+  const [models, setModels] = useState<string[]>([])
+  const [baseUrlDraft, setBaseUrlDraft] = useState('')
+  const [llmStatus, setLlmStatus] = useState<{ tone: string; message: string } | null>(null)
 
   useEffect(() => {
     loadSettings().then((s) => {
       setSettings(s)
+      setBaseUrlDraft(s.llmBaseUrl)
       setLoaded(true)
+
+      // Only ever on open, never as the address is typed: this is a network
+      // call, and re-running it per keystroke would hammer the server.
+      // Permission is checked rather than requested — asking needs a gesture.
+      if (s.llmEnabled && s.llmBaseUrl) {
+        void hasLlmPermission(s.llmBaseUrl).then((granted) => {
+          if (granted) void refreshModels(s.llmBaseUrl)
+        })
+      }
     })
     currentTab().then((t) => {
       setTab(t)
@@ -192,6 +243,40 @@ export function App() {
     const next = { ...settings, ...patch }
     setSettings(next)
     saveSettings(patch)
+  }
+
+  const refreshModels = async (baseUrl: string) => {
+    setLlmStatus({ tone: 'busy', message: 'Connecting…' })
+    try {
+      const found = await listModels({ baseUrl, log })
+      setModels(found)
+      setLlmStatus(
+        found.length
+          ? { tone: 'ok', message: `Connected — ${found.length} model${found.length === 1 ? '' : 's'}.` }
+          : { tone: 'bad', message: 'Connected, but the server has no models loaded.' },
+      )
+    } catch (e) {
+      setModels([])
+      setLlmStatus({ tone: 'bad', message: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  /** Same gesture rule as the reader: `permissions.request` only works in the click. */
+  const connectLlm = async () => {
+    const baseUrl = normalizeBaseUrl(baseUrlDraft)
+    if (!baseUrl) return
+
+    setBaseUrlDraft(baseUrl)
+    update({ llmBaseUrl: baseUrl })
+
+    if (!(await requestLlmPermission(baseUrl))) {
+      setLlmStatus({
+        tone: 'bad',
+        message: 'Chrome needs permission to reach that address before the model can be used.',
+      })
+      return
+    }
+    await refreshModels(baseUrl)
   }
 
   const origin = originOf(tab?.url)
@@ -348,6 +433,89 @@ export function App() {
         checked={settings.useTraditional}
         onChange={(v) => update({ useTraditional: v })}
       />
+
+      <h2 class="section">Local model</h2>
+      <Toggle
+        label="Enabled"
+        checked={settings.llmEnabled}
+        onChange={(v) => update({ llmEnabled: v })}
+      />
+
+      <div class={settings.llmEnabled ? '' : 'disabled'}>
+        <div class="presets">
+          {LLM_PRESETS.map((preset) => (
+            <button
+              key={preset.baseUrl}
+              class="preset"
+              onClick={() => {
+                setBaseUrlDraft(preset.baseUrl)
+                update({ llmBaseUrl: preset.baseUrl })
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <label class="row">
+          <span>Server</span>
+          <input
+            class="url"
+            type="text"
+            placeholder="localhost:1234"
+            value={baseUrlDraft}
+            onInput={(e) => setBaseUrlDraft(e.currentTarget.value)}
+            // Tidied on the way out rather than as it's typed, so the cursor
+            // doesn't jump while you're still halfway through an address.
+            onBlur={() => {
+              const tidied = normalizeBaseUrl(baseUrlDraft)
+              setBaseUrlDraft(tidied)
+              if (tidied !== settings.llmBaseUrl) update({ llmBaseUrl: tidied })
+            }}
+          />
+        </label>
+
+        <button class="connect" onClick={() => void connectLlm()}>
+          Connect
+        </button>
+        {llmStatus && <p class={`status status-${llmStatus.tone}`}>{llmStatus.message}</p>}
+
+        <ModelSelect
+          label="Chat model"
+          value={settings.llmChatModel}
+          models={models}
+          onChange={(v) => update({ llmChatModel: v })}
+        />
+
+        <hr class="divider" />
+
+        <Toggle
+          label="Translate subtitles"
+          checked={settings.llmTranslationEnabled}
+          onChange={(v) => update({ llmTranslationEnabled: v })}
+        />
+        <div class={settings.llmTranslationEnabled ? '' : 'disabled'}>
+          <ModelSelect
+            label="Translation model"
+            value={settings.llmTranslationModel}
+            models={models}
+            onChange={(v) => update({ llmTranslationModel: v })}
+          />
+        </div>
+
+        <Toggle
+          label="Verbose logging"
+          checked={settings.llmVerboseLog}
+          onChange={(v) => update({ llmVerboseLog: v })}
+        />
+
+        <p class="hint">
+          Explanations and chat use the chat model, and only when you ask for them. Subtitle
+          translation runs in the background on the translation model and takes over from
+          Chrome's translator once it is far enough ahead — pick something fast for it. The
+          debug log is in the flashcards app, under Data.
+        </p>
+      </div>
 
       <h2 class="section">Page reader</h2>
       {origin ? (

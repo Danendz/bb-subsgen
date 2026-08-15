@@ -3,11 +3,13 @@ import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
 import { Review } from './Review'
 import { Videos } from './Videos'
+import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
 
 const TABS = [
   { route: '/', label: 'Overview' },
   { route: '/review', label: 'Review' },
+  { route: '/chat', label: 'Chat' },
   { route: '/dictionary', label: 'Dictionary' },
   { route: '/videos', label: 'Videos' },
   { route: '/data', label: 'Data' },
@@ -40,6 +42,7 @@ function Nav({ route }: { route: string }) {
 export function App() {
   const route = useRoute()
   const video = /^\/videos\/(.+)$/.exec(route)
+  const chat = /^\/chat\/(.+)$/.exec(route)
 
   return (
     <div class="shell">
@@ -52,6 +55,8 @@ export function App() {
         <Data />
       ) : route === '/review' ? (
         <Review />
+      ) : route.startsWith('/chat') ? (
+        <Chat chatId={chat?.[1]} />
       ) : route === '/dictionary' ? (
         <Dictionary />
       ) : route.startsWith('/videos') ? (

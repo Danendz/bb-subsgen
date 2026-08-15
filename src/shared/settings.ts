@@ -108,6 +108,37 @@ export interface Settings {
   speechVoice: string
   /** How fast cards are spoken, as a `SpeechSynthesisUtterance.rate` multiplier. */
   speechRate: number
+  /**
+   * Whether a local model is wired up at all.
+   *
+   * The master switch for every LLM feature: explain, chat, and the subtitle
+   * tier below. Off means nothing ever reaches for a model server, which is the
+   * right default for anyone who does not run one.
+   */
+  llmEnabled: boolean
+  /**
+   * Where that server is, as an OpenAI-compatible base URL.
+   *
+   * Not a preset enum: LM Studio and Ollama are only the two most likely
+   * answers, and every other local runner speaks the same protocol on a
+   * different port. See `LLM_PRESETS` for the two the popup offers as buttons.
+   */
+  llmBaseUrl: string
+  /** Model for explain and for new chats — the best one you have, however slow. */
+  llmChatModel: string
+  /**
+   * Whether the model also translates subtitles in the background.
+   *
+   * Separate from `llmEnabled` because it is the expensive one: a full track is
+   * tens of minutes of generation, where explain is fifteen seconds you asked
+   * for. Chrome's translator keeps running either way — this only decides
+   * whether anything better eventually replaces it.
+   */
+  llmTranslationEnabled: boolean
+  /** Model for the subtitle pass — a fast one, since it runs unattended and at length. */
+  llmTranslationModel: string
+  /** Keep whole prompts and response bodies in the debug log instead of truncating them. */
+  llmVerboseLog: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -147,6 +178,15 @@ export const DEFAULT_SETTINGS: Settings = {
   // pace clips them for anyone who still needs the button. Not slower than this,
   // because the neural voices smear their tones when stretched too far.
   speechRate: 0.9,
+  // Every LLM setting starts off or empty: this feature needs a server that
+  // most people do not have, and nothing about the extension may change for
+  // someone who never turns it on.
+  llmEnabled: false,
+  llmBaseUrl: '',
+  llmChatModel: '',
+  llmTranslationEnabled: false,
+  llmTranslationModel: '',
+  llmVerboseLog: false,
 }
 
 /** Bounds for `studySessionSize`, shared by the picker and the queue. */

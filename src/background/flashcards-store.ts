@@ -11,7 +11,8 @@
 // inside the get's success handler rather than after an await. Awaiting mid
 // transaction lets it auto-commit, and the write silently never lands.
 
-import { done, flashcardsDb, request, upsert, STORES } from '../flashcards/db'
+import { flashcardsDb, STORES } from '../flashcards/db'
+import { done, request, upsert } from '../shared/idb'
 import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'

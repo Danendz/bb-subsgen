@@ -891,10 +891,135 @@ details.help pre {
 }
 details.help code { font-size: 12px; }
 
+/* Chat --------------------------------------------------------------------- */
+
+/* History beside the open conversation. The list is fixed-width because chat
+   titles are a scanning target, not something to read — the reply needs the room. */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.chat-list { max-height: 70vh; overflow-y: auto; }
+.chat-row.on { background: var(--inset); border-radius: var(--r-sm); }
+.chat-row button.link-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  padding: 4px 6px;
+  min-width: 0;
+}
+/* One line, whatever was said — the timestamp beneath it does the disambiguating. */
+.chat-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-open { padding: 0; }
+.chat { display: flex; flex-direction: column; height: 70vh; }
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--edge);
+}
+.chat-head .model { flex: 1; min-width: 0; }
+
+.transcript { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.turn { margin-bottom: 14px; line-height: 1.55; }
+.turn p { margin: 0 0 8px; }
+.turn p:last-child { margin-bottom: 0; }
+/* Your own turns are set apart rather than bubbled: an explanation is the thing
+   being read, and a column of alternating bubbles fights it for attention. */
+.turn.user {
+  padding: 8px 12px;
+  border-left: 2px solid var(--edge-lit);
+  background: var(--inset);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--text-2);
+}
+.turn code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--inset);
+  font-size: 0.92em;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--edge);
+}
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+}
+.composer textarea:focus-visible { outline: 2px solid var(--edge-lit); outline-offset: 1px; }
+
+select.model {
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 12px;
+}
+
+/* Model log ----------------------------------------------------------------- */
+
+.log { max-height: 420px; overflow-y: auto; margin-top: 4px; }
+.log-row + .log-row { border-top: 1px solid var(--edge); }
+.log-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 4px;
+  text-align: left;
+  font-size: 12px;
+}
+.log-time { color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* The message is the column that gets the leftover room, and is clipped rather
+   than wrapped so a hundred rows stay scannable. */
+.log-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-level.warn { color: var(--warn); }
+.log-level.error { color: var(--wrong); }
+.log-level.debug { color: var(--text-3); }
+.log-detail { padding: 2px 4px 10px; }
+.log-detail pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ---------------------------------------------------------------------------- */
 
 @media (max-width: 560px) {
   .shell { padding: 20px 16px 60px; }
+  /* The list stacks above the conversation rather than squeezing beside it. */
+  .chat-layout { grid-template-columns: 1fr; }
+  .chat-list { max-height: 180px; }
   .card { min-height: 240px; padding: 24px 16px; }
   .actions { flex-direction: column-reverse; }
   .actions button { max-width: none; }
