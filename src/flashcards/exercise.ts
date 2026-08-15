@@ -23,6 +23,8 @@ export type Cue =
   | 'audio'
   /** The line with one word blanked, plus its audio. Only when there is no translation. */
   | 'cloze'
+  /** A grammar pattern's shape — recall what it does, or build a line with it. */
+  | 'pattern'
 
 /** What the question wants back. */
 export type Response =
@@ -78,6 +80,19 @@ export function modeFor(item: Pick<Item, 'reps'>, mode: StudyMode, canSpeak: boo
  */
 export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exercise {
   const resolved = modeFor(item, mode, can.canSpeak)
+
+  // A pattern has no sound of its own — a skeleton is not a sentence — so the
+  // audio rotation never reaches it and it is never spoken. In recall it asks
+  // what the shape does; in production it gives you a translated example and the
+  // shape, and asks you to build the line, which is the exercise a pattern is
+  // for. Without a translated example there is nothing to prompt with, and it
+  // falls back to recall for the same reason a line does.
+  if (item.kind === 'grammar') {
+    if (resolved !== 'remember' && can.hasTranslation) {
+      return { style: 'type', cue: 'pattern', response: 'tiles', autoSpeak: false }
+    }
+    return { style: 'recognise', cue: 'pattern', response: 'reveal', autoSpeak: false }
+  }
 
   if (item.kind === 'word') {
     if (resolved === 'type') return { style: 'type', cue: 'gloss', response: 'text', autoSpeak: false }

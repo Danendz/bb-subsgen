@@ -6,6 +6,8 @@
 // these flags into spans.
 
 import { isHan, segment } from '../../lang/segment'
+import type { Lexicon } from '../../lang/dict'
+import { isFunctionWord } from '../../lang/grammar/function-words'
 
 export interface LineToken {
   text: string
@@ -19,6 +21,13 @@ export interface LineToken {
   blanked: boolean
   /** Show the reading above this word. */
   reading: boolean
+  /**
+   * A word doing grammatical work rather than carrying meaning.
+   *
+   * Rendered dimmer, the same as on the video overlay, so a line reads as
+   * vocabulary against structure in both places. See `isFunctionWord`.
+   */
+  structural: boolean
 }
 
 export interface LineOptions {
@@ -48,7 +57,7 @@ export interface LineOptions {
  */
 export function lineTokens(
   text: string,
-  words: Map<string, string>,
+  lexicon: Lexicon,
   { known, readings = false, mark, blank }: LineOptions,
 ): LineToken[] {
   // Only the first occurrence is blanked. A line using the target twice still
@@ -56,7 +65,7 @@ export function lineTokens(
   // harder one than the card was scheduled as.
   let blanked = false
 
-  return segment(text, words).map((token) => {
+  return segment(text, lexicon).map((token) => {
     const han = token.text.length > 0 && isHan(token.text[0])
     const gap = han && !blanked && token.text === blank
     if (gap) blanked = true
@@ -68,6 +77,7 @@ export function lineTokens(
       marked: han && !gap && token.text === mark,
       blanked: gap,
       reading: Boolean(readings) && han && !gap && !known.has(token.text),
+      structural: han && isFunctionWord(token.text),
     }
   })
 }

@@ -49,31 +49,22 @@ describe('deckCounts', () => {
       words: 3,
       known: 2,
       sentences: 2,
+      grammar: 0,
       pool: 1,
-      wordPool: 0,
     })
   })
 
-  test('the two pools are counted apart', () => {
-    // Summing them would report a backlog without saying which kind, and the
-    // two are rationed by different rules — comprehensibility against exposure.
-    const items = [
-      word('忧郁', { state: 'pool' }),
-      word('憔悴', { state: 'pool' }),
-      word('学习'),
-      sentence('我在学习中文。'),
-    ]
-    expect(deckCounts(items)).toMatchObject({ words: 3, wordPool: 2, pool: 1, sentences: 1 })
+  test('only lines are counted as waiting', () => {
+    // Words no longer have an intake pool: every one collected is studiable at
+    // once, so "words collected" minus "known" is the whole story about them.
+    const items = [word('忧郁'), word('憔悴'), word('学习'), sentence('我在学习中文。')]
+    expect(deckCounts(items)).toMatchObject({ words: 3, pool: 1, sentences: 1 })
   })
 
-  test('a pooled word still counts as collected', () => {
+  test('a word never studied still counts as collected', () => {
     // The Overview's "words collected" is about what capture has found, not
-    // about what has reached the deck — the pool is the rest of that number.
-    expect(deckCounts([word('忧郁', { state: 'pool' })])).toMatchObject({
-      words: 1,
-      wordPool: 1,
-      known: 0,
-    })
+    // about what has been met.
+    expect(deckCounts([word('忧郁')])).toMatchObject({ words: 1, known: 0 })
   })
 
   test('an empty deck counts to zero rather than throwing', () => {
@@ -81,8 +72,8 @@ describe('deckCounts', () => {
       words: 0,
       known: 0,
       sentences: 0,
+      grammar: 0,
       pool: 0,
-      wordPool: 0,
     })
   })
 })
@@ -114,5 +105,41 @@ describe('hskProgress', () => {
     // The app renders nothing at all rather than a chart of zeroes.
     expect(hskProgress([{ headword: '我', rank: 1 }], new Set())).toEqual([])
     expect(hskProgress([], new Set())).toEqual([])
+  })
+})
+
+describe('deckCounts with grammar', () => {
+  const item = (over: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item => ({
+    state: 'pool',
+    interval: 0,
+    ease: 2.5,
+    due: 0,
+    reps: 0,
+    lapses: 0,
+    createdAt: 0,
+    contexts: [],
+    ...over,
+  })
+
+  // Grammar used to fall through to the sentence branch, which made the
+  // Overview's "sentences" tile silently count structures as lines.
+  test('counts patterns as their own kind, not as lines', () => {
+    const counts = deckCounts([
+      item({ id: 's:1', kind: 'sentence', text: '我很累。' }),
+      item({ id: 'g:de-complement', kind: 'grammar', text: 'V + 得 + how' }),
+    ])
+
+    expect(counts.sentences).toBe(1)
+    expect(counts.grammar).toBe(1)
+  })
+
+  test('counts pooled patterns as waiting, alongside pooled lines', () => {
+    const counts = deckCounts([
+      item({ id: 's:1', kind: 'sentence', text: '我很累。' }),
+      item({ id: 'g:de-complement', kind: 'grammar', text: 'V + 得 + how' }),
+      item({ id: 'g:shi-de', kind: 'grammar', text: '是 … 的', state: 'new' }),
+    ])
+
+    expect(counts.pool).toBe(2)
   })
 })

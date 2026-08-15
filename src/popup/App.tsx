@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks'
 import {
   DEFAULT_SETTINGS,
   loadSettings,
+  MAX_SPEECH_RATE,
+  MIN_SPEECH_RATE,
   READER_MODIFIERS,
   saveSettings,
   TRANSLATION_LANGS,
@@ -10,6 +12,7 @@ import {
   type TranslationLang,
   type TranslationLayout,
 } from '../shared/settings'
+import { isRemote, listVoices, speak } from '../shared/speak'
 import {
   disableReaderFor,
   enableReaderFor,
@@ -131,7 +134,36 @@ function Slider({
   )
 }
 
+/**
+ * The Chinese voices this browser has, best first.
+ *
+ * `getVoices()` comes back empty on the first call and fills in later. In a
+ * popup that is the normal case rather than the edge one — the window is opened
+ * and measured well inside that gap — and `voiceschanged` does not reliably fire
+ * in a page this short-lived, so listening alone leaves the picker empty. Hence
+ * the poll as well, which stops as soon as anything arrives.
+ */
+function useVoices(): SpeechSynthesisVoice[] {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(listVoices)
+
+  useEffect(() => {
+    if (voices.length > 0) return
+
+    const refresh = () => setVoices(listVoices())
+    speechSynthesis.addEventListener('voiceschanged', refresh)
+    const timer = setInterval(refresh, 150)
+
+    return () => {
+      speechSynthesis.removeEventListener('voiceschanged', refresh)
+      clearInterval(timer)
+    }
+  }, [voices.length])
+
+  return voices
+}
+
 export function App() {
+  const voices = useVoices()
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
@@ -194,6 +226,11 @@ export function App() {
   const modifierLabel =
     READER_MODIFIERS.find((m) => m.code === settings.readerModifier)?.label ?? 'Shift'
 
+  // Derived rather than stored: an intake of zero already means "no lines", so
+  // a separate flag would be a second source of truth that could disagree with
+  // the number beside it.
+  const studyLines = settings.newSentencesPerDay > 0
+
   return (
     <div class="app">
       <h1>bb-subsgen</h1>
@@ -225,24 +262,67 @@ export function App() {
         checked={settings.quizMode}
         onChange={(v) => update({ quizMode: v })}
       />
-      <Slider
-        label="New words / day"
-        value={settings.newWordsPerDay}
-        min={0}
-        max={40}
-        onChange={(v) => update({ newWordsPerDay: v })}
+      <Toggle
+        label="Study whole lines"
+        checked={studyLines}
+        onChange={(on) => update({ newSentencesPerDay: on ? DEFAULT_SETTINGS.newSentencesPerDay : 0 })}
       />
-      <Slider
-        label="New sentences / day"
-        value={settings.newSentencesPerDay}
-        min={0}
-        max={20}
-        onChange={(v) => update({ newSentencesPerDay: v })}
-      />
+      {studyLines && (
+        <Slider
+          label="New lines / day"
+          value={settings.newSentencesPerDay}
+          min={1}
+          max={20}
+          onChange={(v) => update({ newSentencesPerDay: v })}
+        />
+      )}
       <p class="hint">
-        Quiz mode holds back readings and translations until you hover. Capture is generous;
-        these limits are what keep the deck a constant size.
+        Quiz mode holds back readings and translations until you hover. Every word you
+        collect is studiable straight away.{' '}
+        {studyLines
+          ? 'Whole lines are let in a few a day, easiest first.'
+          : 'Lines are still collected while you read — turn this on whenever you want them.'}
       </p>
+
+      <>
+          <label class="row">
+            <span>Card voice</span>
+            <select
+              value={settings.speechVoice}
+              onChange={(e) => update({ speechVoice: e.currentTarget.value })}
+            >
+              <option value="">Automatic (best available)</option>
+              {voices.map((voice) => (
+                <option key={voice.name} value={voice.name}>
+                  {voice.name}
+                  {isRemote(voice) ? ' — networked' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {voices.length === 0 && (
+            <p class="hint">No Chinese voice found on this computer, so cards cannot be spoken.</p>
+          )}
+          <Slider
+            label="Voice speed"
+            value={settings.speechRate}
+            min={MIN_SPEECH_RATE}
+            max={MAX_SPEECH_RATE}
+            step={0.05}
+            suffix="×"
+            // Rounded to the step: the range input walks 0.6 up in floats, and
+            // the label would otherwise read 0.8500000000000001.
+            onChange={(v) => update({ speechRate: Math.round(v * 20) / 20 })}
+          />
+          <button class="ghost" onClick={() => speak('你好，今天天气很好。')}>
+            Test voice
+          </button>
+          <p class="hint">
+            Networked voices sound best but are synthesised by Google, so the card text
+            leaves your computer and they go quiet offline — a local voice takes over when
+            that happens.
+          </p>
+      </>
 
       <h2 class="section">Language</h2>
       <label class="row">

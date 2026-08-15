@@ -17,6 +17,7 @@ import { isWaiting, progressView, type ProgressState } from './progress'
 import { parseBvidFromUrl, fetchVideoInfo, watchBvidChange } from '../bilibili/resolve'
 import { fetchSubtitles, type Cue, type SubtitleTrack } from '../bilibili/subtitles'
 import { segment, type Token } from '../lang/segment'
+import { findPatterns } from '../lang/grammar/match'
 import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
 import { lookupDefs } from '../shared/dict-client'
 import {
@@ -232,6 +233,7 @@ async function main() {
         lookup: lookupDefs,
         isTraditional: () => settings.useTraditional,
         showToneColors: () => settings.showToneColors,
+        currentTokens: () => currentTokens,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
         known: () => known,
 
@@ -306,6 +308,15 @@ async function main() {
        * on words nothing was teaching — they pool too, and the same rationing
        * covers both.
        */
+      /**
+       * The structures this line is built out of, as pattern ids.
+       *
+       * Derived from the tokens already segmented for rendering, so finding them
+       * costs nothing beyond the match itself.
+       */
+      const patternsInLine = () =>
+        findPatterns(currentTokens).map((match) => match.pattern.id)
+
       const onCueShown = () => {
         engagedMs = 0
         captured = false
@@ -316,7 +327,13 @@ async function main() {
 
         const { text } = cues[lastIndex]
         if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
-        captureSentence(text, contextFor(lastIndex), undefined, unknownIn(seen, known))
+        captureSentence(
+          text,
+          contextFor(lastIndex),
+          undefined,
+          unknownIn(seen, known),
+          patternsInLine(),
+        )
         captured = true
       }
 
@@ -329,13 +346,15 @@ async function main() {
        * sentences in the pool, and nothing else in the design would find them.
        *
        * Passes no words, and needs none: reaching here means every word in the
-       * line is already known, so there is nothing left to collect.
+       * line is already known, so there is nothing left to collect. The patterns
+       * are exactly what it does collect — this is the path that finds the lines
+       * whose difficulty was never vocabulary.
        */
       const captureCurrentLine = () => {
         if (captured || lastIndex < 0) return
         const { text } = cues[lastIndex]
         if (!isCapturableText(text)) return
-        captureSentence(text, contextFor(lastIndex))
+        captureSentence(text, contextFor(lastIndex), undefined, [], patternsInLine())
         captured = true
       }
 

@@ -16,7 +16,7 @@ import { loadWords } from '../lang/dict'
 import { loadSettings, saveSettings } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
-import { canSpeak } from './speak'
+import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 
@@ -81,7 +81,6 @@ export function Review() {
         ? queueCounts({
             items: data.items,
             now: Date.now(),
-            newWordsPerDay: data.settings.newWordsPerDay,
             newSentencesPerDay: data.settings.newSentencesPerDay,
             include: setup.studyInclude,
             unknownCount,
@@ -106,7 +105,6 @@ export function Review() {
       buildSession({
         items: data.items,
         now: Date.now(),
-        newWordsPerDay: data.settings.newWordsPerDay,
         newSentencesPerDay: data.settings.newSentencesPerDay,
         include: setup.studyInclude,
         limit: setup.studySessionSize,
@@ -143,6 +141,19 @@ export function Review() {
   const drilled = Math.min(counts.practice, setup.studySessionSize - scheduled)
   const studying = scheduled + drilled
 
+  // Why the session is smaller than the size that was asked for. Without this
+  // the screen says only how many cards there are, which reads as a bug when the
+  // deck visibly holds more — and the commonest cause is the one nothing on the
+  // screen mentions, that the session was narrowed to a single kind of card.
+  const shortfall =
+    studying < setup.studySessionSize
+      ? setup.studyInclude === 'words'
+        ? 'that is every word ready — switch to lines too for more'
+        : setup.studyInclude === 'sentences'
+          ? 'that is every line ready — switch to words too for more'
+          : 'that is everything ready'
+      : ''
+
   return (
     <>
       {data.streak > 0 && (
@@ -158,7 +169,7 @@ export function Review() {
         </div>
         <div class="panel stat">
           <span class="n">{counts.newWords}</span>
-          <span class="label">new words today</span>
+          <span class="label">words not started</span>
         </div>
         <div class="panel stat">
           <span class="n">{counts.newSentences}</span>
@@ -166,7 +177,7 @@ export function Review() {
         </div>
         <div class="panel stat">
           <span class="n">{counts.pooled}</span>
-          <span class="label">waiting in the pool</span>
+          <span class="label">lines waiting</span>
         </div>
       </div>
 
@@ -190,6 +201,7 @@ export function Review() {
             {studying} card{studying === 1 ? '' : 's'}
             {drilled > 0 ? ` · ${scheduled} scheduled, ${drilled} practice` : ''}
             {owed > scheduled ? ` · ${owed} waiting` : ''}
+            {shortfall ? ` · ${shortfall}` : ''}
           </p>
         </div>
       ) : (

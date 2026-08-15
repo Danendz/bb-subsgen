@@ -33,7 +33,7 @@ function handleFlashcards(msg: FlashcardsMessage): Promise<void> {
     case 'bb-subsgen:discover-word':
       return discoverWord(msg.headword, msg.context)
     case 'bb-subsgen:capture-sentence':
-      return captureSentence(msg.text, msg.context, msg.target, msg.words)
+      return captureSentence(msg.text, msg.context, msg.target, msg.words, msg.patterns)
     case 'bb-subsgen:mark-known':
       return markKnown(msg.headword, msg.known)
     case 'bb-subsgen:record-signal':

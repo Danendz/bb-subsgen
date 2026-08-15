@@ -8,7 +8,7 @@ import { rankEntries } from '../lang/entries'
 import { Pinyin } from './pinyin'
 import type { VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
-import { canSpeak, speak } from './speak'
+import { canSpeak, speak } from '../shared/speak'
 
 /**
  * How followable a video is, from running-word coverage.

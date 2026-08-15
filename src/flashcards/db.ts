@@ -11,7 +11,13 @@
 // defs-store.ts lives in the worker), so they go through messages instead.
 
 const DB_NAME = 'bb-subsgen-flashcards'
-const VERSION = 1
+
+/**
+ * 1 — the original schema.
+ * 2 — words no longer wait in the intake pool, so the ones already there are
+ *     released. See `releasePooledWords`.
+ */
+const VERSION = 2
 
 export const STORES = {
   items: 'items',
@@ -58,13 +64,47 @@ export function done(tx: IDBTransaction): Promise<void> {
   })
 }
 
+/**
+ * Frees the words that were collected while the intake pool still held them.
+ *
+ * Nothing else about the row changes — not the id, not the contexts, not a
+ * review. This database holds history that cannot be rebuilt from anything (see
+ * the note at the top of this file), so a migration here edits one field on the
+ * rows that need it and leaves every other row untouched.
+ *
+ * Sentences keep their pool, so this is deliberately narrower than "everything
+ * pooled": it must not release the lines.
+ */
+function releasePooledWords(items: IDBObjectStore): void {
+  const cursor = items.openCursor()
+  cursor.onsuccess = () => {
+    const at = cursor.result
+    if (!at) return
+
+    const item = at.value as { kind: string; state: string }
+    if (item.kind === 'word' && item.state === 'pool') {
+      at.update({ ...item, state: 'new' })
+    }
+    at.continue()
+  }
+}
+
 /** `dbName` is overridable so tests don't share state. */
 export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(dbName, VERSION)
 
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result
+
+      if (event.oldVersion >= 1) {
+        // An existing database: the stores are already there, and the only work
+        // is whatever each version bump owes.
+        if (event.oldVersion < 2) {
+          releasePooledWords(req.transaction!.objectStore(STORES.items))
+        }
+        return
+      }
 
       const items = db.createObjectStore(STORES.items, { keyPath: 'id' })
       items.createIndex('by-state', 'state')

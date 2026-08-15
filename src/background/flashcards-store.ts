@@ -16,7 +16,9 @@ import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
 import type { ListKind } from '../flashcards/wordlist'
+import { PATTERNS, type Pattern } from '../lang/grammar/patterns'
 import {
+  grammarId,
   sentenceId,
   wordId,
   type Context,
@@ -35,29 +37,47 @@ import {
 /**
  * Where a newly collected item starts.
  *
- * Both kinds get an intake pool, and what decides between pool and deck is how
- * the thing was found rather than what it is. Stopping on a word is a deliberate
- * act and a scarce one, so it earns a place in the deck directly. A word met
- * inside a line that scrolled past is evidence of nothing yet — an evening's
- * watching turns up hundreds — so it waits with the lines, and `buildQueue`
- * rations both.
+ * Only lines get an intake pool. They are rationed by comprehensibility —
+ * `graduationOrder` releases a line once its unknowns are few — which is a
+ * judgement that needs the rest of the deck to have caught up first.
+ *
+ * Words used to be pooled too when they were met passively, on the grounds that
+ * an evening's watching turns up hundreds. That rationed them so tightly that a
+ * deck of dozens could not fill a twenty-card session, which is a worse failure
+ * than a large deck: material you collected and cannot reach reads as the app
+ * being broken. Every word is now studiable the moment it is collected, and
+ * `studySessionSize` is what limits how fast they are actually met.
  */
-function initialState(kind: Item['kind'], passive: boolean): Item['state'] {
-  return kind === 'word' && !passive ? 'new' : 'pool'
+function initialState(kind: Item['kind']): Item['state'] {
+  return kind === 'word' ? 'new' : 'pool'
 }
 
-function newItem(
-  id: string,
-  kind: Item['kind'],
-  text: string,
-  now: number,
-  passive = false,
-): Item {
+/**
+ * The patterns behind a list of ids, dropping any the table does not know.
+ *
+ * The table is the source of truth for what a grammar card *is*: a card that
+ * cannot render its own skeleton or explanation is worse than a missing one. So
+ * an unrecognised id is ignored, which is also what makes removing a pattern
+ * from the table safe for decks that already hold it.
+ */
+function knownPatterns(ids: string[]): Pattern[] {
+  const wanted = new Set(ids)
+  return PATTERNS.filter((pattern) => wanted.has(pattern.id))
+}
+
+function newGrammarItem(pattern: Pattern, now: number): Item {
+  return {
+    ...newItem(grammarId(pattern.id), 'grammar', pattern.skeleton, now),
+    patternId: pattern.id,
+  }
+}
+
+function newItem(id: string, kind: Item['kind'], text: string, now: number): Item {
   return {
     id,
     kind,
     text,
-    state: initialState(kind, passive),
+    state: initialState(kind),
     interval: 0,
     ease: 2.5,
     due: now,
@@ -130,14 +150,10 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
 /**
  * Adds a word, or records another sighting of one already collected.
  *
- * Never demotes: discovering a word you had marked known leaves it known, and a
- * word already in the deck is not pushed back into the pool by passing it in a
- * subtitle. You can hover a known word for its definition without that being a
- * claim you have forgotten it.
- *
- * Promotes in one direction only. Stopping on a word that was waiting in the
- * pool moves it into the deck — that lookup is exactly the evidence the pool was
- * waiting for, and it is the one thing that should let a word jump the queue.
+ * Never moves a word already held: discovering one you had marked known leaves
+ * it known, and one part-way up the ladder keeps its schedule. You can hover a
+ * known word for its definition without that being a claim you have forgotten
+ * it. So a second sighting only ever adds context.
  *
  * Deliberately stores no frequency rank. A word list is uploaded whenever the
  * user gets round to it, usually long after words have been collected, so a
@@ -148,25 +164,22 @@ function discoveredWord(
   existing: Item | undefined,
   headword: string,
   now: number,
-  passive: boolean,
   context: Context | undefined,
 ): Item {
-  if (!existing) return withContext(newItem(wordId(headword), 'word', headword, now, passive), context)
-  const promoted = !passive && existing.state === 'pool' ? { ...existing, state: 'new' as const } : existing
-  return withContext(promoted, context)
+  if (!existing) return withContext(newItem(wordId(headword), 'word', headword, now), context)
+  return withContext(existing, context)
 }
 
 export async function discoverWordIn(
   db: IDBDatabase,
   headword: string,
   context?: Context,
-  passive = false,
 ): Promise<void> {
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
   upsert<Item>(tx.objectStore(STORES.items), wordId(headword), (existing) =>
-    discoveredWord(existing, headword, now, passive, context),
+    discoveredWord(existing, headword, now, context),
   )
   await done(tx)
 }
@@ -178,8 +191,8 @@ export async function discoverWordIn(
  * *because* it holds words you can't read (`shouldCaptureLine`), so collecting
  * the line and leaving its vocabulary behind builds a pool of sentences waiting
  * on words that nothing is feeding you — `graduationOrder` only releases a line
- * once its unknowns are few. Those words are passive discoveries: they join the
- * pool rather than the deck, and are rationed the same way the lines are.
+ * once its unknowns are few. Those words join the deck immediately, like any
+ * other — it is the line that waits, not its vocabulary.
  *
  * Anything already held only gains the context.
  */
@@ -189,6 +202,7 @@ export async function captureSentenceIn(
   context: Context,
   target?: string,
   words: string[] = [],
+  patterns: string[] = [],
 ): Promise<void> {
   const id = sentenceId(text)
   const now = Date.now()
@@ -203,7 +217,19 @@ export async function captureSentenceIn(
   // key in one transaction both read before either writes.
   for (const word of new Set(words)) {
     upsert<Item>(store, wordId(word), (existing) =>
-      discoveredWord(existing, word, now, true, context),
+      discoveredWord(existing, word, now, context),
+    )
+  }
+  // Same transaction as the line and its words. A pattern is only ever met *in*
+  // a line, so splitting them would let a line land without the structure it
+  // taught, or the reverse.
+  //
+  // Resolved to patterns before the loop rather than inside it: `upsert` always
+  // writes what its updater returns, so an id with nothing behind it has to be
+  // dropped before it can become a card with no skeleton.
+  for (const pattern of knownPatterns(patterns)) {
+    upsert<Item>(store, grammarId(pattern.id), (existing) =>
+      withContext(existing ?? newGrammarItem(pattern, now), context),
     )
   }
 
@@ -449,12 +475,8 @@ export async function recordExposures(batch: ExposureBatch): Promise<void> {
   return recordExposuresIn(await flashcardsDb(), batch)
 }
 
-export async function discoverWord(
-  headword: string,
-  context?: Context,
-  passive?: boolean,
-): Promise<void> {
-  return discoverWordIn(await flashcardsDb(), headword, context, passive)
+export async function discoverWord(headword: string, context?: Context): Promise<void> {
+  return discoverWordIn(await flashcardsDb(), headword, context)
 }
 
 export async function captureSentence(
@@ -462,8 +484,9 @@ export async function captureSentence(
   context: Context,
   target?: string,
   words?: string[],
+  patterns?: string[],
 ): Promise<void> {
-  return captureSentenceIn(await flashcardsDb(), text, context, target, words)
+  return captureSentenceIn(await flashcardsDb(), text, context, target, words, patterns)
 }
 
 export async function markKnown(headword: string, known: boolean): Promise<void> {

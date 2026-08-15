@@ -22,9 +22,10 @@ const MODES: ReadonlyArray<{ value: StudyMode; label: string; hint: string }> = 
 ]
 
 const INCLUDES: ReadonlyArray<{ value: StudyInclude; label: string }> = [
-  { value: 'both', label: 'Words and lines' },
+  { value: 'both', label: 'Everything' },
   { value: 'words', label: 'Words only' },
   { value: 'sentences', label: 'Lines only' },
+  { value: 'grammar', label: 'Grammar only' },
 ]
 
 const MODE_LABEL: Record<StudyMode, string> = {
@@ -35,9 +36,10 @@ const MODE_LABEL: Record<StudyMode, string> = {
 }
 
 const INCLUDE_LABEL: Record<StudyInclude, string> = {
-  both: 'words + lines',
+  both: 'words + lines + grammar',
   words: 'words only',
   sentences: 'lines only',
+  grammar: 'grammar only',
 }
 
 export function setupSummary(setup: SessionSetup): string {

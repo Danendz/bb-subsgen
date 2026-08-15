@@ -130,35 +130,35 @@ export interface DeckCounts {
   words: number
   known: number
   sentences: number
-  /** Lines waiting in the intake pool. */
+  /** Grammar patterns collected. */
+  grammar: number
+  /** Lines and patterns waiting in the intake pool. */
   pool: number
-  /** Words waiting in the intake pool — collected passively, not yet introduced. */
-  wordPool: number
 }
 
 /**
- * Both kinds now have an intake pool, so the two are counted apart.
+ * Only lines have an intake pool, so only they are counted waiting.
  *
- * They are not one number: lines are rationed by comprehensibility and words by
- * how often you have met them, and the reasons a given pool is large are
- * different in each case. Summing them would report a backlog without saying
- * what kind of backlog it is.
+ * Words used to be pooled as well and counted separately here. They are now
+ * studiable the moment they are collected, which makes `words` minus `known`
+ * the whole story about them.
  */
 export function deckCounts(items: Item[]): DeckCounts {
   let words = 0
   let known = 0
   let sentences = 0
+  let grammar = 0
   let pool = 0
-  let wordPool = 0
   for (const item of items) {
     if (item.kind === 'word') {
       words += 1
       if (isKnown(item)) known += 1
-      if (item.state === 'pool') wordPool += 1
-    } else {
-      sentences += 1
-      if (item.state === 'pool') pool += 1
+      continue
     }
+    if (item.kind === 'grammar') grammar += 1
+    else sentences += 1
+    // Both are rationed the same way, so both count as waiting.
+    if (item.state === 'pool') pool += 1
   }
-  return { words, known, sentences, pool, wordPool }
+  return { words, known, sentences, grammar, pool }
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { buildQueue, buildSession, queueCounts } from './queue'
+import { buildQueue, buildSession, queueCounts, type QueueSession } from './queue'
 import { DAY_MS, startOfDay } from './scheduler'
 import type { Item } from './types'
 
@@ -32,7 +32,7 @@ const unknownCount = (item: Item) => (item.text.match(/\d+/)?.[0] ? Number(item.
 const RANKS = new Map<string, number>()
 const rankOf = (headword: string) => RANKS.get(headword)
 
-const limits = { newWordsPerDay: 10, newSentencesPerDay: 5, rankOf }
+const limits = { newSentencesPerDay: 5, rankOf }
 
 beforeEach(() => RANKS.clear())
 
@@ -85,33 +85,24 @@ describe('buildQueue', () => {
     ])
   })
 
-  test('respects the daily budget for new words', () => {
+  test('offers every word collected, however many there are', () => {
+    // Words used to be rationed to ten a day. That left a deck of dozens unable
+    // to fill a twenty-card session, which reads as the app being broken.
     const items = Array.from({ length: 30 }, (_, i) => {
       RANKS.set(`词${i}`, i)
       return word(`词${i}`)
     })
-    expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(10)
+    expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(30)
   })
 
-  test('counts what was already introduced today against the budget', () => {
+  test('words met earlier today do not hold the rest back', () => {
     const items = [
       ...Array.from({ length: 8 }, (_, i) =>
         word(`旧${i}`, { introducedAt: startOfDay(NOW) + 3600_000, state: 'review', due: NOW + DAY_MS }),
       ),
       ...Array.from({ length: 10 }, (_, i) => word(`新${i}`)),
     ]
-    // Eight already met today leaves room for two more, not ten.
-    expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(2)
-  })
-
-  test('yesterday introductions do not count against today', () => {
-    const items = [
-      word('昨天', { introducedAt: startOfDay(NOW) - 2 * 3600_000, state: 'review', due: NOW + DAY_MS }),
-      word('今天'),
-    ]
-    expect(buildQueue({ items, now: NOW, ...limits, unknownCount }).map((i) => i.text)).toEqual([
-      '今天',
-    ])
+    expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toHaveLength(10)
   })
 
   test('never serves a word twice, once introduced', () => {
@@ -126,7 +117,6 @@ describe('buildQueue', () => {
     const queue = buildQueue({
       items,
       now: NOW,
-      newWordsPerDay: 0,
       newSentencesPerDay: 2,
       unknownCount,
       rankOf,
@@ -142,14 +132,14 @@ describe('buildQueue', () => {
     expect(queue).toHaveLength(5)
   })
 
-  test('a spent budget yields nothing rather than going negative', () => {
+  test('a word already introduced does not block the ones behind it', () => {
     const items = [
       word('已见', { introducedAt: NOW - 1000, state: 'review', due: NOW + DAY_MS }),
       word('待见'),
     ]
     expect(
-      buildQueue({ items, now: NOW, newWordsPerDay: 1, newSentencesPerDay: 0, unknownCount, rankOf }),
-    ).toEqual([])
+      buildQueue({ items, now: NOW, newSentencesPerDay: 0, unknownCount, rankOf }).map((i) => i.text),
+    ).toEqual(['待见'])
   })
 
   test('learning cards come back within the session', () => {
@@ -165,100 +155,85 @@ describe('buildQueue', () => {
   })
 })
 
-describe('the word pool', () => {
-  /** A word collected passively from a line, rather than stopped on. */
-  const pooled = (text: string, extra: Partial<Item> = {}) =>
-    word(text, { state: 'pool', ...extra })
-
+describe('new words', () => {
   const SEEN = new Map<string, number>()
   const seenCount = (headword: string) => SEEN.get(headword) ?? 0
   beforeEach(() => SEEN.clear())
 
-  test('pooled words are eligible for the day’s budget', () => {
-    const items = [pooled('憔悴')]
-    expect(
-      buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
-    ).toEqual(['憔悴'])
-  })
-
-  test('words you stopped on fill the budget before the pool does', () => {
-    // Hovering is a deliberate act and a rare one. It also means a deck
-    // collected before words had a pool is served in exactly the order it
-    // always was — the pool adds to the tail, it does not reshuffle.
-    SEEN.set('那', 500)
-    const items = [pooled('那'), word('憔悴')]
-    expect(
-      buildQueue({
-        items,
-        now: NOW,
-        ...limits,
-        newWordsPerDay: 1,
-        unknownCount,
-        seenCount,
-      }).map((i) => i.text),
-    ).toEqual(['憔悴'])
-  })
-
-  test('the pool is ordered by how often you have actually met the word', () => {
-    SEEN.set('那', 500).set('因为', 120).set('憔悴', 2)
-    const items = [pooled('憔悴'), pooled('那'), pooled('因为')]
-    expect(
-      buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
-    ).toEqual(['那', '因为', '憔悴'])
-  })
-
-  test('frequency rank breaks a tie on exposure', () => {
+  test('frequency leads once a word list has been uploaded', () => {
+    // Effort proportional to payoff: the deck grows by whatever crossed your
+    // screen, but how often a word is used is how much it is worth knowing.
     RANKS.set('因为', 300).set('憔悴', 22000)
-    const items = [pooled('憔悴'), pooled('因为')]
+    SEEN.set('憔悴', 500).set('因为', 2)
+    const items = [word('憔悴'), word('因为')]
     expect(
       buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
     ).toEqual(['因为', '憔悴'])
   })
 
-  test('exposure order works with no word list uploaded', () => {
-    // The whole reason the pool leads on exposure rather than rank: a list is
-    // uploaded whenever the user gets round to it, and until then rank is empty
-    // for every word — leaving discovery order, which is arbitrary.
+  test('exposure breaks a tie between two words of equal rank', () => {
+    RANKS.set('甲', 100).set('乙', 100)
+    SEEN.set('乙', 90).set('甲', 1)
+    const items = [word('甲'), word('乙')]
+    expect(
+      buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
+    ).toEqual(['乙', '甲'])
+  })
+
+  test('exposure orders everything when no word list is uploaded', () => {
+    // The tie-break quietly becomes the whole ordering, which is the point: a
+    // list is uploaded whenever the user gets round to it, and until then every
+    // word ties on rank. Exposure is collected from the first video watched.
     SEEN.set('那', 90).set('憔悴', 1)
-    const items = [pooled('憔悴', { createdAt: 1 }), pooled('那', { createdAt: 2 })]
+    const items = [word('憔悴', { createdAt: 1 }), word('那', { createdAt: 2 })]
     expect(RANKS.size).toBe(0)
     expect(
       buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
     ).toEqual(['那', '憔悴'])
   })
 
-  test('the daily budget covers both halves together', () => {
-    // Not a budget each. Ten new words a day is the promise, however they were
-    // collected.
-    const items = [word('甲'), word('乙'), pooled('丙'), pooled('丁')]
+  test('the session size is the only thing that limits how many are met', () => {
+    const items = Array.from({ length: 40 }, (_, i) => word(`词${i}`))
     expect(
-      buildQueue({
-        items,
-        now: NOW,
-        ...limits,
-        newWordsPerDay: 3,
-        unknownCount,
-        seenCount,
-      }),
-    ).toHaveLength(3)
+      buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount, limit: 20 }),
+    ).toHaveLength(20)
   })
 
-  test('a pooled word already introduced is not offered again', () => {
-    const items = [pooled('憔悴', { introducedAt: NOW - DAY_MS })]
+  test('a word already introduced is not offered again', () => {
+    const items = [word('憔悴', { introducedAt: NOW - DAY_MS })]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount })).toEqual([])
   })
 
-  test('due cards still come before anything from the pool', () => {
+  test('a word declared known is never offered, even unstudied', () => {
+    // Declaring a word known is not something intake gets to overrule, and such
+    // a word has no `introducedAt` to exclude it.
+    const items = [word('我', { state: 'known' })]
+    expect(buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount })).toEqual([])
+  })
+
+  test('due cards still come before anything new', () => {
     SEEN.set('那', 500)
-    const items = [pooled('那'), word('复习', { state: 'review', due: NOW - DAY_MS })]
+    const items = [word('那'), word('复习', { state: 'review', due: NOW - DAY_MS })]
     expect(
       buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount }).map((i) => i.text),
     ).toEqual(['复习', '那'])
   })
 
-  test('an absent seenCount leaves the old behaviour untouched', () => {
-    // Every caller before the pool existed omits it, and a deck with no pooled
-    // words must build exactly the queue it used to.
+  test('new lines are not starved by a deck full of new words', () => {
+    // Lines are still rationed to a handful a day while words are not, so the
+    // other order would push every line past the session limit and stop
+    // sentence intake altogether.
+    const items = [
+      ...Array.from({ length: 200 }, (_, i) => word(`词${i}`)),
+      sentence('易1'),
+      sentence('中3'),
+    ]
+    const queue = buildQueue({ items, now: NOW, ...limits, unknownCount, seenCount, limit: 10 })
+    expect(queue.filter((i) => i.kind === 'sentence').map((i) => i.text)).toEqual(['易1', '中3'])
+    expect(queue).toHaveLength(10)
+  })
+
+  test('an absent seenCount still builds a queue', () => {
     const items = [word('甲'), word('乙', { state: 'review', due: NOW - DAY_MS })]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount }).map((i) => i.text)).toEqual([
       '乙',
@@ -266,8 +241,8 @@ describe('the word pool', () => {
     ])
   })
 
-  test('pooled words count towards what the start screen promises', () => {
-    const items = [word('甲'), pooled('乙')]
+  test('every uncollected word counts towards what the start screen promises', () => {
+    const items = [word('甲'), word('乙')]
     expect(queueCounts({ items, now: NOW, ...limits, unknownCount, seenCount }).newWords).toBe(2)
   })
 })
@@ -284,6 +259,7 @@ describe('queueCounts', () => {
       due: 1,
       newWords: 1,
       newSentences: 2,
+      newGrammar: 0,
       pooled: 2,
       practice: 0,
     })
@@ -338,7 +314,14 @@ describe('include', () => {
       unknownCount,
       include: 'words',
     })
-    expect(counts).toEqual({ due: 1, newWords: 1, newSentences: 0, pooled: 0, practice: 0 })
+    expect(counts).toEqual({
+      due: 1,
+      newWords: 1,
+      newSentences: 0,
+      newGrammar: 0,
+      pooled: 0,
+      practice: 0,
+    })
   })
 
   test('a kind you excluded today keeps tomorrow’s intake for the other kind', () => {
@@ -422,17 +405,17 @@ describe('practice', () => {
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount })).toEqual([])
   })
 
-  test('leaves the intake pool alone, so the daily budget stays the only door', () => {
-    // A short session on a big pool must stay short. Topping it up from the
-    // pool would let drilling introduce material: `applyReviewIn` sets
-    // introducedAt on first review, so failing a drilled pooled word would
-    // quietly spend a slot of today's intake.
+  test('leaves the line pool alone, so the daily budget stays the only door', () => {
+    // Topping a session up from the sentence pool would let drilling introduce
+    // material: `applyReviewIn` sets introducedAt on first review, so failing a
+    // drilled pooled line would quietly spend a slot of today's intake.
     const items = [
-      ...Array.from({ length: 30 }, (_, i) => word(`余${i}`, { state: 'pool' })),
+      ...Array.from({ length: 30 }, (_, i) => word(`余${i}`)),
       ...Array.from({ length: 30 }, (_, i) => sentence(`余句${i}`)),
     ]
     const queue = buildQueue({ items, now: NOW, ...limits, unknownCount, limit: 40 })
-    expect(queue).toHaveLength(limits.newWordsPerDay + limits.newSentencesPerDay)
+    // Thirty words, which are unrationed, plus the five lines the day allows.
+    expect(queue).toHaveLength(30 + limits.newSentencesPerDay)
   })
 
   test('leaves declared-known words alone', () => {
@@ -503,5 +486,89 @@ describe('practice', () => {
     const items = Array.from({ length: 40 }, (_, i) => settled(`旧${i}`))
     const counts = queueCounts({ items, now: NOW, ...limits, unknownCount, limit: 5 })
     expect(counts.practice).toBe(40)
+  })
+})
+
+describe('grammar intake', () => {
+  const pattern = (id: string, over: Partial<Item> = {}): Item =>
+    make({ id: `g:${id}`, kind: 'grammar', patternId: id, text: 'V + 得 + how', state: 'pool', ...over })
+
+  const ids = (session: QueueSession) => session.cards.map((c) => c.id)
+
+  test('releases pooled patterns into the session', () => {
+    const session = buildSession({
+      items: [pattern('de-complement')],
+      now: NOW,
+      newSentencesPerDay: 5,
+      unknownCount: () => 0,
+      rankOf: () => undefined,
+      limit: 10,
+    })
+
+    expect(ids(session)).toContain('g:de-complement')
+  })
+
+  // A pattern is worth studying in proportion to how often you have actually
+  // met it, the same reasoning that orders the word pool by sightings.
+  test('takes the most-met pattern first', () => {
+    const met = (n: number) =>
+      Array.from({ length: n }, () => ({ text: 'x', translation: '', at: 0 }))
+
+    const session = buildSession({
+      items: [
+        pattern('shi-de', { contexts: met(1) }),
+        pattern('de-complement', { contexts: met(9) }),
+        pattern('ba-construction', { contexts: met(4) }),
+      ],
+      now: NOW,
+      newSentencesPerDay: 5,
+      unknownCount: () => 0,
+      rankOf: () => undefined,
+      limit: 10,
+    })
+
+    expect(ids(session)).toEqual(['g:de-complement', 'g:ba-construction', 'g:shi-de'])
+  })
+
+  test('is budgeted like lines, not released all at once like words', () => {
+    const patterns = Array.from({ length: 8 }, (_, i) => pattern(`p${i}`))
+    const session = buildSession({
+      items: patterns,
+      now: NOW,
+      newSentencesPerDay: 2,
+      unknownCount: () => 0,
+      rankOf: () => undefined,
+      limit: 20,
+    })
+
+    expect(session.cards).toHaveLength(2)
+  })
+
+  test('studying only words leaves patterns out', () => {
+    const session = buildSession({
+      items: [pattern('de-complement')],
+      now: NOW,
+      newSentencesPerDay: 5,
+      unknownCount: () => 0,
+      rankOf: () => undefined,
+      include: 'words',
+      limit: 10,
+    })
+
+    expect(session.cards).toHaveLength(0)
+  })
+
+  test('studying only grammar leaves words and lines out', () => {
+    const session = buildSession({
+      items: [pattern('de-complement'), word('学习'), sentence('我很累。')],
+      now: NOW,
+      newSentencesPerDay: 5,
+      unknownCount: () => 0,
+      rankOf: () => undefined,
+      include: 'grammar',
+      limit: 10,
+    })
+
+    expect(ids(session)).toEqual(['g:de-complement'])
   })
 })

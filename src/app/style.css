@@ -617,6 +617,50 @@ button.speak.big {
   font-size: 15px;
 }
 
+/* Why the line means what it means — the answer side only. A translation tells
+   you what a sentence says; this is the only thing on the card that tells you
+   how it says it. */
+.structure {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  text-align: left;
+}
+.structure-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pattern + .pattern {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--edge);
+}
+.pattern-head {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.pattern-skeleton {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.pattern-name {
+  font-size: 12px;
+  color: var(--muted);
+}
+.pattern-explanation {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
 .context {
   margin: 16px auto 8px;
   padding: 12px 14px;
@@ -668,6 +712,12 @@ button.speak.big {
   font-weight: 600;
   color: var(--action);
 }
+
+/* Structure, dimmed the same way the video overlay dims it, so a line reads as
+   vocabulary against grammar in both places. Loses to .marked on purpose: if the
+   card is about 的, the card's own word has to stay the loudest thing on screen. */
+.line-word .zh.structural { color: var(--muted); }
+.line-word .zh.structural.marked { color: var(--action); }
 
 /* Asked for, never volunteered — which is why this is the only place a meaning
    appears on a question. CSS-driven so hover, tap and keyboard focus all reach

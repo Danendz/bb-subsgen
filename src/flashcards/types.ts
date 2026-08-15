@@ -25,7 +25,7 @@ export interface Context {
   at: number
 }
 
-export type ItemKind = 'word' | 'sentence'
+export type ItemKind = 'word' | 'sentence' | 'grammar'
 
 /**
  * `pool` is the intake holding area: captured, but not yet introduced. Every
@@ -38,8 +38,16 @@ export interface Item {
   /** Deterministic — see `wordId` / `sentenceId`. Two browsers derive the same id. */
   id: string
   kind: ItemKind
-  /** Headword for a word; the whole line for a sentence. */
+  /** Headword for a word; the whole line for a sentence; the skeleton for a pattern. */
   text: string
+  /**
+   * Which grammar pattern this card is, for a `grammar` item.
+   *
+   * Kept separate from `text` because `text` is also what gets segmented and
+   * rendered, and a skeleton like `V + 得 + how` is not a sentence. This is the
+   * join back to `PATTERNS`, and the id is derived from it — see `grammarId`.
+   */
+  patternId?: string
   state: ItemState
   /** The word whose discovery captured this sentence — the cloze blank. */
   target?: string
@@ -90,8 +98,8 @@ export type ReviewStyle = 'recognise' | 'type' | 'audio' | 'cloze'
  */
 export type StudyMode = 'remember' | 'type' | 'audio' | 'mixed'
 
-/** Which cards a session draws from. */
-export type StudyInclude = 'words' | 'sentences' | 'both'
+/** Which cards a session draws from. `both` means everything, grammar included. */
+export type StudyInclude = 'words' | 'sentences' | 'grammar' | 'both'
 
 /**
  * How a review went.
@@ -203,4 +211,14 @@ export function wordId(headword: string): string {
  */
 export function sentenceId(text: string): string {
   return `s:${text.trim()}`
+}
+
+/**
+ * Patterns are keyed by their own id, so one card accumulates every line you
+ * have met the structure in — which is exactly the example set the card needs to
+ * quiz with. This is why `Pattern.id` must never move: it carries the card's
+ * whole review history.
+ */
+export function grammarId(patternId: string): string {
+  return `g:${patternId}`
 }

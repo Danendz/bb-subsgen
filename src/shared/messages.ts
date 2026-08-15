@@ -70,6 +70,14 @@ export type FlashcardsMessage =
        * a video — the cost `createExposureBuffer` exists to avoid.
        */
       words?: string[]
+      /**
+       * Grammar patterns the line was built out of, pooled alongside it.
+       *
+       * Rides this message for the same reason `words` does, and lands in the
+       * same transaction — a pattern is only ever met *in* a line, so a line
+       * arriving without the structure it taught would be a half-written fact.
+       */
+      patterns?: string[]
     }
   | { type: 'bb-subsgen:mark-known'; headword: string; known: boolean }
   | { type: 'bb-subsgen:record-signal'; signal: Signal }

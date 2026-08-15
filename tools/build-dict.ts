@@ -8,7 +8,8 @@
 // wherever this derived data is shown or redistributed.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { rankEntries } from '../src/lang/entries.ts'
+import { excludeFromSegmentation, rankEntries } from '../src/lang/entries.ts'
+import { functionWord } from '../src/lang/grammar/function-words.ts'
 
 interface CedictEntry {
   simplified: string
@@ -57,19 +58,28 @@ function groupByHeadword(entries: CedictEntry[]): Map<string, CedictEntry[]> {
 }
 
 /**
- * Picks one reading per headword.
+ * Picks one reading per headword, and flags the ones that are not words.
  *
  * Taking the first entry gives the wrong reading whenever CC-CEDICT lists a
  * surname first — 也 is "Ye3 surname Ye" before "ye3 also; too", and 过 is
  * "Guo1 surname Guo" before "guo4 to cross" — so the ruby annotation showed a
  * capitalized proper noun over ordinary words. Ranking demotes proper nouns
  * and variant stubs, which corrects ~1500 headwords.
+ *
+ * The `p` flag marks phrasebook entries (see `isPhrase`). They keep their
+ * reading so the dictionary can still find them; segmentation skips them.
+ *
+ * Function words override ranking entirely. Sense count is the right tiebreak
+ * for content characters, and exactly the wrong one for the closed class, whose
+ * grammatical reading is the commonest on screen and the thinnest in the
+ * dictionary — so the table declares those, and they are fed in as the
+ * preferred reading rather than left to be inferred.
  */
 function buildWords(byHeadword: Map<string, CedictEntry[]>): string {
   const lines: string[] = []
   for (const [word, candidates] of byHeadword) {
-    const [best] = rankEntries(candidates, word)
-    lines.push(`${word}\t${best.pinyin}`)
+    const [best] = rankEntries(candidates, word, functionWord(word)?.reading)
+    lines.push(`${word}\t${best.pinyin}${excludeFromSegmentation(best, word) ? '\tp' : ''}`)
   }
   return lines.join('\n')
 }

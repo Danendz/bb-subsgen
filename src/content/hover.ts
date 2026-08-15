@@ -1,5 +1,7 @@
 import { adoptStyles } from './overlay'
 import { buildCard, cardHeadwords, characterBreakdown } from './card'
+import { patternsForWord } from '../lang/grammar/match'
+import type { Token } from '../lang/segment'
 import { discoverWord, markKnown } from '../shared/flashcards-client'
 import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
@@ -64,6 +66,13 @@ export interface HoverDeps {
   showToneColors: () => boolean
   /** The line currently on screen, snapshotted onto whatever gets discovered. */
   currentContext: () => Context | null
+  /**
+   * The line as segmented, for working out which structures the word sits in.
+   *
+   * Passed as tokens rather than as patterns because membership is decided per
+   * word, and the line is already segmented for rendering — see `patternsForWord`.
+   */
+  currentTokens: () => Token[]
   known: () => Set<string>
   /**
    * A card actually opened on a word — the moment a lookup happens.
@@ -84,6 +93,7 @@ export function attachHover({
   isTraditional,
   showToneColors,
   currentContext,
+  currentTokens,
   known,
   onLookup,
   onLookupEnd,
@@ -128,6 +138,7 @@ export function attachHover({
         displayedPinyin: wordEl.dataset.pinyin ?? '',
         entries: found[headword] ?? [],
         breakdown: characterBreakdown(headword, found, useTraditional),
+        patterns: patternsForWord(currentTokens(), headword),
         known: known().has(headword),
       },
       {

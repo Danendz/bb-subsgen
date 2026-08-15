@@ -7,7 +7,7 @@
 
 import { parseDefinitions } from '../../lang/definitions'
 import { rankEntries } from '../../lang/entries'
-import type { CedictEntry } from '../../lang/dict'
+import type { CedictEntry, Lexicon } from '../../lang/dict'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 
@@ -17,7 +17,7 @@ const SENSES = 3
 export interface LineProps {
   text: string
   /** Headword → pinyin, what the line is segmented against. */
-  words: Map<string, string>
+  words: Lexicon
   known: Set<string>
   /** Looked up by the card, keyed by headword. Absent while it is still loading. */
   defs?: Record<string, CedictEntry[]> | null
@@ -86,7 +86,9 @@ function Word({
           <Pinyin pinyin={token.pinyin ?? ''} />
         </span>
       )}
-      <span class={`zh ${token.marked ? 'marked' : ''}`}>{token.text}</span>
+      <span class={`zh ${token.marked ? 'marked' : ''} ${token.structural ? 'structural' : ''}`}>
+        {token.text}
+      </span>
       {askable && (
         <span class="word-tip" role="tooltip">
           <span class="tip-head">

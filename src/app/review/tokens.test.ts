@@ -2,18 +2,30 @@ import { describe, expect, test } from 'vitest'
 import { lineTokens } from './tokens'
 
 /** Enough of a word list to segment the lines below the way the app would. */
-const WORDS = new Map([
-  ['南昌', 'nan2 chang1'],
-  ['真的', 'zhen1 de5'],
-  ['太', 'tai4'],
-  ['恐怖', 'kong3 bu4'],
-  ['了', 'le5'],
-  ['好', 'hao3'],
-  ['好好', 'hao3 hao3'],
-  ['学习', 'xue2 xi2'],
-])
+const WORDS = {
+  words: new Map([
+    ['南昌', 'nan2 chang1'],
+    ['真的', 'zhen1 de5'],
+    ['太', 'tai4'],
+    ['恐怖', 'kong3 bu4'],
+    ['了', 'le5'],
+    ['好', 'hao3'],
+    ['好好', 'hao3 hao3'],
+    ['学习', 'xue2 xi2'],
+  ]),
+  phrases: new Set<string>(),
+}
 
 const LINE = '南昌真的太恐怖了。'
+
+const WORDS_WITH_PARTICLE = {
+  words: new Map([
+    ['我', 'wo3'],
+    ['的', 'de5'],
+    ['书', 'shu1'],
+  ]),
+  phrases: new Set<string>(),
+}
 
 const texts = (tokens: ReturnType<typeof lineTokens>) => tokens.map((t) => t.text)
 const reading = (tokens: ReturnType<typeof lineTokens>) =>
@@ -96,5 +108,19 @@ describe('lineTokens', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), mark: '恐怖', blank: '恐怖' })
       expect(tokens.find((t) => t.blanked)?.marked).toBe(false)
     })
+  })
+})
+
+describe('marking structure', () => {
+  test('flags function words so the study app can dim them like the overlay', () => {
+    const tokens = lineTokens('我的书', WORDS_WITH_PARTICLE, { known: new Set() })
+    const structural = tokens.filter((t) => t.structural).map((t) => t.text)
+    expect(structural).toEqual(['我', '的'])
+  })
+
+  test('does not flag ordinary vocabulary or punctuation', () => {
+    const tokens = lineTokens(LINE, WORDS, { known: new Set() })
+    expect(tokens.find((t) => t.text === '恐怖')?.structural).toBe(false)
+    expect(tokens.find((t) => t.text === '。')?.structural).toBe(false)
   })
 })

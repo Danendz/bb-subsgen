@@ -8,7 +8,6 @@ import { DAY_MS, startOfDay } from './scheduler'
 import type { Item, StudyInclude } from './types'
 
 export interface QueueLimits {
-  newWordsPerDay: number
   newSentencesPerDay: number
 }
 
@@ -43,10 +42,9 @@ export interface QueueInput extends QueueLimits {
    *
    * Same shape and same reason as `rankOf`: exposure counts live in their own
    * store and keep moving, so a copy denormalised onto the card would be a
-   * number frozen at the moment of collection. This is what orders the word
-   * pool, and it is the one signal always available — a frequency list has to
-   * be uploaded, but how often you have actually met a word is collected from
-   * the first video you watch.
+   * number frozen at the moment of collection. It is the one signal always
+   * available — a frequency list has to be uploaded, but how often you have
+   * actually met a word is collected from the first video you watch.
    */
   seenCount?: (headword: string) => number
 }
@@ -54,14 +52,20 @@ export interface QueueInput extends QueueLimits {
 /**
  * The cards this session is allowed to touch.
  *
- * Applied before anything else, so the daily budgets and the priority order are
- * all computed against the same restricted deck. Filtering by kind cannot
- * disturb the budgets, which are counted per kind anyway: studying only words
- * today leaves tomorrow's sentence intake exactly where it was.
+ * Applied before anything else, so the line budget and the priority order are
+ * both computed against the same restricted deck. Filtering by kind cannot
+ * disturb that budget: studying only words today leaves tomorrow's line intake
+ * exactly where it was.
  */
+const INCLUDED_KIND: Record<Exclude<StudyInclude, 'both'>, Item['kind']> = {
+  words: 'word',
+  sentences: 'sentence',
+  grammar: 'grammar',
+}
+
 function included(items: Item[], include: StudyInclude): Item[] {
   if (include === 'both') return items
-  const kind = include === 'words' ? 'word' : 'sentence'
+  const kind = INCLUDED_KIND[include]
   return items.filter((item) => item.kind === kind)
 }
 
@@ -82,24 +86,23 @@ function introducedToday(items: Item[], now: number, kind: Item['kind']): number
 }
 
 /**
- * New words waiting to be introduced: the ones you stopped on, then the pool.
+ * Words collected but never yet studied, in the order they are worth meeting.
  *
- * Two lists concatenated rather than one list merged, and the order between them
- * is the point. Stopping on a word is a deliberate act and a rare one, so those
- * fill the day's budget first and the pool only ever takes what is left over.
- * That also means a deck collected before words had a pool is served in exactly
- * the order it always was — the change adds to the tail, it does not reshuffle.
+ * Unrationed. Every word is a candidate from the moment it is collected, and the
+ * session size is the only thing that decides how many are actually met — so
+ * this returns the whole ordered run and lets `buildSession` take the top of it.
  *
- * Within the deliberate half, frequency order keeps effort proportional to
- * payoff: the deck grows by whatever you happened to look up, but how often a
- * word is used is how much it is worth knowing. Unranked words sort last —
- * absence from a frequency list is evidence of rarity, not of importance.
+ * Frequency leads, because it keeps effort proportional to payoff: the deck
+ * grows by whatever happened to cross your screen, but how often a word is used
+ * is how much it is worth knowing. Unranked words sort last — absence from a
+ * frequency list is evidence of rarity, not of importance.
  *
- * Within the pool, exposure count leads. The pool fills passively and can hold
- * hundreds of words after one evening, so it needs an ordering that works with
- * no word list uploaded at all; how many times a word has actually been in front
- * of you is that ordering, and it is better evidence for this particular learner
- * than a corpus rank anyway.
+ * Exposure count breaks the tie, which quietly makes it the *whole* ordering
+ * until a word list is uploaded: with no ranks, every word ties on the first key
+ * and falls through to this one. That matters because a frequency list is
+ * optional and often late, while how many times you have actually met a word is
+ * collected from the first video you watch — and for this particular learner it
+ * is the better evidence anyway.
  */
 function newWords(
   items: Item[],
@@ -109,24 +112,19 @@ function newWords(
 ): Item[] {
   if (limit <= 0) return []
   const rank = (item: Item) => rankOf(item.text) ?? Number.MAX_SAFE_INTEGER
-  const words = items.filter((item) => item.kind === 'word' && !item.introducedAt)
 
-  // Discovery order breaks the tie, which is also the whole ordering when no
-  // word list has been uploaded.
-  const hovered = words
-    .filter((item) => item.state === 'new')
-    .sort((a, b) => rank(a) - rank(b) || a.createdAt - b.createdAt)
-
-  const pooled = words
-    .filter((item) => item.state === 'pool')
+  return items
+    // Both halves are load-bearing. `state` excludes anything already started or
+    // declared known; `introducedAt` is the belt to that braces, since it is the
+    // field the rest of the queue treats as the record of a first review.
+    .filter((item) => item.kind === 'word' && item.state === 'new' && !item.introducedAt)
     .sort(
       (a, b) =>
-        seenCount(b.text) - seenCount(a.text) ||
         rank(a) - rank(b) ||
+        seenCount(b.text) - seenCount(a.text) ||
         a.createdAt - b.createdAt,
     )
-
-  return [...hovered, ...pooled].slice(0, limit)
+    .slice(0, limit)
 }
 
 /**
@@ -152,16 +150,36 @@ function newSentences(items: Item[], limit: number, unknownCount: (item: Item) =
 }
 
 /**
+ * Patterns waiting to be met, most-sighted first.
+ *
+ * Ordered by how often you have actually run into the structure, which is the
+ * same argument that orders the word pool by sightings: the grammar worth
+ * learning next is the grammar that keeps stopping you.
+ *
+ * Budgeted against the same daily allowance as lines rather than released on
+ * sight like words. A pattern is a slower thing to learn than a word, and an
+ * evening's watching can turn up a dozen — letting them all in would swamp a
+ * session with structures you met once each.
+ */
+function newGrammar(items: Item[], limit: number): Item[] {
+  if (limit <= 0) return []
+  return items
+    .filter((item) => item.kind === 'grammar' && item.state === 'pool')
+    .sort((a, b) => b.contexts.length - a.contexts.length || a.createdAt - b.createdAt)
+    .slice(0, limit)
+}
+
+/**
  * Cards already in the deck that are not due yet — the practice material.
  *
- * This is what makes a session possible on a day when the intake budget is
- * spent and nothing has come round: a deck of several hundred collected cards
- * that cannot be opened is how the habit stops, and the streak goes with it.
+ * This is what makes a session possible on a day when everything collected has
+ * been met and nothing has come round: a deck of several hundred cards that
+ * cannot be opened is how the habit stops, and the streak goes with it.
  *
- * What is left out matters as much as what is in. The intake pool and unmet new
- * cards are excluded so the daily budget stays the only door material comes in
+ * What is left out matters as much as what is in. The line pool and unmet new
+ * cards are excluded so the daily budget stays the only door lines come in
  * through — `applyReviewIn` sets `introducedAt` on first review, so drilling a
- * pooled word and failing it would quietly spend a slot of the day's intake.
+ * pooled line and failing it would quietly spend a slot of the day's intake.
  * Declared-known words are excluded to match `due` and `merge`, which already
  * treat a declaration as something scheduling does not touch.
  */
@@ -213,14 +231,19 @@ export interface QueueSession {
 }
 
 /**
- * The session's cards: everything due, then whatever new material the day's
- * budget still allows, then practice to fill out the rest.
+ * The session's cards: everything due, then today's lines, then new words, then
+ * practice to fill out whatever is left.
  *
  * Due cards come first deliberately. Reviews are the debt already owed; new
  * material added ahead of them is how a deck ends up with a backlog it can
  * never clear. Practice comes last for the same reason from the other end — it
  * is the only source with nothing at stake, so it takes what the scheduled
  * sources leave and never displaces them.
+ *
+ * New lines come *before* new words even though both are new. Lines are still
+ * rationed to a handful a day while words are not, so the other order would let
+ * a deck holding hundreds of uncollected words push every line past `limit` and
+ * silently stop sentence intake altogether.
  *
  * Practice is drawn only when `limit` is set, because filling a session up needs
  * a size to fill up to. Callers that ask for the whole queue are asking what is
@@ -233,7 +256,6 @@ export interface QueueSession {
 export function buildSession({
   items,
   now,
-  newWordsPerDay,
   newSentencesPerDay,
   unknownCount,
   rankOf,
@@ -242,13 +264,22 @@ export function buildSession({
   limit,
 }: QueueInput): QueueSession {
   const pool = included(items, include)
-  const wordBudget = newWordsPerDay - introducedToday(pool, now, 'word')
   const sentenceBudget = newSentencesPerDay - introducedToday(pool, now, 'sentence')
+  // Its own budget, not a share of the line budget: studying only grammar today
+  // should not consume tomorrow's lines, and the two pools graduate on
+  // different grounds.
+  const grammarBudget = newSentencesPerDay - introducedToday(pool, now, 'grammar')
+
+  // Words are capped by the session rather than by the day, so an uncapped
+  // caller asking "what is owed" gets the whole run — which is the honest
+  // answer now that nothing is holding them back.
+  const wordLimit = limit ?? Number.MAX_SAFE_INTEGER
 
   const scheduled = [
     ...due(pool, now),
-    ...newWords(pool, wordBudget, rankOf, seenCount),
     ...newSentences(pool, sentenceBudget, unknownCount),
+    ...newGrammar(pool, grammarBudget),
+    ...newWords(pool, wordLimit, rankOf, seenCount),
   ]
 
   if (limit === undefined) return { cards: scheduled, extra: new Set() }
@@ -266,8 +297,12 @@ export function buildQueue(input: QueueInput): Item[] {
 
 export interface QueueCounts {
   due: number
+  /** Words collected but never studied. No longer rationed, so this can be large. */
   newWords: number
   newSentences: number
+  /** Grammar patterns the day's budget still has room for. */
+  newGrammar: number
+  /** Lines and patterns still waiting in the intake pool. Words no longer have one. */
   pooled: number
   /** Cards available to practise — everything in the deck that is not yet due. */
   practice: number
@@ -282,23 +317,23 @@ export interface QueueCounts {
  * backlog worth knowing.
  */
 export function queueCounts(input: QueueInput): QueueCounts {
-  const { now, newWordsPerDay, newSentencesPerDay, unknownCount, rankOf } = input
+  const { now, newSentencesPerDay, unknownCount, rankOf } = input
   const seenCount = input.seenCount ?? (() => 0)
   const items = included(input.items, input.include ?? 'both')
   return {
     due: due(items, now).length,
-    newWords: newWords(
-      items,
-      newWordsPerDay - introducedToday(items, now, 'word'),
-      rankOf,
-      seenCount,
-    ).length,
+    newWords: newWords(items, Number.MAX_SAFE_INTEGER, rankOf, seenCount).length,
     newSentences: newSentences(
       items,
       newSentencesPerDay - introducedToday(items, now, 'sentence'),
       unknownCount,
     ).length,
-    pooled: items.filter((item) => item.kind === 'sentence' && item.state === 'pool').length,
+    newGrammar: newGrammar(items, newSentencesPerDay - introducedToday(items, now, 'grammar'))
+      .length,
+    pooled: items.filter(
+      (item) =>
+        (item.kind === 'sentence' || item.kind === 'grammar') && item.state === 'pool',
+    ).length,
     // Uncapped, like everything else here: this is the size of the eligible set,
     // which is what tells the screen whether a session can be offered at all.
     practice: items.filter((item) => practisable(item, now)).length,

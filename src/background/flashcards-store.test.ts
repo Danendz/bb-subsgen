@@ -13,6 +13,7 @@ import {
 import { done, openFlashcardsDb, request, STORES } from '../flashcards/db'
 import { studyStreak } from '../flashcards/queries'
 import {
+  grammarId,
   sentenceId,
   wordId,
   type Exposure,
@@ -124,48 +125,38 @@ describe('discoverWordIn', () => {
     expect((await get<Item>(database, STORES.items, wordId('我')))?.state).toBe('known')
   })
 
-  test('a passive discovery waits in the pool', async () => {
-    // A word met in a line that scrolled past is evidence of nothing yet — an
-    // evening's watching turns up hundreds.
+  test('a word met in a line that scrolled past joins the deck like any other', async () => {
+    // It used to wait in a pool. Rationing words that tightly meant a deck of
+    // dozens could not fill a twenty-card session.
     const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
+    await discoverWordIn(database, '憔悴', context('他很憔悴。'))
 
     const item = await get<Item>(database, STORES.items, wordId('憔悴'))
-    expect(item?.state).toBe('pool')
+    expect(item?.state).toBe('new')
     expect(item?.contexts).toHaveLength(1)
   })
 
-  test('a passive discovery never pushes a card back out of the deck', async () => {
+  test('meeting a word again never pushes a card back out of the deck', async () => {
     const database = await db()
     await discoverWordIn(database, '学习', context('我在学习中文。'))
-    await discoverWordIn(database, '学习', context('他学习得很好。'), true)
+    await discoverWordIn(database, '学习', context('他学习得很好。'))
 
     expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('new')
   })
 
-  test('a passive discovery does not disturb a word in review', async () => {
+  test('meeting a word again does not disturb one in review', async () => {
     const database = await db()
     await discoverWordIn(database, '学习')
     const item = (await get<Item>(database, STORES.items, wordId('学习')))!
     await applyReviewIn(database, item, 'good', 'recognise')
 
-    await discoverWordIn(database, '学习', context('他学习得很好。'), true)
+    await discoverWordIn(database, '学习', context('他学习得很好。'))
     expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('review')
   })
 
-  test('stopping on a word pulls it out of the pool', async () => {
-    // The lookup is exactly the evidence the pool was waiting for, and it is
-    // the one thing that should let a word jump the queue.
+  test('meeting a word twice keeps both contexts', async () => {
     const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
     await discoverWordIn(database, '憔悴', context('他很憔悴。'))
-
-    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('new')
-  })
-
-  test('promoting out of the pool keeps the contexts already collected', async () => {
-    const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
     await discoverWordIn(database, '憔悴', context('她面容憔悴。'))
 
     const item = await get<Item>(database, STORES.items, wordId('憔悴'))
@@ -173,13 +164,6 @@ describe('discoverWordIn', () => {
     expect(item?.contexts).toHaveLength(2)
   })
 
-  test('a passive discovery of a pooled word leaves it pooled', async () => {
-    const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'), true)
-    await discoverWordIn(database, '憔悴', context('她面容憔悴。'), true)
-
-    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('pool')
-  })
 })
 
 describe('captureSentenceIn', () => {
@@ -209,10 +193,10 @@ describe('captureSentenceIn', () => {
     )
   })
 
-  test('pools the words that made the line worth keeping', async () => {
+  test('collects the words that made the line worth keeping, into the deck', async () => {
     // A line is kept precisely because it holds words you can't read. Leaving
     // that vocabulary behind is what built a pool of sentences waiting on words
-    // nothing was teaching.
+    // nothing was teaching — so the line waits, and its words do not.
     const database = await db()
     const line = '他面容憔悴。'
     await captureSentenceIn(database, line, context(line), undefined, ['面容', '憔悴'])
@@ -221,7 +205,7 @@ describe('captureSentenceIn', () => {
     for (const word of ['面容', '憔悴']) {
       const item = await get<Item>(database, STORES.items, wordId(word))
       expect(item?.kind).toBe('word')
-      expect(item?.state).toBe('pool')
+      expect(item?.state).toBe('new')
       // The line the word was met in travels with it, same as a hover.
       expect(item?.contexts.map((c) => c.text)).toEqual([line])
     }
@@ -575,5 +559,52 @@ describe('studyStreak', () => {
     const database = await db()
     await logReviews(database, NOW, [2, 3, 4])
     expect(await studyStreak(database, NOW)).toBe(0)
+  })
+})
+
+describe('capturing grammar', () => {
+  test('a pattern met in a line becomes a pooled card', async () => {
+    const database = await db()
+    const line = '时间过得很快。'
+    await captureSentenceIn(database, line, context(line), undefined, [], ['de-complement'])
+
+    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    expect(item?.kind).toBe('grammar')
+    expect(item?.patternId).toBe('de-complement')
+    // Pooled like a line, not released like a word: patterns are the slowest
+    // thing to learn and the easiest to flood a deck with.
+    expect(item?.state).toBe('pool')
+  })
+
+  test('stores the skeleton as its text, so the card has something to show', async () => {
+    const database = await db()
+    await captureSentenceIn(database, '时间过得很快。', context('时间过得很快。'), undefined, [], [
+      'de-complement',
+    ])
+
+    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    expect(item?.text).toBe('V + 得 + how')
+  })
+
+  // The lines are the whole point: a pattern card quizzes with the sentences you
+  // actually met it in, so every sighting has to accumulate.
+  test('every sighting adds the line it was met in', async () => {
+    const database = await db()
+    await captureSentenceIn(database, '他跑得很快。', context('他跑得很快。'), undefined, [], [
+      'de-complement',
+    ])
+    await captureSentenceIn(database, '时间过得很快。', context('时间过得很快。'), undefined, [], [
+      'de-complement',
+    ])
+
+    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    expect(item?.contexts.map((c) => c.text)).toEqual(['他跑得很快。', '时间过得很快。'])
+  })
+
+  test('an unknown pattern id is ignored rather than stored as a blank card', async () => {
+    const database = await db()
+    await captureSentenceIn(database, '你好。', context('你好。'), undefined, [], ['no-such-pattern'])
+
+    expect(await get<Item>(database, STORES.items, grammarId('no-such-pattern'))).toBeUndefined()
   })
 })

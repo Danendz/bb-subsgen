@@ -38,8 +38,9 @@ export function captureSentence(
   context: Context,
   target?: string,
   words?: string[],
+  patterns?: string[],
 ): void {
-  send({ type: 'bb-subsgen:capture-sentence', text, context, target, words })
+  send({ type: 'bb-subsgen:capture-sentence', text, context, target, words, patterns })
 }
 
 export function markKnown(headword: string, known: boolean): void {

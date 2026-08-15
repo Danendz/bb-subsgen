@@ -6,6 +6,8 @@ import {
   setCardTranslation,
 } from '../content/card'
 import { segment } from '../lang/segment'
+import { EMPTY_LEXICON, type Lexicon } from '../lang/dict'
+import { patternsForWord } from '../lang/grammar/match'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { hanWords, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
@@ -36,7 +38,7 @@ export interface ReaderDeps {
   lookup: DefsLookup
   translator: SentenceTranslator
   /** Lazily resolved: the 4.5MB word list is only fetched once you actually look something up. */
-  words: () => Promise<Map<string, string>>
+  words: () => Promise<Lexicon>
   /** Read live, so settings changes take effect without a reload. */
   settings: () => Settings
   /** Words the reader should stop annotating, mirrored from the worker. */
@@ -70,7 +72,7 @@ export function attachReader({
   let selectionCard: HTMLElement | null = null
   let pending = 0
   let frame = 0
-  let wordList: Map<string, string> | null = null
+  let wordList: Lexicon | null = null
 
   const modifierHeld = (e: MouseEvent | KeyboardEvent): boolean =>
     e[MODIFIER_PROPERTY[settings().readerModifier]]
@@ -213,6 +215,9 @@ export function attachReader({
         displayedPinyin: match.pinyin,
         entries: found[match.text] ?? [],
         breakdown: characterBreakdown(match.text, found, useTraditional),
+        // Segmented from the sentence under the pointer, which is the same text
+        // the translation below the card is for.
+        patterns: wordList ? patternsForWord(segment(sentence, wordList), match.text) : [],
         known: known().has(match.text),
       },
       {
@@ -248,7 +253,7 @@ export function attachReader({
     const index = indexOf(block, caret.node, caret.offset)
     if (index === null) return null
 
-    const match = matchAt(block.text, index, wordList)
+    const match = matchAt(block.text, index, wordList.words)
     if (!match) return null
 
     const range = rangeOf(block, match.start, match.end)
@@ -444,8 +449,8 @@ export function attachReader({
    * this generous. Words already known are skipped, or every selection would
    * drag 的 and 我们 back in.
    */
-  const captureSelection = (selected: string, list: Map<string, string>) => {
-    const target = selectionTarget(selected, list)
+  const captureSelection = (selected: string, list: Lexicon) => {
+    const target = selectionTarget(selected, list.words)
     if (!target) return
 
     const context = pageContext(target.text)
@@ -471,7 +476,7 @@ export function attachReader({
 
     const wordsEl = document.createElement('div')
     wordsEl.className = 'words'
-    segment(text, wordList ?? new Map()).forEach((token, index) => {
+    segment(text, wordList ?? EMPTY_LEXICON).forEach((token, index) => {
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,

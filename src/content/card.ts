@@ -5,6 +5,8 @@
 import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/tone'
 import { parseDefinitions } from '../lang/definitions'
 import { rankEntries } from '../lang/entries'
+import { isFunctionWord } from '../lang/grammar/function-words'
+import type { Pattern } from '../lang/grammar/patterns'
 import { isHan, type Token } from '../lang/segment'
 import type { CedictEntry } from '../lang/dict'
 
@@ -54,6 +56,19 @@ export const WORD_STYLE = `
   white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
+
+/* Structure, dimmed rather than annotated.
+   The line already carries three rows over a video — characters, readings, and
+   the translation — and prose about grammar would need a fourth. Dimming needs
+   none: it costs no height and no reading, and it answers the question that
+   actually blocks a learner mid-line, which is not "what does 得 mean" but
+   "which of these am I even supposed to be looking up". Hovering still explains,
+   because the card was always going to be where the explaining happened. */
+.word.function .hanzi {
+  color: #b9c0cc;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.word.function .pinyin { color: #98a0ad; }
 `
 
 export const CARD_STYLE = `
@@ -214,6 +229,40 @@ export const CARD_STYLE = `
 .known-btn.on { color: #7ee0a8; }
 .known-btn svg { display: block; }
 
+/* What the dictionary cannot say: the shape the word is part of. */
+.popup-structure {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.popup-structure-label {
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8496;
+}
+.popup-pattern + .popup-pattern {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.popup-pattern-skeleton {
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.popup-pattern-name {
+  margin-left: 7px;
+  font-size: 11.5px;
+  color: #8a92a3;
+}
+.popup-pattern-explanation {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #c3c8d0;
+}
+
 /* Sentence translation, always last so the card grows downward. */
 .popup-sentence {
   margin-top: 8px;
@@ -339,6 +388,9 @@ export interface WordStyleOptions {
 export function buildWordElement(token: Token, options: WordStyleOptions): HTMLElement {
   const word = document.createElement('span')
   word.className = 'word'
+  // Structure reads dimmer than vocabulary. Costs no height, which is the whole
+  // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
+  if (isFunctionWord(token.text)) word.classList.add('function')
   word.dataset.text = token.text
   // Lets the hover card show pinyin even when CC-CEDICT has no entry.
   if (token.pinyin) word.dataset.pinyin = token.pinyin
@@ -413,6 +465,15 @@ export interface CardData {
    * lookup that fetches them is the same single batched message either way.
    */
   breakdown?: CharacterGloss[]
+  /**
+   * Patterns this word takes part in; empty renders no section.
+   *
+   * The section the dictionary cannot supply. A gloss describes a word, and for
+   * a function word that is close to useless — CC-CEDICT calls 啊 an
+   * "interjection of surprise", which is true of the character and wrong about
+   * every sentence it ends. See lang/grammar/patterns.ts.
+   */
+  patterns?: readonly Pattern[]
   /** Sentence translation; empty renders no section. */
   translation?: string
   /** Whether the headword is already marked known, for the toggle's initial state. */
@@ -546,6 +607,39 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       chars.appendChild(row)
     }
     el.appendChild(chars)
+  }
+
+  if (data.patterns?.length) {
+    const structure = document.createElement('div')
+    structure.className = 'popup-structure'
+
+    const label = document.createElement('div')
+    label.className = 'popup-structure-label'
+    label.textContent = 'Structure'
+    structure.appendChild(label)
+
+    for (const pattern of data.patterns) {
+      const row = document.createElement('div')
+      row.className = 'popup-pattern'
+
+      const skeleton = document.createElement('span')
+      skeleton.className = 'popup-pattern-skeleton'
+      skeleton.textContent = pattern.skeleton
+      row.appendChild(skeleton)
+
+      const name = document.createElement('span')
+      name.className = 'popup-pattern-name'
+      name.textContent = pattern.name
+      row.appendChild(name)
+
+      const explanation = document.createElement('div')
+      explanation.className = 'popup-pattern-explanation'
+      explanation.textContent = pattern.explanation
+      row.appendChild(explanation)
+
+      structure.appendChild(row)
+    }
+    el.appendChild(structure)
   }
 
   if (onMarkKnown) {

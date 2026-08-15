@@ -12,14 +12,18 @@ import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
+import { PATTERNS } from '../../lang/grammar/patterns'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
 import { segment } from '../../lang/segment'
+import { findPatterns, type PatternMatch } from '../../lang/grammar/match'
+import type { Pattern } from '../../lang/grammar/patterns'
 import { parseDefinitions } from '../../lang/definitions'
 import { rankEntries } from '../../lang/entries'
+import type { Lexicon } from '../../lang/dict'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
-import { canSpeak, speak } from '../speak'
+import { canSpeak, speak } from '../../shared/speak'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
@@ -55,12 +59,21 @@ export interface SessionProps {
    * see `reschedules` — so the card has to know which it is before it grades.
    */
   extra: Set<string>
-  words: Map<string, string>
+  words: Lexicon
   known: Set<string>
   /** Known words, as an array, to draw distractor tiles from. */
   distractorPool: string[]
   mode: StudyMode
   onFinish: () => void
+}
+
+function distinctPatterns(matches: PatternMatch[]): Pattern[] {
+  const seen = new Set<string>()
+  return matches.flatMap(({ pattern }) => {
+    if (seen.has(pattern.id)) return []
+    seen.add(pattern.id)
+    return [pattern]
+  })
 }
 
 export function Session({
@@ -104,12 +117,14 @@ export function Session({
   // The Chinese line this card puts on screen: a word's example, or the
   // sentence itself. Named here because both the definitions and the renderer
   // need it, and because for a word card it is not the card's own text.
+  // A grammar card is the same shape as a word card here: its own `text` is a
+  // skeleton, not Chinese, so the line it shows has to come from an example.
   const line =
     current === null
       ? ''
-      : current.kind === 'word'
-        ? (current.contexts[current.contexts.length - 1]?.text ?? '')
-        : current.text
+      : current.kind === 'sentence'
+        ? current.text
+        : (current.contexts[current.contexts.length - 1]?.text ?? '')
 
   // Every word on screen, in one batched round trip. A lookup per word would be
   // a message per word, and the line is known in full before it is rendered.
@@ -131,7 +146,10 @@ export function Session({
 
     const context = current.contexts[current.contexts.length - 1]
     const translation = context?.translation ?? ''
-    const tokens = segment(current.text, words)
+    // Segmented from the example for a grammar card — `current.text` is the
+    // skeleton, which is not a sentence and has no tiles in it.
+    const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
+    const tokens = segment(exampleText, words)
     const target =
       current.kind === 'sentence'
         ? chooseTarget(hanWords(tokens), known, current.target)
@@ -158,7 +176,14 @@ export function Session({
       : []
     const bank = exercise.response === 'tiles' ? buildBank(answer, distractors, seed) : null
 
-    return { context, translation, tokens, target, exercise, answer, bank }
+    // Only lines have structure worth naming. A word card's example lives in
+    // its context, not in `text`, so there is nothing here to match against.
+    // Spans are dropped here: the reveal names the structures, it does not
+    // underline them, so one entry per distinct pattern is what it wants.
+    const patterns =
+      current.kind === 'sentence' ? distinctPatterns(findPatterns(tokens)) : []
+
+    return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
   }, [current?.id, current?.reps, words, known, distractorPool, mode])
 
   // Speaking is the question on a listening card, so it has to happen on its own
@@ -351,7 +376,11 @@ export function Session({
     )
   }
 
-  const { exercise, context, translation, target, bank } = card
+  const { exercise, context, translation, target, bank, patterns, exampleText } = card
+  // The card's own pattern, as opposed to `patterns`, which is everything the
+  // example line happens to contain.
+  const ownPattern = PATTERNS.find((p) => p.id === current.patternId)
+  const spokenText = current.kind === 'grammar' ? exampleText : current.text
   const pinyin = primary?.pinyin ?? ''
 
   return (
@@ -370,9 +399,19 @@ export function Session({
           graded, and colouring it red in that gap prejudges an answer the user
           has not given yet. */}
       <div class={`panel card ${outcome ? (outcome.right ? 'right' : 'wrong') : ''}`}>
-        <p class="task">{taskLabel(exercise.cue, current.kind)}</p>
+        <p class="task">{taskLabel(exercise.cue, current.kind, exercise.response)}</p>
 
-        {exercise.cue === 'audio' ? (
+        {exercise.cue === 'pattern' ? (
+          <div class="prompt">
+            <p class="hanzi-xl">{current.text}</p>
+            {ownPattern && <p class="gloss-prompt">{ownPattern.name}</p>}
+            {/* In production mode the translation is the question: build the
+                line that says this, using the shape above. */}
+            {exercise.response === 'tiles' && translation && (
+              <p class="translation-prompt">{translation}</p>
+            )}
+          </div>
+        ) : exercise.cue === 'audio' ? (
           <div class="prompt">
             <button class="speak big" onClick={() => speak(current.text)}>
               <span aria-hidden="true">♪</span> Play again
@@ -464,10 +503,25 @@ export function Session({
               </p>
             )}
 
+            {/* A grammar card's answer is what the shape does, shown with the
+                line it was met in — the explanation alone is a definition, and
+                the example is what makes it stick. */}
+            {current.kind === 'grammar' && ownPattern && (
+              <>
+                <p class="meaning">{ownPattern.explanation}</p>
+                {exampleText && (
+                  <p class="answer-hanzi">
+                    <Line text={exampleText} words={words} known={known} defs={defs} readings />
+                  </p>
+                )}
+                {translation && <p class="context">{translation}</p>}
+              </>
+            )}
+
             {/* The characters are the answer only when they were not the
                 question. Repeating them under a prompt that already showed them
                 just makes the card say the same thing twice. */}
-            {exercise.cue !== 'hanzi' && (
+            {current.kind !== 'grammar' && exercise.cue !== 'hanzi' && (
               <p class="answer-hanzi">
                 {current.kind === 'word' ? (
                   current.text
@@ -479,14 +533,35 @@ export function Session({
             {pinyin && <Pinyin pinyin={pinyin} />}
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
-            {current.kind === 'word'
-              ? exercise.cue !== 'gloss' && <p class="meaning">{gloss || 'No definition found'}</p>
-              : exercise.cue !== 'translation' && translation && (
-                  <p class="meaning">{translation}</p>
-                )}
+            {current.kind === 'word' ? (
+              exercise.cue !== 'gloss' && <p class="meaning">{gloss || 'No definition found'}</p>
+            ) : current.kind === 'sentence' ? (
+              exercise.cue !== 'translation' && translation && <p class="meaning">{translation}</p>
+            ) : null}
 
-            {canSpeak() && (
-              <button class="speak" onClick={() => speak(current.text)}>
+            {/* Why the line means what it means. Only on the answer side, and
+                only for a line — a single word has no structure to explain, and
+                on the question side this would give the answer away. */}
+            {patterns.length > 0 && (
+              <div class="structure">
+                <p class="structure-label">Structure</p>
+                {patterns.map((pattern) => (
+                  <div class="pattern" key={pattern.id}>
+                    <p class="pattern-head">
+                      <span class="pattern-skeleton">{pattern.skeleton}</span>
+                      <span class="pattern-name">{pattern.name}</span>
+                    </p>
+                    <p class="pattern-explanation">{pattern.explanation}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Speaks the Chinese that is actually on screen. A grammar card's
+                own text is a skeleton — reading "V + 得 + how" aloud would be
+                nonsense — so it offers its example instead, or nothing. */}
+            {canSpeak() && spokenText && (
+              <button class="speak" onClick={() => speak(spokenText)}>
                 <span aria-hidden="true">♪</span> Listen
               </button>
             )}
@@ -552,7 +627,10 @@ export function Session({
   )
 }
 
-function taskLabel(cue: string, kind: Item['kind']): string {
+function taskLabel(cue: string, kind: Item['kind'], response: string): string {
+  if (cue === 'pattern') {
+    return response === 'tiles' ? 'Build this line using the shape' : 'What does this shape do?'
+  }
   if (cue === 'audio') return kind === 'word' ? 'Type what you hear' : 'Build what you hear'
   if (cue === 'gloss') return 'Type the characters'
   if (cue === 'translation') return 'Build this line in Chinese'

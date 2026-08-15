@@ -20,6 +20,9 @@ function make(partial: Partial<Item> & Pick<Item, 'kind' | 'text'>): Item {
 const word = (extra: Partial<Item> = {}) => make({ kind: 'word', text: '学习', ...extra })
 const line = (extra: Partial<Item> = {}) => make({ kind: 'sentence', text: '我今天很累。', ...extra })
 
+const pattern = (extra: Partial<Item> = {}) =>
+  make({ kind: 'grammar', text: 'V + 得 + how', patternId: 'de-complement', ...extra })
+
 const able: Capability = { canSpeak: true, hasTranslation: true, hasTarget: true }
 
 describe('modeFor', () => {
@@ -157,6 +160,46 @@ describe('every prompt carries a cue', () => {
           }
         }
       }
+    }
+  })
+})
+
+describe('grammar cards', () => {
+  const modes: StudyMode[] = ['remember', 'type', 'audio', 'mixed']
+
+  // A pattern card in recall mode shows the shape and asks what it does. There
+  // is nothing to type and nothing to assemble — the answer is an understanding,
+  // so the card asks you to judge yourself, exactly as a word card does.
+  test('asks you to recall what the shape does', () => {
+    const exercise = exerciseFor(pattern(), 'remember', able)
+    expect(exercise).toEqual({
+      style: 'recognise',
+      cue: 'pattern',
+      response: 'reveal',
+      autoSpeak: false,
+    })
+  })
+
+  // In production mode the card has a real question: here is a translation and
+  // here is the shape, now build the line. That is the exercise the pattern
+  // exists for, and it reuses the tile bank wholesale.
+  test('asks you to build a line that uses the shape', () => {
+    const exercise = exerciseFor(pattern(), 'type', able)
+    expect(exercise.cue).toBe('pattern')
+    expect(exercise.response).toBe('tiles')
+    expect(exercise.style).toBe('type')
+  })
+
+  // Without a translated example there is nothing to prompt production with —
+  // the skeleton alone would be a guess, not a recall test.
+  test('degrades to recall when no example carries a translation', () => {
+    const exercise = exerciseFor(pattern(), 'type', { ...able, hasTranslation: false })
+    expect(exercise.response).toBe('reveal')
+  })
+
+  test('never speaks a skeleton, which is not a sentence', () => {
+    for (const mode of modes) {
+      expect(exerciseFor(pattern(), mode, able).autoSpeak).toBe(false)
     }
   })
 })

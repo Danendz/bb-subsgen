@@ -7,6 +7,7 @@
 // shows it in the tone's own colour.
 
 import { segment } from '../lang/segment'
+import type { Lexicon } from '../lang/dict'
 import { parseTone, toDiacritic } from '../lang/tone'
 
 /** CC-CEDICT writes a run as space-separated numeric syllables: `xue2 xi2`. */
@@ -40,8 +41,8 @@ export function Pinyin({ pinyin }: { pinyin: string }) {
  * studied, and a mean of five tones is a colour that describes nothing. Falls
  * back to neutral for a line the dictionary cannot read.
  */
-export function dominantTone(text: string, words: Map<string, string>): number {
-  for (const token of segment(text, words)) {
+export function dominantTone(text: string, lexicon: Lexicon): number {
+  for (const token of segment(text, lexicon)) {
     if (!token.pinyin) continue
     const [first] = syllables(token.pinyin)
     if (first) return parseTone(first)

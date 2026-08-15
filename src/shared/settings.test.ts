@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { DEFAULT_SETTINGS, nextFontSize } from './settings'
+import {
+  clampSpeechRate,
+  DEFAULT_SETTINGS,
+  MAX_SPEECH_RATE,
+  MIN_SPEECH_RATE,
+  nextFontSize,
+} from './settings'
 
 describe('translation defaults', () => {
   test('translation is off until the user opts in', () => {
@@ -44,5 +50,31 @@ describe('nextFontSize', () => {
 
   test('rounds a value below every defined step up to the smallest step', () => {
     expect(nextFontSize(10)).toBe(22)
+  })
+})
+
+describe('clampSpeechRate', () => {
+  test('keeps a rate the slider can produce', () => {
+    expect(clampSpeechRate(0.75)).toBe(0.75)
+  })
+
+  test('holds the rate inside the range the voices stay intelligible in', () => {
+    expect(clampSpeechRate(0.1)).toBe(MIN_SPEECH_RATE)
+    expect(clampSpeechRate(4)).toBe(MAX_SPEECH_RATE)
+  })
+
+  test('falls back to the default rather than passing NaN to the utterance', () => {
+    // An utterance with a NaN rate throws in Chrome, which would take the whole
+    // card down over a corrupt settings value.
+    expect(clampSpeechRate(Number.NaN)).toBe(DEFAULT_SETTINGS.speechRate)
+  })
+
+  test('the default sits inside its own bounds', () => {
+    expect(DEFAULT_SETTINGS.speechRate).toBeGreaterThanOrEqual(MIN_SPEECH_RATE)
+    expect(DEFAULT_SETTINGS.speechRate).toBeLessThanOrEqual(MAX_SPEECH_RATE)
+  })
+
+  test('no voice is chosen by default, so ranking decides', () => {
+    expect(DEFAULT_SETTINGS.speechVoice).toBe('')
   })
 })
