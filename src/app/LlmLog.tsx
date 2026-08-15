@@ -28,7 +28,7 @@ function Row({ entry }: { entry: LlmLogEntry }) {
 
   return (
     <div class={`log-row ${entry.level}`}>
-      <button class="link-btn log-head" onClick={() => setOpen((v) => !v)}>
+      <button class="row-btn log-head" onClick={() => setOpen((v) => !v)}>
         <span class="log-time">{time(entry.at)}</span>
         <span class={`tag log-level ${entry.level}`}>{entry.level}</span>
         <span class="tag">{entry.kind}</span>

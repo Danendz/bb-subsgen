@@ -36,6 +36,7 @@ import {
   type TranslationLang,
 } from '../shared/settings'
 import { isGetStatusMessage, type Status } from '../shared/messages'
+import { openExplainDrawer } from './explain-drawer'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -236,6 +237,21 @@ async function main() {
         currentTokens: () => currentTokens,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
         known: () => known,
+
+        // Only offered once a model server is actually configured — the popup's
+        // settings are live, so turning it on takes effect on the next card.
+        canExplain: () => settings.llmEnabled && Boolean(settings.llmBaseUrl),
+        openExplain: (headword) => {
+          const context = lastIndex >= 0 ? contextFor(lastIndex) : null
+          if (!context) return Promise.resolve()
+          return openExplainDrawer(shadowRoot, {
+            line: context.text,
+            word: headword,
+            bvid,
+            start: context.start,
+            title: document.title,
+          })
+        },
 
         // Going looking for a translation that was withheld because you knew
         // every word is an unambiguous "I couldn't read that" — no threshold to

@@ -32,6 +32,10 @@
     {
       "resources": ["dict/words.bin"],
       "matches": ["<all_urls>"]
+    },
+    {
+      "resources": ["src/app/index.html", "assets/*"],
+      "matches": ["https://*.bilibili.com/*"]
     }
   ],
   "commands": {

@@ -21,6 +21,23 @@ export interface ChatContext {
   start?: number
   /** Video or page title, for display. */
   sourceTitle?: string
+  /**
+   * Which words in the line you had already mastered when you asked.
+   *
+   * Snapshotted rather than recomputed, like `Context.translation` next door: it
+   * is what the explanation was written against, and an explanation that
+   * silently stops matching the reasoning behind it is worse than a slightly
+   * stale one. It also keeps the model from re-teaching 是 and 了 every time.
+   */
+  knownWords?: string[]
+  /** The ones you had not, with enough dictionary to keep the model honest. */
+  newWords?: Glossed[]
+}
+
+export interface Glossed {
+  word: string
+  pinyin: string
+  gloss: string
 }
 
 export interface Chat {

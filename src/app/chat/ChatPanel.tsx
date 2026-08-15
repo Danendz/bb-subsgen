@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks'
-import type { ChatMessage } from '../../chat/types'
+import type { ChatContext, ChatMessage } from '../../chat/types'
 import { renderable, type Span } from './markdown'
 import { useChat, useModels } from './useChat'
 
@@ -32,16 +32,74 @@ function Bubble({ role, content }: { role: ChatMessage['role']; content: string 
 }
 
 /**
+ * The passage the model was given, on demand.
+ *
+ * Collapsed by default and available always: when an explanation looks wrong,
+ * the first question is what it was actually looking at, and the answer should
+ * not require opening the debug log.
+ */
+function Passage({ context }: { context: ChatContext }) {
+  const lines = context.before.length + context.after.length + 1
+
+  return (
+    <details class="passage">
+      <summary class="muted small">
+        Context sent — {lines} line{lines === 1 ? '' : 's'}
+        {context.sourceTitle ? ` from ${context.sourceTitle}` : ''}
+      </summary>
+      <div class="passage-lines">
+        {context.before.map((line, i) => (
+          <p key={`b${i}`} class="muted">
+            {line}
+          </p>
+        ))}
+        <p class="passage-line">{context.line}</p>
+        {context.after.map((line, i) => (
+          <p key={`a${i}`} class="muted">
+            {line}
+          </p>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+export interface ChatPanelProps {
+  chatId: string | null
+  /**
+   * A question to ask as soon as the conversation is empty.
+   *
+   * How the explain button arrives already working: the drawer opens onto a
+   * reply being written rather than onto a blank box you have to think of
+   * something to type into.
+   */
+  autoAsk?: string
+  /** Called when the conversation row changed — the history list redraws on it. */
+  onChanged?: () => void
+}
+
+/**
  * One conversation: transcript, composer, and the model it is running on.
  *
  * Shared by the Chat tab and the explain drawer — they differ in what wraps
  * them, not in how a conversation behaves.
  */
-export function ChatPanel({ chatId }: { chatId: string | null }) {
-  const { chat, messages, streaming, busy, error, send, stop, chooseModel } = useChat(chatId)
+export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
+  const { chat, messages, streaming, busy, error, send, stop, chooseModel } = useChat(chatId, {
+    ...(onChanged ? { onChanged } : {}),
+  })
   const models = useModels()
   const input = useRef<HTMLTextAreaElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
+  const asked = useRef(false)
+
+  // Once, and only into an empty conversation — reopening an explanation from
+  // the history must not ask it all over again.
+  useEffect(() => {
+    if (!autoAsk || asked.current || !chat || busy || messages.length > 0) return
+    asked.current = true
+    void send(autoAsk)
+  }, [autoAsk, chat, busy, messages.length, send])
 
   // Follow the reply as it grows, so a long explanation doesn't scroll off.
   useEffect(() => {
@@ -85,6 +143,8 @@ export function ChatPanel({ chatId }: { chatId: string | null }) {
       </div>
 
       <div class="transcript">
+        {chat.context && <Passage context={chat.context} />}
+
         {shown.map((message) => (
           <Bubble key={message.seq} role={message.role} content={message.content} />
         ))}

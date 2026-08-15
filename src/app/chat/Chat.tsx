@@ -59,7 +59,7 @@ export function Chat({ chatId }: { chatId?: string }) {
 
         {chats?.map((chat) => (
           <div class={`row chat-row ${chat.id === chatId ? 'on' : ''}`} key={chat.id}>
-            <button class="link-btn grow" onClick={() => navigate(`/chat/${chat.id}`)}>
+            <button class="row-btn grow" onClick={() => navigate(`/chat/${chat.id}`)}>
               <span class="chat-title">{chat.title}</span>
               <span class="muted small">
                 {when(chat.updatedAt)}
@@ -75,7 +75,7 @@ export function Chat({ chatId }: { chatId?: string }) {
 
       <div class="panel chat-open">
         {chatId ? (
-          <ChatPanel chatId={chatId} />
+          <ChatPanel chatId={chatId} onChanged={reload} />
         ) : (
           <div class="empty">
             <p>Pick a conversation, or start a new one.</p>

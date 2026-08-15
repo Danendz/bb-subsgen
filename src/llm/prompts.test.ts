@@ -53,6 +53,31 @@ describe('contextBlock', () => {
 
     expect(block).toContain('>> 你好')
   })
+
+  test('gives the dictionary for words that have not been learned', () => {
+    const block = contextBlock({
+      ...context,
+      newWords: [{ word: '了', pinyin: 'le5', gloss: 'completed action' }],
+    })
+
+    expect(block).toContain('了 (le5) — completed action')
+  })
+
+  // The point of telling it: an answer that re-teaches 是 is an answer that
+  // wastes the fifteen seconds it took to generate.
+  test('says which words not to bother explaining', () => {
+    const block = contextBlock({ ...context, knownWords: ['我', '吃'] })
+
+    expect(block).toContain('does not need them explained')
+    expect(block).toContain('我、吃')
+  })
+
+  test('says neither when there is nothing to say', () => {
+    const block = contextBlock({ ...context, knownWords: [], newWords: [] })
+
+    expect(block).not.toContain('Dictionary entries')
+    expect(block).not.toContain('does not need them explained')
+  })
 })
 
 describe('systemFor', () => {

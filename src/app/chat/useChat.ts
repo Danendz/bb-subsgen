@@ -61,6 +61,18 @@ export interface ChatSession {
   chooseModel: (model: string) => Promise<void>
 }
 
+export interface UseChatOptions {
+  /**
+   * Called when the conversation row itself changed, not just its messages.
+   *
+   * The store names an untitled conversation after its opening turn, so the
+   * first thing you say renames it — and a history list that went on saying
+   * "New chat" until the next reload would be showing something that is no
+   * longer true.
+   */
+  onChanged?: () => void
+}
+
 /**
  * One conversation, streamed.
  *
@@ -70,7 +82,7 @@ export interface ChatSession {
  * state, and the store only ever sees a whole turn. The empty row is written up
  * front so an interrupted reply still has somewhere to land.
  */
-export function useChat(chatId: string | null): ChatSession {
+export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {}): ChatSession {
   const [chat, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState<string | null>(null)
@@ -178,10 +190,13 @@ export function useChat(chatId: string | null): ChatSession {
       abort.current = null
 
       // The title is set by the store on the opening turn; re-read so the
-      // history list and the header agree with it.
-      void readChat(chat.id).then((fresh) => fresh && setChat(fresh))
+      // header and the history list both agree with it.
+      void readChat(chat.id).then((fresh) => {
+        if (fresh) setChat(fresh)
+        onChanged?.()
+      })
     },
-    [chat, settings, busy, messages],
+    [chat, settings, busy, messages, onChanged],
   )
 
   const chooseModel = useCallback(

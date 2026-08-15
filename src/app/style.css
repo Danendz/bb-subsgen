@@ -903,14 +903,27 @@ details.help code { font-size: 12px; }
 }
 .chat-list { max-height: 70vh; overflow-y: auto; }
 .chat-row.on { background: var(--inset); border-radius: var(--r-sm); }
-.chat-row button.link-btn {
+
+/* A row you press, not a link you follow: no underline, and none of the
+   standalone spacing `.link-btn` carries. */
+.row-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin: 0;
+  font: inherit;
+  color: var(--text-2);
+  text-align: left;
+  min-width: 0;
+}
+.row-btn:hover:not(:disabled) { background: none; color: var(--text); }
+.row-btn:active:not(:disabled) { transform: none; }
+
+.chat-row .row-btn {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  text-align: left;
-  padding: 4px 6px;
-  min-width: 0;
 }
 /* One line, whatever was said — the timestamp beneath it does the disambiguating. */
 .chat-title {
@@ -979,6 +992,65 @@ select.model {
   font-size: 12px;
 }
 
+/* Explain drawer ------------------------------------------------------------ */
+
+/* Over the session, never instead of it: the card behind stays mounted, so
+   closing this puts you back exactly where you were. */
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.45);
+}
+.drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  height: 100%;
+  background: var(--raised);
+  border-left: 1px solid var(--edge);
+  box-shadow: -20px 0 60px rgb(0 0 0 / 0.4);
+  animation: drawer-in 160ms ease-out;
+}
+@keyframes drawer-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.drawer-head a { color: var(--link); }
+/* The panel fills the drawer rather than keeping the tab's fixed height. */
+.drawer .chat { flex: 1; height: auto; min-height: 0; }
+
+/* The same panel, framed inside a video. There is no shell around it: the frame
+   itself is the drawer, and the page it sits in supplies the backdrop. */
+.embed { display: flex; flex-direction: column; height: 100vh; }
+.embed .chat { flex: 1; height: auto; min-height: 0; }
+.embed .panel { margin: 12px; }
+/* The composer is the one thing a 420px frame cannot afford to lose. */
+.embed .transcript { min-height: 0; }
+
+/* What the model was shown, on demand — the first question when an answer looks
+   wrong is what it was actually looking at. */
+.passage { margin-bottom: 14px; }
+.passage summary { cursor: pointer; }
+.passage-lines {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font: 14px/1.7 var(--hanzi);
+}
+.passage-lines p { margin: 0; }
+.passage-line { color: var(--text); font-weight: 600; }
+
 /* Model log ----------------------------------------------------------------- */
 
 .log { max-height: 420px; overflow-y: auto; margin-top: 4px; }
@@ -989,7 +1061,6 @@ select.model {
   gap: 8px;
   width: 100%;
   padding: 5px 4px;
-  text-align: left;
   font-size: 12px;
 }
 .log-time { color: var(--text-3); font-variant-numeric: tabular-nums; }

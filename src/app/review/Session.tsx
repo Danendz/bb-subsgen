@@ -24,9 +24,12 @@ import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
 import { canSpeak, speak } from '../../shared/speak'
+import { loadSettings } from '../../shared/settings'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
+import { ChatDrawer } from '../chat/ChatDrawer'
+import { explainQuestion, openExplainChat } from '../chat/explain'
 
 /** Rewind, so the jump-back lands before the line rather than on top of it. */
 const REWIND_S = 10
@@ -109,6 +112,16 @@ export function Session({
   const [combo, setCombo] = useState(0)
   const [best, setBest] = useState(0)
   const [tones, setTones] = useState<number[]>([])
+
+  // The explanation opens over the session rather than instead of it. `opening`
+  // covers the moment the track is being fetched, which is the slow part.
+  const [explaining, setExplaining] = useState<{ chatId: string; question: string } | null>(null)
+  const [opening, setOpening] = useState(false)
+  const [llmReady, setLlmReady] = useState(false)
+
+  useEffect(() => {
+    void loadSettings().then((s) => setLlmReady(s.llmEnabled && Boolean(s.llmBaseUrl)))
+  }, [])
 
   const total = initial.length
   const current = queue[at] ?? null
@@ -288,6 +301,39 @@ export function Session({
   const advance = () => {
     reset()
     setAt((i) => i + 1)
+  }
+
+  /**
+   * Opens an explanation of the line this card came from.
+   *
+   * The card is not graded, not advanced and not unmounted — the drawer sits
+   * over the session and closing it puts you back on the same card.
+   */
+  const explain = async () => {
+    const context = card?.context
+    if (!current || !context?.text || opening) return
+
+    setOpening(true)
+    try {
+      const chatId = await openExplainChat({
+        line: context.text,
+        // A sentence or grammar card is a question about the whole line; only a
+        // word card has a word to single out.
+        ...(current.kind === 'word' ? { target: current.text } : {}),
+        ...(context.bvid !== undefined ? { bvid: context.bvid } : {}),
+        ...(context.start !== undefined ? { start: context.start } : {}),
+        ...(context.title !== undefined ? { sourceTitle: context.title } : {}),
+        itemId: current.id,
+      })
+      setExplaining({
+        chatId,
+        question: explainQuestion(current.kind === 'word' ? current.text : undefined),
+      })
+    } catch (e) {
+      console.warn('[bb-subsgen] could not open an explanation', e)
+    } finally {
+      setOpening(false)
+    }
   }
 
   const check = () => {
@@ -599,6 +645,16 @@ export function Session({
                 <span class="muted">— translations stay hidden</span>
               </p>
             )}
+
+            {/* Only offered when a model is actually configured: a button that
+                explains why it cannot work is worse than no button. */}
+            {llmReady && context?.text && (
+              <p class="small">
+                <button class="link-btn" disabled={opening} onClick={() => void explain()}>
+                  {opening ? 'Reading the scene…' : 'Explain this line'}
+                </button>
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -623,6 +679,15 @@ export function Session({
           </button>
         )}
       </div>
+
+      {explaining && (
+        <ChatDrawer
+          chatId={explaining.chatId}
+          autoAsk={explaining.question}
+          fullHref={`#/chat/${explaining.chatId}`}
+          onClose={() => setExplaining(null)}
+        />
+      )}
     </>
   )
 }

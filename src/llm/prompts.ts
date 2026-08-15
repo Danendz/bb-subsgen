@@ -11,6 +11,7 @@
 
 import type { ChatContext } from '../chat/types'
 import type { TranslationLang } from '../shared/settings'
+import { glossLine } from './glossary'
 
 const LANGUAGE_NAME: Record<TranslationLang, string> = {
   en: 'English',
@@ -60,6 +61,23 @@ export function contextBlock(context: ChatContext): string {
 
   if (context.target) {
     parts.push(`The learner is asking about the word 「${context.target}」 in the marked line.`)
+  }
+
+  // What the extension knows and the model does not. Both halves earn their
+  // tokens: the glosses stop it inventing meanings for words it half-knows, and
+  // the known list stops it spending the answer re-teaching 是 and 了.
+  if (context.newWords?.length) {
+    parts.push(
+      ['Dictionary entries for the words in that line the learner has not learned yet:', ...context.newWords.map(glossLine)].join(
+        '\n',
+      ),
+    )
+  }
+
+  if (context.knownWords?.length) {
+    parts.push(
+      `The learner already knows these and does not need them explained: ${context.knownWords.join('、')}.`,
+    )
   }
 
   return parts.join('\n\n')
