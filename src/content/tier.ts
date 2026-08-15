@@ -48,6 +48,21 @@ export function preferred({ nmt, llm, latched }: Tiers): string {
 }
 
 /**
+ * The translation to freeze onto a card, which is not the one on screen.
+ *
+ * `preferred` answers "what should this line show", and its gate exists so that
+ * consecutive lines don't alternate between two translators with different
+ * registers. A card has no neighbours: it is one line, read alone, weeks later,
+ * with nothing to clash with. So the reason for the gate does not survive the
+ * trip, and the better translation wins whenever it exists — including in the
+ * opening minutes of a video, where the model has covered the line but has not
+ * yet built the buffer that would put it on screen.
+ */
+export function forCard({ nmt, llm }: Pick<Tiers, 'nmt' | 'llm'>): string {
+  return llm ?? nmt ?? ''
+}
+
+/**
  * How many cues from `from` onward have a model translation, unbroken.
  *
  * Contiguous rather than counted: fifty translated lines scattered through the

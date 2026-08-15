@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { bufferedAhead, BUFFER_CUES, latch, preferred } from './tier'
+import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred } from './tier'
 
 describe('preferred', () => {
   test('shows the on-device translation before the gate opens', () => {
@@ -22,6 +22,27 @@ describe('preferred', () => {
 
   test('is empty when neither has arrived', () => {
     expect(preferred({ nmt: undefined, llm: undefined, latched: false })).toBe('')
+  })
+})
+
+describe('forCard', () => {
+  // The difference that matters: the same line, at the same moment, is shown as
+  // one translation and stored as the other.
+  test('takes the model’s even where the gate would have shown the other', () => {
+    const tiers = { nmt: 'quick', llm: 'better' }
+
+    expect(preferred({ ...tiers, latched: false })).toBe('quick')
+    expect(forCard(tiers)).toBe('better')
+  })
+
+  test('falls back to the on-device one where the model has not reached', () => {
+    expect(forCard({ nmt: 'quick', llm: undefined })).toBe('quick')
+  })
+
+  // A line captured in the opening seconds, before either has landed. The card
+  // keeps the sentence and loses only the gloss under it.
+  test('is empty when neither has arrived', () => {
+    expect(forCard({ nmt: undefined, llm: undefined })).toBe('')
   })
 })
 

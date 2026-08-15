@@ -42,7 +42,7 @@ import {
   type Status,
 } from '../shared/messages'
 import { openExplainDrawer } from './explain-drawer'
-import { bufferedAhead, latch, preferred } from './tier'
+import { bufferedAhead, forCard, latch, preferred } from './tier'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -278,12 +278,18 @@ async function main() {
        *
        * The translation is whatever has landed by now: the pass runs ahead of
        * playback so it is usually there, but a line captured in the first
-       * seconds of a video may snapshot an empty one. The app backfills those
-       * rather than the capture path blocking on a translator.
+       * seconds of a video may snapshot an empty one. Nothing goes back for
+       * those later — the capture path never blocks on a translator.
+       *
+       * Deliberately `forCard` and not `translationFor`: the card takes the best
+       * translation that exists, not the one that was on screen. See tier.ts.
        */
       const contextFor = (index: number): Context => ({
         text: cues[index].text,
-        translation: cacheFor(settings.translationLang).get(index) ?? '',
+        translation: forCard({
+          nmt: cacheFor(settings.translationLang).get(index),
+          llm: llmCacheFor(settings.translationLang).get(index),
+        }),
         bvid,
         start: cues[index].start,
         url: location.href,
