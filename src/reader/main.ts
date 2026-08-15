@@ -9,10 +9,11 @@ import { attachReader } from './reader'
 import { mountReader, type ReaderMount } from './mount'
 import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
-import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
+import { loadWords, dropLegacyPageDefsDb, type Lexicon } from '../lang/dict'
 import { lookupDefs } from '../shared/dict-client'
 import { loadSettings, onSettingsChanged } from '../shared/settings'
 import { readerEnabledFor } from '../shared/reader-sites'
+import { watchKnownSet } from '../shared/flashcards-client'
 
 declare global {
   interface Window {
@@ -36,8 +37,16 @@ async function main(): Promise<void> {
 
   // Lazy and memoized: 4.5MB is only fetched the first time you actually hold
   // the modifier down, and never on a page you just read past.
-  let words: Promise<Map<string, string>> | null = null
+  let words: Promise<Lexicon> | null = null
   const getWords = () => (words ??= loadWords())
+
+  // Subscribed once for the page's lifetime rather than per attach: the set
+  // changes rarely, and re-reading it every time the reader is toggled on for
+  // an origin would be work for nothing.
+  let known = new Set<string>()
+  watchKnownSet((next) => {
+    known = next
+  })
 
   const stop = () => {
     detach?.()
@@ -61,6 +70,7 @@ async function main(): Promise<void> {
       translator,
       words: getWords,
       settings: () => settings,
+      known: () => known,
     })
     console.log('[bb-subsgen] reader active on', location.origin)
   }

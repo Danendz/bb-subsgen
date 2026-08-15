@@ -53,3 +53,28 @@ select {
 .hint { color: #999; font-size: 11px; margin-top: 12px; }
 .attribution { color: #777; font-size: 10px; margin-top: 8px; }
 .attribution a { color: #8ab4f8; }
+
+/* The flashcards app is a full page, not a panel — this is the way in. */
+.open-app {
+  display: block;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 8px 10px;
+  font: inherit;
+  color: #fff;
+  background: #2f5fb3;
+  border: 1px solid #3a6cc4;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.open-app:hover { background: #3568c4; }
+
+/* Whether this video is worth 30 minutes, before you spend them. */
+.coverage {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #23252c;
+  font-size: 12px;
+  line-height: 1.45;
+}

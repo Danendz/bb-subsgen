@@ -42,6 +42,10 @@
     "cycle-font-size": {
       "suggested_key": { "default": "Alt+S" },
       "description": "Cycle subtitle font size"
+    },
+    "toggle-quiz": {
+      "suggested_key": { "default": "Alt+Q" },
+      "description": "Quiz mode: hide readings and translations until hovered"
     }
   }
 }

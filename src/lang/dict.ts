@@ -1,16 +1,34 @@
-/** Parses the `words.bin` build artifact (tab-separated `headword\tpinyin` lines) into a Map. */
-export function parseWords(raw: string): Map<string, string> {
-  const words = new Map<string, string>()
-  for (const line of raw.split('\n')) {
-    if (!line) continue
-    const tab = line.indexOf('\t')
-    if (tab === -1) continue
-    words.set(line.slice(0, tab), line.slice(tab + 1))
-  }
-  return words
+/**
+ * The dictionary as segmentation and rendering need it.
+ *
+ * `words` is every headword CC-CEDICT knows, so lookup and dictionary search see
+ * the whole file. `phrases` is the subset that must never claim a span of
+ * characters — see `isPhrase` in entries.ts. Kept apart rather than filtered out
+ * because a phrasebook entry is still a real thing to look up; it is only a bad
+ * thing to *find* while cutting a sentence into words.
+ */
+export interface Lexicon {
+  words: Map<string, string>
+  phrases: ReadonlySet<string>
 }
 
-export async function loadWords(): Promise<Map<string, string>> {
+export const EMPTY_LEXICON: Lexicon = { words: new Map(), phrases: new Set() }
+
+/** Parses the `words.bin` build artifact (`headword\tpinyin[\tflags]` lines). */
+export function parseWords(raw: string): Lexicon {
+  const words = new Map<string, string>()
+  const phrases = new Set<string>()
+  for (const line of raw.split('\n')) {
+    if (!line) continue
+    const [headword, pinyin, flags] = line.split('\t')
+    if (pinyin === undefined) continue
+    words.set(headword, pinyin)
+    if (flags?.includes('p')) phrases.add(headword)
+  }
+  return { words, phrases }
+}
+
+export async function loadWords(): Promise<Lexicon> {
   const url = chrome.runtime.getURL('dict/words.bin')
   const raw = await fetch(url).then((r) => r.text())
   return parseWords(raw)

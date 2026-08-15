@@ -1,5 +1,9 @@
 import { adoptStyles } from './overlay'
-import { buildCard } from './card'
+import { buildCard, cardHeadwords, characterBreakdown } from './card'
+import { patternsForWord } from '../lang/grammar/match'
+import type { Token } from '../lang/segment'
+import { discoverWord, markKnown } from '../shared/flashcards-client'
+import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
 
 const DWELL_MS = 150
@@ -59,6 +63,27 @@ export interface HoverDeps {
   lookup: DefsLookup
   /** Read at popup-build time so live settings changes take effect. */
   isTraditional: () => boolean
+  showToneColors: () => boolean
+  /** The line currently on screen, snapshotted onto whatever gets discovered. */
+  currentContext: () => Context | null
+  /**
+   * The line as segmented, for working out which structures the word sits in.
+   *
+   * Passed as tokens rather than as patterns because membership is decided per
+   * word, and the line is already segmented for rendering — see `patternsForWord`.
+   */
+  currentTokens: () => Token[]
+  known: () => Set<string>
+  /**
+   * A card actually opened on a word — the moment a lookup happens.
+   *
+   * On a line whose words are all known, this is an unambiguous "I could not
+   * read that": the translation was withheld and you went looking for it. No
+   * threshold to tune, which is why it is a separate signal from the dwell.
+   */
+  onLookup: (headword: string) => void
+  /** How long the card stayed open, once the pointer has finally left. */
+  onLookupEnd: (ms: number) => void
 }
 
 export function attachHover({
@@ -66,6 +91,12 @@ export function attachHover({
   video,
   lookup,
   isTraditional,
+  showToneColors,
+  currentContext,
+  currentTokens,
+  known,
+  onLookup,
+  onLookupEnd,
 }: HoverDeps): () => void {
   const controller = new HoverPauseController()
   let dwellTimer: ReturnType<typeof setTimeout> | null = null
@@ -73,20 +104,48 @@ export function attachHover({
   let popup: HTMLElement | null = null
   let programmaticPause = false
   let activeWord: HTMLElement | null = null
+  // When the current card opened. The video is paused throughout, so elapsed
+  // wall-clock time here is real reading time rather than playback drifting on.
+  let openedAt = 0
 
   const closePopup = () => {
+    if (popup && openedAt) {
+      onLookupEnd(Date.now() - openedAt)
+      openedAt = 0
+    }
     popup?.remove()
     popup = null
   }
 
   const openPopup = async (wordEl: HTMLElement, headword: string) => {
-    const entries = (await lookup([headword]))[headword] ?? []
+    // Asks for the characters alongside the word, in one batched round trip, so
+    // this card carries the same per-character breakdown the reader's does — it
+    // was asking for the headword alone and silently rendering a poorer card.
+    const useTraditional = isTraditional()
+    const found = await lookup(cardHeadwords(headword))
     closePopup()
     adoptStyles(shadowRoot)
 
+    // The popup opening is the interaction that counts as discovery: it follows
+    // a deliberate dwell, not a pointer crossing the line on its way elsewhere.
+    discoverWord(headword, currentContext() ?? undefined)
+    onLookup(headword)
+    openedAt = Date.now()
+
     popup = buildCard(
-      { headword, displayedPinyin: wordEl.dataset.pinyin ?? '', entries },
-      { useTraditional: isTraditional() },
+      {
+        headword,
+        displayedPinyin: wordEl.dataset.pinyin ?? '',
+        entries: found[headword] ?? [],
+        breakdown: characterBreakdown(headword, found, useTraditional),
+        patterns: patternsForWord(currentTokens(), headword),
+        known: known().has(headword),
+      },
+      {
+        useTraditional,
+        toneColors: showToneColors(),
+        onMarkKnown: (next) => markKnown(headword, next),
+      },
     )
     // Append before measuring — the popup needs layout to have a width.
     shadowRoot.appendChild(popup)

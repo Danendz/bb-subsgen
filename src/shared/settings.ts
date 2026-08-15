@@ -1,3 +1,5 @@
+import type { StudyInclude, StudyMode } from '../flashcards/types'
+
 /** Whether the translated line shares the subtitle card or sits in its own below it. */
 export type TranslationLayout = 'inline' | 'card'
 
@@ -56,6 +58,56 @@ export interface Settings {
   readerOrigins: string[]
   readerModifier: ReaderModifier
   readerSentenceTranslation: boolean
+  /**
+   * Withhold every reading and translation until hovered, so a video can be
+   * used to test yourself rather than to read along.
+   *
+   * Also switched on for a single page load by the `bbq=1` parameter that
+   * review's jump-back link carries — arriving at a line you are being quizzed
+   * on with its translation already on screen would defeat the trip.
+   */
+  quizMode: boolean
+  /**
+   * New lines let into the deck each day. Capture is generous; line intake is not.
+   *
+   * Words have no equivalent: every word collected is studiable at once, and
+   * `studySessionSize` is what limits how many are actually met.
+   */
+  newSentencesPerDay: number
+  /** How the study session asks its questions. */
+  studyMode: StudyMode
+  /** Which cards it draws from. */
+  studyInclude: StudyInclude
+  /**
+   * Cards per session, counted as distinct cards drawn.
+   *
+   * A card answered wrong comes back inside the same session without inflating
+   * this, so the number is a promise about how much you are taking on rather
+   * than a count of keystrokes. Without it a backlog produces a session you
+   * cannot finish, which is the one thing that stops people opening the app.
+   */
+  studySessionSize: number
+  /**
+   * How long you can dwell on a line whose words you all know before it is
+   * taken as evidence you couldn't read it, in milliseconds.
+   *
+   * A guess, deliberately exposed: every dwell is also logged raw, so the real
+   * distribution can be looked at and this moved to where actual "I'm stuck"
+   * pauses sit rather than where it was first set.
+   */
+  struggleThresholdMs: number
+  /**
+   * Which voice speaks the cards, by `SpeechSynthesisVoice.name`.
+   *
+   * Empty means rank automatically, which is right for almost everyone. It
+   * exists because the installed voices differ wildly between machines and no
+   * heuristic wins on all of them — and because a name saved here syncs to a
+   * computer that may not have that voice, which `pickVoice` treats as a miss
+   * rather than as silence.
+   */
+  speechVoice: string
+  /** How fast cards are spoken, as a `SpeechSynthesisUtterance.rate` multiplier. */
+  speechRate: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -81,6 +133,44 @@ export const DEFAULT_SETTINGS: Settings = {
   readerOrigins: [],
   readerModifier: 'shift',
   readerSentenceTranslation: true,
+  quizMode: false,
+  newSentencesPerDay: 5,
+  // Mixed by default: meeting a word from a different angle each sitting is
+  // better practice than any single mode, and it is the behaviour that existed
+  // before the modes were choosable, so nobody's sessions change unasked.
+  studyMode: 'mixed',
+  studyInclude: 'both',
+  studySessionSize: 20,
+  struggleThresholdMs: 5000,
+  speechVoice: '',
+  // Slightly under normal — tones are what you are listening for, and native
+  // pace clips them for anyone who still needs the button. Not slower than this,
+  // because the neural voices smear their tones when stretched too far.
+  speechRate: 0.9,
+}
+
+/** Bounds for `studySessionSize`, shared by the picker and the queue. */
+export const MIN_SESSION_SIZE = 5
+export const MAX_SESSION_SIZE = 50
+
+export function clampSessionSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_SETTINGS.studySessionSize
+  return Math.min(MAX_SESSION_SIZE, Math.max(MIN_SESSION_SIZE, Math.round(size)))
+}
+
+/**
+ * Bounds for `speechRate`, shared by the slider and `speak`.
+ *
+ * The floor is not zero: the Web Speech API accepts rates down to 0.1, but every
+ * engine tested turns a Mandarin tone into a drawl well before that, and a
+ * setting that can be dragged into uselessness is a setting that will be.
+ */
+export const MIN_SPEECH_RATE = 0.6
+export const MAX_SPEECH_RATE = 1.2
+
+export function clampSpeechRate(rate: number): number {
+  if (!Number.isFinite(rate)) return DEFAULT_SETTINGS.speechRate
+  return Math.min(MAX_SPEECH_RATE, Math.max(MIN_SPEECH_RATE, rate))
 }
 
 const STORAGE_KEY = 'bbSubsgenSettings'

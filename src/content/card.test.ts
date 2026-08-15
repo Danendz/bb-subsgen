@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import { buildCard, cardHeadwords, characterBreakdown, setCardTranslation } from './card'
+import { buildCard, buildWordElement, cardHeadwords, characterBreakdown, setCardTranslation } from './card'
 import type { CedictEntry } from '../lang/dict'
+import { PATTERNS } from '../lang/grammar/patterns'
 
 const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
   simplified: '学习',
@@ -128,5 +129,56 @@ describe('buildCard', () => {
     expect(card.querySelector('.popup-empty')?.textContent).toBe('No definition found')
     expect(card.querySelector('.popup-pinyin')?.textContent).toBe('méiyǒu')
     expect(card.querySelector('.popup-sentence')).not.toBeNull()
+  })
+})
+
+describe('the structure section', () => {
+  const opts = { useTraditional: false }
+  const complement = PATTERNS.find((p) => p.id === 'de-complement')!
+
+  test('names the pattern, shows its shape, and explains what it does', () => {
+    const card = buildCard(
+      { headword: '得', entries: [entry({ simplified: '得', definitions: ['structural particle'] })], patterns: [complement] },
+      opts,
+    )
+
+    const section = card.querySelector('.popup-structure')
+    expect(section?.textContent).toContain(complement.name)
+    expect(section?.textContent).toContain(complement.skeleton)
+    expect(section?.textContent).toContain('how the action goes')
+  })
+
+  test('renders nothing at all when the word is not part of a pattern', () => {
+    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    expect(card.querySelector('.popup-structure')).toBeNull()
+  })
+
+  test('lists every pattern the word belongs to', () => {
+    const final = PATTERNS.find((p) => p.id === 'sentence-final-a')!
+    const card = buildCard(
+      { headword: '啊', entries: [entry({ simplified: '啊', definitions: ['particle'] })], patterns: [complement, final] },
+      opts,
+    )
+
+    expect(card.querySelectorAll('.popup-pattern')).toHaveLength(2)
+  })
+})
+
+describe('dimming function words', () => {
+  const style = { showPinyin: true, showToneColors: true }
+
+  test('marks a structural particle so it can be told from vocabulary', () => {
+    const el = buildWordElement({ text: '得', pinyin: 'de5' }, style)
+    expect(el.classList.contains('function')).toBe(true)
+  })
+
+  test('leaves ordinary vocabulary unmarked', () => {
+    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1' }, style)
+    expect(el.classList.contains('function')).toBe(false)
+  })
+
+  test('does not mark punctuation, which is not a word at all', () => {
+    const el = buildWordElement({ text: '。', pinyin: null }, style)
+    expect(el.classList.contains('function')).toBe(false)
   })
 })

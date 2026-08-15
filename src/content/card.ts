@@ -5,6 +5,8 @@
 import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/tone'
 import { parseDefinitions } from '../lang/definitions'
 import { rankEntries } from '../lang/entries'
+import { isFunctionWord } from '../lang/grammar/function-words'
+import type { Pattern } from '../lang/grammar/patterns'
 import { isHan, type Token } from '../lang/segment'
 import type { CedictEntry } from '../lang/dict'
 
@@ -42,11 +44,31 @@ export const WORD_STYLE = `
 }
 .pinyin .syl + .syl { margin-left: 0.25em; }
 
+/* Withheld, not removed — the row keeps its height so a line of mixed known
+   and unknown words still sits on one baseline. Hovering anywhere in the line
+   brings every reading back, so nothing is ever actually lost. */
+.pinyin.withheld { visibility: hidden; }
+.line:hover .pinyin.withheld,
+.selection-card:hover .pinyin.withheld { visibility: visible; }
+
 .hanzi {
   color: #fff;
   white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
+
+/* Structure, dimmed rather than annotated.
+   The line already carries three rows over a video — characters, readings, and
+   the translation — and prose about grammar would need a fourth. Dimming needs
+   none: it costs no height and no reading, and it answers the question that
+   actually blocks a learner mid-line, which is not "what does 得 mean" but
+   "which of these am I even supposed to be looking up". Hovering still explains,
+   because the card was always going to be where the explaining happened. */
+.word.function .hanzi {
+  color: #b9c0cc;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.word.function .pinyin { color: #98a0ad; }
 `
 
 export const CARD_STYLE = `
@@ -181,6 +203,66 @@ export const CARD_STYLE = `
   white-space: nowrap;
 }
 
+/* Sits above the translation, so a translation arriving late grows the card
+   downward rather than shifting the button out from under the pointer. */
+.popup-actions {
+  display: flex;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.known-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa3b2;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.known-btn:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.known-btn.on { color: #7ee0a8; }
+.known-btn svg { display: block; }
+
+/* What the dictionary cannot say: the shape the word is part of. */
+.popup-structure {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.popup-structure-label {
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8496;
+}
+.popup-pattern + .popup-pattern {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.popup-pattern-skeleton {
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.popup-pattern-name {
+  margin-left: 7px;
+  font-size: 11.5px;
+  color: #8a92a3;
+}
+.popup-pattern-explanation {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #c3c8d0;
+}
+
 /* Sentence translation, always last so the card grows downward. */
 .popup-sentence {
   margin-top: 8px;
@@ -205,6 +287,37 @@ const CHECK_ICON =
   '<path d="M4 12.5l5.2 5.2L20 7"/></svg>'
 
 const COPIED_FEEDBACK_MS = 1100
+
+/**
+ * The "I already know this" toggle.
+ *
+ * Words enter the deck by being looked up — which happens precisely because you
+ * didn't know them — so without this the common words that actually clutter the
+ * screen would keep their pinyin forever, and hiding would only ever fire on the
+ * rare words you studied. This is how 的 and 我们 get out of the way.
+ */
+function buildKnownButton(known: boolean, onToggle: (next: boolean) => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = known ? 'known-btn on' : 'known-btn'
+  // Constant markup — never interpolates dictionary or page data.
+  button.innerHTML = `${CHECK_ICON}<span></span>`
+  button.querySelector('span')!.textContent = known ? 'Known' : 'I know this'
+
+  let state = known
+  button.addEventListener('click', (e) => {
+    // Same reason as the copy button: this click otherwise reaches Bilibili's
+    // player and toggles playback.
+    e.preventDefault()
+    e.stopPropagation()
+
+    state = !state
+    button.classList.toggle('on', state)
+    button.querySelector('span')!.textContent = state ? 'Known' : 'I know this'
+    onToggle(state)
+  })
+
+  return button
+}
 
 /** A small button that copies `text`, briefly showing a check on success. */
 function buildCopyButton(text: string, label: string): HTMLButtonElement {
@@ -260,17 +373,32 @@ export function buildPinyinElement(
 export interface WordStyleOptions {
   showPinyin: boolean
   showToneColors: boolean
+  /**
+   * Render the reading but keep it invisible until hovered.
+   *
+   * Withheld rather than omitted so the line does not reflow: a cue almost
+   * always mixes words you know with words you don't, and dropping the element
+   * for some of them would leave the hanzi sitting at two different heights
+   * across one line. It also means a word maturing mid-video changes nothing
+   * about the layout.
+   */
+  hidePinyin?: boolean
 }
 
 export function buildWordElement(token: Token, options: WordStyleOptions): HTMLElement {
   const word = document.createElement('span')
   word.className = 'word'
+  // Structure reads dimmer than vocabulary. Costs no height, which is the whole
+  // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
+  if (isFunctionWord(token.text)) word.classList.add('function')
   word.dataset.text = token.text
   // Lets the hover card show pinyin even when CC-CEDICT has no entry.
   if (token.pinyin) word.dataset.pinyin = token.pinyin
 
   if (token.pinyin !== null && options.showPinyin) {
-    word.appendChild(buildPinyinElement(token.pinyin, 'pinyin', options.showToneColors))
+    const pinyin = buildPinyinElement(token.pinyin, 'pinyin', options.showToneColors)
+    if (options.hidePinyin) pinyin.classList.add('withheld')
+    word.appendChild(pinyin)
   }
 
   const hanziEl = document.createElement('span')
@@ -337,13 +465,26 @@ export interface CardData {
    * lookup that fetches them is the same single batched message either way.
    */
   breakdown?: CharacterGloss[]
+  /**
+   * Patterns this word takes part in; empty renders no section.
+   *
+   * The section the dictionary cannot supply. A gloss describes a word, and for
+   * a function word that is close to useless — CC-CEDICT calls 啊 an
+   * "interjection of surprise", which is true of the character and wrong about
+   * every sentence it ends. See lang/grammar/patterns.ts.
+   */
+  patterns?: readonly Pattern[]
   /** Sentence translation; empty renders no section. */
   translation?: string
+  /** Whether the headword is already marked known, for the toggle's initial state. */
+  known?: boolean
 }
 
 export interface CardOptions {
   useTraditional: boolean
   toneColors?: boolean
+  /** Omitted renders no "I know this" button — which is what card tests want. */
+  onMarkKnown?: (known: boolean) => void
 }
 
 /**
@@ -354,7 +495,7 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { useTraditional, toneColors = true } = options
+  const { useTraditional, toneColors = true, onMarkKnown } = options
   const { headword, displayedPinyin = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
@@ -466,6 +607,46 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       chars.appendChild(row)
     }
     el.appendChild(chars)
+  }
+
+  if (data.patterns?.length) {
+    const structure = document.createElement('div')
+    structure.className = 'popup-structure'
+
+    const label = document.createElement('div')
+    label.className = 'popup-structure-label'
+    label.textContent = 'Structure'
+    structure.appendChild(label)
+
+    for (const pattern of data.patterns) {
+      const row = document.createElement('div')
+      row.className = 'popup-pattern'
+
+      const skeleton = document.createElement('span')
+      skeleton.className = 'popup-pattern-skeleton'
+      skeleton.textContent = pattern.skeleton
+      row.appendChild(skeleton)
+
+      const name = document.createElement('span')
+      name.className = 'popup-pattern-name'
+      name.textContent = pattern.name
+      row.appendChild(name)
+
+      const explanation = document.createElement('div')
+      explanation.className = 'popup-pattern-explanation'
+      explanation.textContent = pattern.explanation
+      row.appendChild(explanation)
+
+      structure.appendChild(row)
+    }
+    el.appendChild(structure)
+  }
+
+  if (onMarkKnown) {
+    const actions = document.createElement('div')
+    actions.className = 'popup-actions'
+    actions.appendChild(buildKnownButton(data.known ?? false, onMarkKnown))
+    el.appendChild(actions)
   }
 
   // Created unconditionally so a translation arriving later can be patched in
