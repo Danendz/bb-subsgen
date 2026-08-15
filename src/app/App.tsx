@@ -2,6 +2,7 @@ import { Data } from './Data'
 import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
 import { Review } from './Review'
+import { Settings } from './Settings'
 import { Videos } from './Videos'
 import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
@@ -13,6 +14,7 @@ const TABS = [
   { route: '/dictionary', label: 'Dictionary' },
   { route: '/videos', label: 'Videos' },
   { route: '/data', label: 'Data' },
+  { route: '/settings', label: 'Settings' },
 ]
 
 function Nav({ route }: { route: string }) {
@@ -51,7 +53,9 @@ export function App() {
 
       <Nav route={route} />
 
-      {route === '/data' ? (
+      {route === '/settings' ? (
+        <Settings />
+      ) : route === '/data' ? (
         <Data />
       ) : route === '/review' ? (
         <Review />

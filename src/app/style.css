@@ -1084,6 +1084,69 @@ select.model {
   word-break: break-word;
 }
 
+/* Settings ------------------------------------------------------------------- */
+
+/* The groups themselves are shared with the popup (src/settings/), which is why
+   this is a skin rather than a layout: identical markup, one panel-shaped and
+   one 300px-wide. Anything scoped to `.settings-group` here has a counterpart
+   in src/popup/style.css. */
+
+.settings-group {
+  padding: 14px 18px 16px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+.settings-group + .settings-group { margin-top: 12px; }
+.settings-group > h2 {
+  font: 600 16px var(--display);
+  margin: 0;
+  padding-bottom: 4px;
+}
+
+.settings-group select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 13px;
+  max-width: 60%;
+}
+/* Both controls take the action colour rather than the browser's blue, which is
+   the one hue on this page that belongs to nothing else in the palette. */
+.settings-group input[type='range'] {
+  width: 200px;
+  flex: none;
+  accent-color: var(--action);
+}
+/* An address, not a search box: `input[type=text]` is full-width by default and
+   would push the label off the row. */
+.settings-group input.url { width: 220px; flex: none; }
+.settings-group input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--action); }
+.settings-group .toolbar { margin: 12px 0 0; }
+
+.value { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.hint { color: var(--text-3); font-size: 12px; margin: 10px 0 0; }
+/* Still legible, still there, and not reachable until the thing above it is on. */
+.disabled { opacity: 0.4; pointer-events: none; }
+.divider { border: 0; border-top: 1px solid var(--edge); margin: 12px 0 0; }
+
+.presets { display: flex; gap: 8px; padding: 12px 0 2px; }
+.presets .preset { flex: 1; font-size: 13px; padding: 6px 10px; }
+.connect { width: 100%; margin-top: 12px; }
+.status {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: 12px;
+}
+.status-ok { color: var(--right); }
+.status-bad { color: var(--warn); }
+.status-busy { color: var(--text-3); }
+
 /* ---------------------------------------------------------------------------- */
 
 @media (max-width: 560px) {
