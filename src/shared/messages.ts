@@ -1,5 +1,8 @@
 import type { CedictEntry } from '../lang/dict'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
+import type { VideoPreamble } from '../llm/batch'
+import type { PassCue } from '../background/llm-translate'
+import type { TranslationLang } from './settings'
 
 export type Status = 'loading' | 'no-track' | 'active'
 
@@ -96,5 +99,67 @@ export function isFlashcardsMessage(msg: unknown): msg is FlashcardsMessage {
     msg !== null &&
     typeof (msg as { type?: unknown }).type === 'string' &&
     FLASHCARDS_TYPES.has((msg as { type: string }).type)
+  )
+}
+
+/**
+ * The background translation pass, in both directions.
+ *
+ * Also fire-and-forget, and for a stronger reason than the flashcards union:
+ * the pass takes tens of minutes, so there is nothing a reply could usefully
+ * say. Results come back the other way as `llm-translations`, batch by batch.
+ */
+export type LlmMessage =
+  | {
+      type: 'bb-subsgen:llm-translate-track'
+      bvid: string
+      lang: TranslationLang
+      model: string
+      baseUrl: string
+      video?: VideoPreamble
+      cues: PassCue[]
+    }
+  /** Where playback is now, so the pass can re-order what is left. */
+  | { type: 'bb-subsgen:llm-playhead'; index: number }
+  | { type: 'bb-subsgen:llm-cancel' }
+  /**
+   * A chat is generating, or has stopped.
+   *
+   * Sent by the app page and the drawer rather than a content script: one GPU,
+   * and an explanation you are waiting for should not queue behind a batch of
+   * subtitles you are not.
+   */
+  | { type: 'bb-subsgen:llm-busy'; busy: boolean }
+
+const LLM_TYPES = new Set<string>([
+  'bb-subsgen:llm-translate-track',
+  'bb-subsgen:llm-playhead',
+  'bb-subsgen:llm-cancel',
+  'bb-subsgen:llm-busy',
+])
+
+export function isLlmMessage(msg: unknown): msg is LlmMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    typeof (msg as { type?: unknown }).type === 'string' &&
+    LLM_TYPES.has((msg as { type: string }).type)
+  )
+}
+
+/** What the worker sends back as each batch lands. */
+export interface LlmTranslationsMessage {
+  type: 'bb-subsgen:llm-translations'
+  bvid: string
+  lang: TranslationLang
+  lines: Array<{ index: number; text: string }>
+}
+
+export function isLlmTranslationsMessage(msg: unknown): msg is LlmTranslationsMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:llm-translations' &&
+    Array.isArray((msg as { lines?: unknown }).lines)
   )
 }

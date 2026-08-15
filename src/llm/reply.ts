@@ -18,3 +18,40 @@ export function stripThinkBlocks(content: string): string {
     .replace(/<think>[\s\S]*$/i, '')
     .trim()
 }
+
+/**
+ * The JSON in a reply, however it was wrapped.
+ *
+ * `response_format` is a request, not a guarantee: servers that do not
+ * implement it ignore the field rather than refusing, and models that do
+ * implement it still sometimes lead with "Here are the translations:" or fence
+ * the block. Scanning to the outermost brace is what turns "the server does not
+ * support structured output" from a broken feature into a slightly worse one.
+ *
+ * Null when there is nothing parseable, which the caller treats as a batch that
+ * came back empty — every line in it is then retried.
+ */
+export function extractJson(content: string): unknown {
+  const text = stripThinkBlocks(content)
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Not bare JSON; fall through and go looking for it.
+  }
+
+  const start = text.search(/[[{]/)
+  if (start === -1) return null
+
+  // Widest match first: an object containing an array would otherwise be cut
+  // short at the array's own closing bracket.
+  const open = text[start]
+  const end = text.lastIndexOf(open === '{' ? '}' : ']')
+  if (end <= start) return null
+
+  try {
+    return JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return null
+  }
+}

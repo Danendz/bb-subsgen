@@ -49,6 +49,19 @@ export function useModels(): string[] {
   return models
 }
 
+/**
+ * Tells the worker a chat is generating, so the translation pass gets out of
+ * the way.
+ *
+ * One GPU: a 25-line batch in flight is fifteen seconds an explanation you are
+ * sitting waiting for spends queued behind subtitles you are not. Fire and
+ * forget — if the worker never hears it the only cost is the wait it would have
+ * saved, so this must never be something a chat can fail on.
+ */
+function tellWorkerBusy(busy: boolean): void {
+  void chrome.runtime.sendMessage({ type: 'bb-subsgen:llm-busy', busy }).catch(() => {})
+}
+
 export interface ChatSession {
   chat: Chat | null
   messages: ChatMessage[]
@@ -158,6 +171,7 @@ export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {
       ]
 
       let reply = ''
+      tellWorkerBusy(true)
       try {
         const result = await streamChatCompletion({
           baseUrl: settings.llmBaseUrl,
@@ -178,6 +192,10 @@ export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {
         const aborted = controller.signal.aborted
         reply = stripThinkBlocks(reply)
         if (!aborted) setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        // In a finally: a chat that failed still has to give the GPU back, or
+        // the translation pass waits forever on a request that is long gone.
+        tellWorkerBusy(false)
       }
 
       await replaceMessage(replySeq, reply)

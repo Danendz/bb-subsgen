@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { CedictEntry } from '../lang/dict'
-import { glossFor, glossLine, splitByKnown } from './glossary'
+import { glossFor, glossLine, splitByKnown, translationGlossary } from './glossary'
 
 function entry(over: Partial<CedictEntry> = {}): CedictEntry {
   return {
@@ -73,6 +73,45 @@ describe('splitByKnown', () => {
 
   test('an empty line splits into nothing', () => {
     expect(splitByKnown([], new Set(), defs)).toEqual({ known: [], fresh: [] })
+  })
+})
+
+describe('translationGlossary', () => {
+  const defs: Record<string, CedictEntry[]> = {
+    了: [entry()],
+    北京: [entry({ simplified: '北京', pinyin: 'Bei3jing1', definitions: ['Beijing'] })],
+    莫名其妙: [
+      entry({ simplified: '莫名其妙', pinyin: 'mo4 ming2 qi2 miao4', definitions: ['baffling'] }),
+    ],
+    张伟: [],
+  }
+
+  // Glossing 了 and 的 on every batch would fill the limit with grammar the
+  // model already has cold.
+  test('leaves single characters out', () => {
+    expect(translationGlossary(['了', '北京'], defs).map((g) => g.word)).toEqual(['北京'])
+  })
+
+  // A four-character CC-CEDICT entry is almost always an idiom or a name.
+  test('puts the longest entries first, where the idioms are', () => {
+    expect(translationGlossary(['北京', '莫名其妙'], defs).map((g) => g.word)).toEqual([
+      '莫名其妙',
+      '北京',
+    ])
+  })
+
+  test('drops words the dictionary cannot gloss', () => {
+    expect(translationGlossary(['张伟', '北京'], defs).map((g) => g.word)).toEqual(['北京'])
+  })
+
+  test('does not repeat a word that recurs across the batch', () => {
+    expect(translationGlossary(['北京', '北京'], defs)).toHaveLength(1)
+  })
+
+  test('caps the list so the prompt stays affordable', () => {
+    expect(translationGlossary(['北京', '莫名其妙'], defs, 1).map((g) => g.word)).toEqual([
+      '莫名其妙',
+    ])
   })
 })
 

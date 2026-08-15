@@ -35,8 +35,14 @@ import {
   TRANSLATION_LANGS,
   type TranslationLang,
 } from '../shared/settings'
-import { isGetStatusMessage, type Status } from '../shared/messages'
+import {
+  isGetStatusMessage,
+  isLlmTranslationsMessage,
+  type LlmMessage,
+  type Status,
+} from '../shared/messages'
 import { openExplainDrawer } from './explain-drawer'
+import { bufferedAhead, latch, preferred } from './tier'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -57,7 +63,11 @@ declare global {
 }
 
 /** Cues plus the video they belong to — the bvid is what every capture is filed under. */
-async function loadCuesForCurrentVideo(): Promise<{ cues: Cue[]; bvid: string } | null> {
+async function loadCuesForCurrentVideo(): Promise<{
+  cues: Cue[]
+  bvid: string
+  video: { title: string; description: string }
+} | null> {
   const bvid = parseBvidFromUrl(location.href)
   if (!bvid) return null
 
@@ -72,7 +82,9 @@ async function loadCuesForCurrentVideo(): Promise<{ cues: Cue[]; bvid: string } 
     { aid: info.aid, cid: info.cid, bvid },
     window.__INITIAL_STATE__?.videoData?.subtitle?.list,
   )
-  return cues ? { cues, bvid } : null
+  return cues
+    ? { cues, bvid, video: { title: info.title, description: info.description } }
+    : null
 }
 
 function labelFor(lang: TranslationLang): string {
@@ -141,11 +153,29 @@ async function main() {
   let stopMount: (() => void) | null = null
   let rerenderCurrentCue: (() => void) | null = null
   let startTranslation: (() => void) | null = null
+  let startLlmTranslation: (() => void) | null = null
   let translationAbort: AbortController | null = null
   // Per target language, each inner map keyed by cue index — which is also what
   // v2 word alignment will attach to. Keeping a map per language means switching
   // back to one already translated renders instantly instead of re-running the pass.
   const translations = new Map<TranslationLang, Map<number, string>>()
+  /**
+   * The local model's translations, alongside Chrome's rather than instead.
+   *
+   * Same keying, filled by the worker as each batch lands. Which of the two a
+   * line actually shows is `tier.ts`'s decision, not this map's.
+   */
+  const llmTranslations = new Map<TranslationLang, Map<number, string>>()
+  /**
+   * What each line settled on the first time it was displayed.
+   *
+   * The whole point of the two tiers is that the better one arrives late, and
+   * the whole point of this is that "late" must never mean "while you are
+   * reading it". Once a line has shown something, this is what it keeps showing.
+   */
+  const shown = new Map<TranslationLang, Map<number, string>>()
+  /** Languages whose model output is now buffered far enough ahead to prefer. */
+  const latched = new Set<TranslationLang>()
   let status: Status = 'loading'
   // Mirrored from the worker; drives what the overlay stops annotating and
   // which lines are still worth capturing.
@@ -160,24 +190,54 @@ async function main() {
   const quizForThisVisit = new URLSearchParams(location.search).get('bbq') === '1'
   const quizMode = () => settings.quizMode || quizForThisVisit
 
-  const cacheFor = (lang: TranslationLang): Map<number, string> => {
-    let cache = translations.get(lang)
+  const laneFor = (
+    lanes: Map<TranslationLang, Map<number, string>>,
+    lang: TranslationLang,
+  ): Map<number, string> => {
+    let cache = lanes.get(lang)
     if (!cache) {
       cache = new Map()
-      translations.set(lang, cache)
+      lanes.set(lang, cache)
     }
     return cache
+  }
+
+  const cacheFor = (lang: TranslationLang) => laneFor(translations, lang)
+  const llmCacheFor = (lang: TranslationLang) => laneFor(llmTranslations, lang)
+  const shownFor = (lang: TranslationLang) => laneFor(shown, lang)
+
+  /**
+   * Fire-and-forget to the worker.
+   *
+   * Nothing here expects a reply — a pass takes tens of minutes, so there is
+   * nothing a response could say — and a dropped message is never worth
+   * surfacing on a video.
+   */
+  const tellWorker = (msg: LlmMessage): void => {
+    void chrome.runtime.sendMessage(msg).catch(() => {})
   }
 
   const stopTranslation = () => {
     translationAbort?.abort()
     translationAbort = null
+    tellWorker({ type: 'bb-subsgen:llm-cancel' })
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!isGetStatusMessage(msg)) return
     sendResponse({ status })
   })
+
+  /** Subscribes to batches from the worker, and returns the unsubscribe. */
+  const onLlmTranslations = (
+    handle: (msg: { bvid: string; lang: TranslationLang; lines: Array<{ index: number; text: string }> }) => void,
+  ): (() => void) => {
+    const listener = (msg: unknown) => {
+      if (isLlmTranslationsMessage(msg)) handle(msg)
+    }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => chrome.runtime.onMessage.removeListener(listener)
+  }
 
   const loadCurrentVideo = async () => {
     stopMount?.()
@@ -186,6 +246,9 @@ async function main() {
     startTranslation = null
     stopTranslation()
     translations.clear()
+    llmTranslations.clear()
+    shown.clear()
+    latched.clear()
     status = 'loading'
     if (!settings.enabled) return
 
@@ -195,7 +258,7 @@ async function main() {
       console.log('[bb-subsgen] no subtitle track for this video')
       return
     }
-    const { cues, bvid } = loaded
+    const { cues, bvid, video: videoInfo } = loaded
     status = 'active'
 
     stopMount = mount(({ shadowRoot, video, container }) => {
@@ -293,9 +356,46 @@ async function main() {
         )
       }
 
+      /**
+       * The translation a line shows, and the moment it stops being able to change.
+       *
+       * Freezing happens here rather than at the point results arrive because
+       * this is where a line is actually put on screen — and "has been read" is
+       * the only thing that makes a rewrite unacceptable. A line still ahead of
+       * the playhead may be upgraded freely; the one you are looking at may not.
+       */
+      const translationFor = (index: number): string => {
+        if (index < 0) return ''
+        const lang = settings.translationLang
+
+        const settled = shownFor(lang).get(index)
+        if (settled !== undefined) return settled
+
+        const text = preferred({
+          nmt: cacheFor(lang).get(index),
+          llm: llmCacheFor(lang).get(index),
+          latched: latched.has(lang),
+        })
+        if (text && index === lastIndex) shownFor(lang).set(index, text)
+        return text
+      }
+
+      /** Opens the gate once the model is far enough ahead to stay ahead. */
+      const updateLatch = (lang: TranslationLang) => {
+        if (latched.has(lang)) return
+        const llm = llmCacheFor(lang)
+        const buffered = bufferedAhead(
+          Math.max(lastIndex, 0),
+          cues.length,
+          (index) => llm.has(index),
+          (index) => Boolean(cues[index].text.trim()),
+        )
+        if (latch(false, buffered)) latched.add(lang)
+      }
+
       const cueView = (): CueView => ({
         tokens: currentTokens,
-        translation: cacheFor(settings.translationLang).get(lastIndex) ?? '',
+        translation: translationFor(lastIndex),
         known,
         quiz: quizMode(),
       })
@@ -406,6 +506,9 @@ async function main() {
         render()
         renderProgress()
         onCueShown()
+        // Seeking re-orders what the pass has left to do; it reads this rather
+        // than being told to restart.
+        if (index >= 0) tellWorker({ type: 'bb-subsgen:llm-playhead', index })
       })
 
       startTranslation = () => {
@@ -438,7 +541,10 @@ async function main() {
           onResult: (index, translated) => {
             cache.set(index, translated)
             if (lang !== settings.translationLang) return // superseded mid-flight
-            if (index === lastIndex) setTranslation(shadowRoot, translated)
+            // Through the tier rather than straight to the overlay: this line
+            // may already have settled on the model's translation, and the
+            // on-device one arriving late must not displace it.
+            if (index === lastIndex) setTranslation(shadowRoot, translationFor(index))
             progress = { phase: 'pass', done: cache.size, total: translatable }
             renderProgress()
           },
@@ -446,6 +552,48 @@ async function main() {
         })
       }
       startTranslation()
+
+      /**
+       * Hands the track to the worker, which owns the model and the cache.
+       *
+       * Segmented here because this is where the lexicon already is — the
+       * worker would otherwise have to parse a 4.5MB dictionary of its own,
+       * every time Chrome decided it had been idle long enough to discard.
+       */
+      startLlmTranslation = () => {
+        if (!settings.showTranslation) return
+        if (!settings.llmEnabled || !settings.llmTranslationEnabled) return
+        if (!settings.llmBaseUrl || !settings.llmTranslationModel) return
+
+        tellWorker({
+          type: 'bb-subsgen:llm-translate-track',
+          bvid,
+          lang: settings.translationLang,
+          model: settings.llmTranslationModel,
+          baseUrl: settings.llmBaseUrl,
+          video: { title: videoInfo.title, description: videoInfo.description },
+          cues: cues.map((cue) => ({
+            start: cue.start,
+            text: cue.text,
+            words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
+          })),
+        })
+      }
+      startLlmTranslation()
+
+      const stopLlmResults = onLlmTranslations((msg) => {
+        if (msg.bvid !== bvid) return // a previous video's pass, still landing
+        const cache = llmCacheFor(msg.lang)
+        for (const line of msg.lines) cache.set(line.index, line.text)
+
+        if (msg.lang !== settings.translationLang) return
+        updateLatch(msg.lang)
+        // Only ever the line on screen, and only if it has not settled yet:
+        // everything else this batch touched is still ahead of the playhead.
+        if (msg.lines.some((line) => line.index === lastIndex)) {
+          setTranslation(shadowRoot, translationFor(lastIndex))
+        }
+      })
 
       return () => {
         // First, so the last few lines of the session are posted before the
@@ -455,6 +603,7 @@ async function main() {
         stopSync()
         stopControls()
         stopForward()
+        stopLlmResults()
       }
     })
   }
@@ -464,6 +613,10 @@ async function main() {
     const enabledChanged = next.enabled !== settings.enabled
     const translationToggled = next.showTranslation !== settings.showTranslation
     const langChanged = next.translationLang !== settings.translationLang
+    const llmToggled =
+      next.llmEnabled !== settings.llmEnabled ||
+      next.llmTranslationEnabled !== settings.llmTranslationEnabled ||
+      next.llmTranslationModel !== settings.llmTranslationModel
     settings = next
     if (enabledChanged) {
       loadCurrentVideo()
@@ -473,9 +626,17 @@ async function main() {
       // The caches survive, so switching back to a finished language is instant.
       stopTranslation()
       startTranslation?.()
+      startLlmTranslation?.()
     } else if (translationToggled) {
-      if (next.showTranslation) startTranslation?.()
-      else stopTranslation()
+      if (next.showTranslation) {
+        startTranslation?.()
+        startLlmTranslation?.()
+      } else stopTranslation()
+    } else if (llmToggled) {
+      // Turned on mid-video: the worker already has everything it needs to
+      // start, and everything cached from a previous viewing comes back at once.
+      if (next.llmEnabled && next.llmTranslationEnabled) startLlmTranslation?.()
+      else tellWorker({ type: 'bb-subsgen:llm-cancel' })
     }
     rerenderCurrentCue?.()
   })

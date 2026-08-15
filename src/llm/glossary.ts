@@ -69,3 +69,38 @@ export function splitByKnown(
 export function glossLine({ word, pinyin, gloss }: Glossed): string {
   return `${word} (${pinyin}) — ${gloss}`
 }
+
+/** How many entries a translation batch carries. Beyond this the prompt costs more than it buys. */
+export const GLOSSARY_LIMIT = 20
+
+/**
+ * The words in a passage a translator is most likely to get wrong.
+ *
+ * A different question from the one `splitByKnown` answers. That one is about
+ * the learner; this one is about the model, which does not care what you know.
+ * What a small quantized model actually mangles is names and set phrases — so
+ * the filter is multi-character words the dictionary has an entry for, longest
+ * first, because a four-character entry in CC-CEDICT is almost always an idiom
+ * or a name and a single character almost never needs saying.
+ *
+ * Single characters are excluded deliberately even though they are the most
+ * ambiguous words in Chinese: glossing 了 and 的 on every batch would fill the
+ * limit with grammar the model already has cold.
+ */
+export function translationGlossary(
+  words: string[],
+  defs: Record<string, CedictEntry[]>,
+  limit = GLOSSARY_LIMIT,
+): Glossed[] {
+  const seen = new Set<string>()
+  const found: Glossed[] = []
+
+  for (const word of words) {
+    if (word.length < 2 || seen.has(word)) continue
+    seen.add(word)
+    const glossed = glossFor(word, defs[word])
+    if (glossed) found.push(glossed)
+  }
+
+  return found.sort((a, b) => b.word.length - a.word.length).slice(0, limit)
+}

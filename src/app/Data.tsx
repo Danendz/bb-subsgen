@@ -18,6 +18,7 @@ import {
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
 import { WordListHelp } from './WordListHelp'
 import { LlmLog } from './LlmLog'
+import { cacheSize, clearCache } from '../background/llm-cache'
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10)
@@ -176,6 +177,46 @@ function WordLists() {
   )
 }
 
+/**
+ * The model's translations, and the button that throws them away.
+ *
+ * Separate from "Clear everything" and deliberately below it: this costs GPU
+ * time to rebuild and nothing else, where that one costs history that cannot be
+ * rebuilt at all. Worth being able to wipe on its own — it is the only part of
+ * this extension that grows without bound.
+ */
+function TranslationCache() {
+  const [size, setSize] = useState<{ videos: number; lines: number } | null>(null)
+
+  const refresh = () => void cacheSize().then(setSize, () => setSize(null))
+  useEffect(refresh, [])
+
+  const wipe = async () => {
+    if (!confirm('Delete every translation the local model has produced?')) return
+    await clearCache()
+    refresh()
+  }
+
+  return (
+    <div class="panel">
+      <div class="row">
+        <div class="grow">
+          <strong>Model translations</strong>
+          <div class="muted small">
+            {size?.lines
+              ? `${size.lines.toLocaleString()} lines across ${size.videos} video${size.videos === 1 ? '' : 's'}. ` +
+                'Kept so a second viewing is instant instead of costing the same half hour again.'
+              : 'Nothing cached yet. Subtitle lines the local model translates are kept here, so rewatching costs nothing.'}
+          </div>
+        </div>
+        <button disabled={!size?.lines} onClick={() => void wipe()}>
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface Pending {
   incoming: Backup
   local: Backup
@@ -330,6 +371,7 @@ export function Data() {
         </div>
       </div>
 
+      <TranslationCache />
       <LlmLog />
     </>
   )

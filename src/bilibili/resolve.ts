@@ -12,6 +12,15 @@ export function resolvePageNumber(url: string): number {
 export interface VideoInfo {
   aid: number
   cid: number
+  /**
+   * Title and description, for the translator's system prompt.
+   *
+   * Carried out of a call already being made: knowing a video is about cooking
+   * rather than history is what stops a model picking the wrong sense of a word,
+   * and it is the cheapest quality fix available to the translation pass.
+   */
+  title: string
+  description: string
 }
 
 /**
@@ -37,7 +46,12 @@ export async function fetchVideoInfo(bvid: string): Promise<VideoInfo | null> {
     fallbackCid: data.data.cid,
   })
 
-  return { aid: data.data.aid, cid }
+  return {
+    aid: data.data.aid,
+    cid,
+    title: typeof data.data.title === 'string' ? data.data.title : '',
+    description: typeof data.data.desc === 'string' ? data.data.desc : '',
+  }
 }
 
 export interface ResolveCidOptions {
