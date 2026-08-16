@@ -64,7 +64,7 @@ export function App() {
       ) : route === '/dictionary' ? (
         <Dictionary />
       ) : route.startsWith('/videos') ? (
-        <Videos bvid={video?.[1]} />
+        <Videos videoId={video?.[1]} />
       ) : (
         <Overview />
       )}

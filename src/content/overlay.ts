@@ -3,6 +3,7 @@ import type { Token } from '../lang/segment'
 import type { Settings } from '../shared/settings'
 import type { ProgressView } from './progress'
 import type { PlayerGeometry } from './controls'
+import type { Source } from './tier'
 
 const STYLE = `
 :host {
@@ -100,6 +101,8 @@ const STYLE = `
 }
 
 .translation {
+  /* Anchors the .ai dot. */
+  position: relative;
   max-width: 100%;
   text-align: center;
   /* Muted, so it reads as secondary and doesn't compete with the tone colors. */
@@ -107,6 +110,46 @@ const STYLE = `
   font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-weight: 400;
   line-height: 1.35;
+}
+
+/* Marks a line the local model translated, as opposed to Chrome's on-device
+   translator. A pseudo-element rather than a child, for two reasons:
+   the :empty rule above still matches while the line is waiting for its text,
+   and visibility: hidden on a withheld line takes the dot with it instead of
+   leaking which translator was behind the blank.
+
+   Violet is the one hue not already spoken for — the tone palette owns coral,
+   amber, mint and sky, and the progress bar owns blue.
+
+   Inline layout has no padding to sit inside, so the dot hangs off the right
+   edge, vertically centered — clear of descenders on a one-line translation and
+   of the wrap on a two-line one. On a translation long enough to reach
+   max-width this paints a few pixels outside the card, which is a fair trade
+   for never displacing the text. */
+.translation.ai::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b18aff;
+}
+
+/* The standalone card has padding, so the dot sits in the corner proper.
+   The extra padding is what keeps it from touching the end of the sentence on
+   a short line, and it is applied to both sides so the text stays centered in
+   its box rather than being nudged left by the room the dot needs. */
+.translation.ai.standalone {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.translation.ai.standalone::after {
+  top: 6px;
+  right: 7px;
+  transform: none;
 }
 
 /* The element is created as soon as a cue renders, but the translation lands
@@ -192,7 +235,7 @@ function backdrop(settings: Settings): string {
 
 function buildTranslationElement(
   settings: Settings,
-  text: string,
+  view: CueView,
   withheld: boolean,
 ): HTMLElement {
   const el = document.createElement('div')
@@ -202,13 +245,21 @@ function buildTranslationElement(
     el.classList.add('standalone')
     el.style.setProperty('background', backdrop(settings))
   }
-  el.textContent = text
+  markSource(el, view.translationSource)
+  el.textContent = view.translation
   return el
+}
+
+/** Turns the dot on for the model's translations and off for everything else. */
+function markSource(el: HTMLElement, source: Source | null): void {
+  el.classList.toggle('ai', source === 'llm')
 }
 
 export interface CueView {
   tokens: Token[]
   translation: string
+  /** Which translator produced `translation`; null while it is still empty. */
+  translationSource: Source | null
   /** Words whose reading is withheld — declared known, or reviewed to maturity. */
   known: ReadonlySet<string>
   /** Withholds everything regardless of what you know, for testing yourself. */
@@ -256,7 +307,7 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
   stack.querySelector(':scope > .translation')?.remove()
 
   if (settings.showTranslation) {
-    const el = buildTranslationElement(settings, view.translation, translationWithheld(view))
+    const el = buildTranslationElement(settings, view, translationWithheld(view))
     if (settings.translationLayout === 'card') stack.appendChild(el)
     else line.appendChild(el)
   }
@@ -267,10 +318,19 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
  *
  * Patches the single text node rather than re-rendering: a full renderCue would
  * rebuild every `.word`, which destroys an open hover popup mid-read.
+ *
+ * The mark is patched alongside it, because this is exactly the path a line
+ * takes when it arrives from one translator and is filled in by the other.
  */
-export function setTranslation(shadowRoot: ShadowRoot, text: string): void {
+export function setTranslation(
+  shadowRoot: ShadowRoot,
+  text: string,
+  source: Source | null,
+): void {
   const el = shadowRoot.querySelector<HTMLElement>('.translation')
-  if (el) el.textContent = text
+  if (!el) return
+  el.textContent = text
+  markSource(el, source)
 }
 
 /**

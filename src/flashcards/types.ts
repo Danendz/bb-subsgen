@@ -14,8 +14,23 @@ export interface Context {
   text: string
   /** Translation as it stood when captured; empty when none was available. */
   translation: string
-  /** Video id, when this came from a subtitle. */
-  bvid?: string
+  /** Video id, when this came from a subtitle. See `VideoId`. */
+  videoId?: string
+  /**
+   * Where the Chinese came from: a published subtitle track, or a transcript of
+   * the audio.
+   *
+   * Recorded because the two are not equally trustworthy. A track is the text the
+   * publisher wrote; a transcript is a speech model's best guess, and Mandarin is
+   * dense with homophones — 在 for 再, the wrong 的, a surname invented whole. A
+   * card built from a misheard line teaches a word that was never said, and
+   * without this there is no way to find those again, or to judge how often it
+   * happens.
+   *
+   * Optional because every card captured before transcription existed came from
+   * a track, and `undefined` says "unrecorded" rather than pretending otherwise.
+   */
+  source?: 'cc' | 'asr'
   /** Cue start in seconds — what the jump-back link rewinds from. */
   start?: number
   /** Page URL, when this came from the reader. */
@@ -145,15 +160,15 @@ export interface Exposure {
   lastSeen: number
 }
 
-/** Per-video exposure, keyed `[bvid, headword]`. */
+/** Per-video exposure, keyed `[videoId, headword]`. */
 export interface VideoWord {
-  bvid: string
+  videoId: string
   headword: string
   count: number
 }
 
 export interface Video {
-  bvid: string
+  videoId: string
   title: string
   url: string
   firstWatched: number
@@ -168,7 +183,7 @@ export interface Video {
  */
 export interface Signal {
   at: number
-  bvid?: string
+  videoId?: string
   /** Cue start, identifying the line. */
   start?: number
   /** Milliseconds of engagement. Playback is paused throughout, so this is real time. */
@@ -185,7 +200,7 @@ export interface Signal {
  * instances, and content scripts cannot write to the store directly anyway.
  */
 export interface ExposureBatch {
-  video?: { bvid: string; title: string; url: string }
+  video?: { videoId: string; title: string; url: string }
   /** Distinct cues seen since the last flush. */
   lines: number
   /** headword → times seen since the last flush. */

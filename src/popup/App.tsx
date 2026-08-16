@@ -12,6 +12,7 @@ import { Hint, Section, Toggle } from '../settings/controls'
 import {
   LanguageSection,
   LocalModelSection,
+  SpeechSection,
   modifierLabel,
   ReaderOptions,
   StudyingSection,
@@ -19,11 +20,18 @@ import {
 } from '../settings/sections'
 import { hostLabel } from '../settings/sites'
 import { useSettings } from '../settings/useSettings'
-import type { Status, StatusResponse } from '../shared/messages'
+import type {
+  GetPassStatusMessage,
+  PassStatusResponse,
+  Status,
+  StatusResponse,
+} from '../shared/messages'
+import type { PassStatus } from '../background/llm-translate'
+import { passProgressView } from '../llm/progress'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
-import { parseBvidFromUrl } from '../bilibili/resolve'
+import { parseVideoIdFromUrl } from '../bilibili/resolve'
 
 type TabStatus = Status | 'not-bilibili'
 
@@ -59,9 +67,9 @@ async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
  * video is watchable. Below ~90% comprehension falls apart; above ~95% you can
  * follow along and infer the rest.
  */
-async function coverageFor(bvid: string): Promise<{ tokens: number; types: string } | null> {
+async function coverageFor(videoId: string): Promise<{ tokens: number; types: string } | null> {
   const db = await flashcardsDb()
-  const [items, counts] = await Promise.all([listItems(db), videoWords(db, bvid)])
+  const [items, counts] = await Promise.all([listItems(db), videoWords(db, videoId)])
   if (!counts.length) return null
 
   const coverage = coverageOf(counts, knownSetOf(items))
@@ -69,6 +77,75 @@ async function coverageFor(bvid: string): Promise<{ tokens: number; types: strin
     tokens: fraction(coverage.knownTokens, coverage.totalTokens),
     types: `${coverage.knownTypes} of ${coverage.totalTypes} words`,
   }
+}
+
+/** How often the popup re-asks the worker how far the pass has got. */
+const PASS_POLL_MS = 1000
+
+async function fetchPassStatus(tabId: number | undefined): Promise<PassStatus | null> {
+  if (!tabId) return null
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: 'bb-subsgen:llm-pass-status',
+      tabId,
+    } satisfies GetPassStatusMessage)) as PassStatusResponse | undefined
+    return response?.status ?? null
+  } catch {
+    return null // the worker was asleep, which is itself "no pass running"
+  }
+}
+
+/**
+ * The model's progress through this video's subtitles.
+ *
+ * Polled rather than pushed: a pass runs for tens of minutes in the worker and
+ * the popup lives for seconds, so there is no subscription worth setting up.
+ * Batches land every ten seconds or so, which a one-second poll tracks closely
+ * enough while costing nothing measurable.
+ */
+function PassProgress({ tabId }: { tabId: number | undefined }) {
+  const [status, setStatus] = useState<PassStatus | null>(null)
+
+  useEffect(() => {
+    let live = true
+    const tick = () => {
+      void fetchPassStatus(tabId).then((next) => {
+        if (live) setStatus(next)
+      })
+    }
+    tick()
+    const timer = setInterval(tick, PASS_POLL_MS)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [tabId])
+
+  // Nothing running is nothing to show. A finished pass drops its state in the
+  // worker, so this is also what "done" looks like.
+  if (!status) return null
+
+  const view = passProgressView(status)
+  return (
+    <div class="pass-progress">
+      <div class="pass-progress-head">
+        <span class="pass-progress-model" title={status.model}>
+          {view.label}
+        </span>
+        <span class="pass-progress-count">{view.count}</span>
+      </div>
+      <div
+        class="pass-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={status.total}
+        aria-valuenow={status.translated}
+        aria-label={view.label}
+      >
+        <div class="pass-progress-fill" style={{ width: `${view.fraction * 100}%` }} />
+      </div>
+    </div>
+  )
 }
 
 export function App() {
@@ -82,9 +159,9 @@ export function App() {
       setTab(t)
       fetchTabStatus(t?.id).then(setTabStatus)
 
-      const bvid = parseBvidFromUrl(t?.url ?? '')
-      if (bvid) {
-        coverageFor(bvid).then(setCoverage, (e: unknown) =>
+      const videoId = parseVideoIdFromUrl(t?.url ?? '')
+      if (videoId) {
+        coverageFor(videoId).then(setCoverage, (e: unknown) =>
           console.warn('[bb-subsgen] coverage failed', e),
         )
       }
@@ -144,6 +221,7 @@ export function App() {
       <StudyingSection settings={settings} update={update} />
       <LanguageSection settings={settings} update={update} />
       <LocalModelSection settings={settings} update={update} />
+      <SpeechSection settings={settings} update={update} />
 
       <Section title="Page reader">
         {origin ? (
@@ -168,6 +246,7 @@ export function App() {
 
       <Section title="Bilibili subtitles">
         <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
+        <PassProgress tabId={tab?.id} />
         <SubtitlesSection settings={settings} update={update} />
       </Section>
 

@@ -1,6 +1,6 @@
 // Rebuilding the passage a captured line came from.
 //
-// A `Context` stores one line plus where it was met (`bvid` and `start`). The
+// A `Context` stores one line plus where it was met (`videoId` and `start`). The
 // surrounding lines are not stored — they are fetched back from the track when
 // an explanation is actually asked for, which costs nothing until then and
 // works on every word collected before this feature existed.
@@ -33,7 +33,7 @@ function same(a: string, b: string): boolean {
 /**
  * Where a captured line sits in a freshly fetched track, or -1.
  *
- * Located by text rather than by timestamp, deliberately. A bvid identifies a
+ * Located by text rather than by timestamp, deliberately. A videoId identifies a
  * video but not which part of a multi-part one, so the track fetched here may
  * not be the track the line came from; and a re-cut or re-timed track moves
  * every start. Matching the text is what makes a wrong answer detectable

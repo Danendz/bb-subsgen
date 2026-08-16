@@ -10,7 +10,7 @@
 // pressed and nothing at all until then, and it means this works on every word
 // collected before any of this existed.
 
-import { fetchVideoInfo } from '../../bilibili/resolve'
+import { resolveVideo } from '../../bilibili/resolve'
 import { fetchSubtitles, type Cue } from '../../bilibili/subtitles'
 import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
@@ -35,21 +35,21 @@ import { loadSettings } from '../../shared/settings'
  */
 const tracks = new Map<string, Promise<Cue[]>>()
 
-export function trackFor(bvid: string): Promise<Cue[]> {
-  const existing = tracks.get(bvid)
+export function trackFor(videoId: string): Promise<Cue[]> {
+  const existing = tracks.get(videoId)
   if (existing) return existing
 
   const fetching = (async () => {
-    const info = await fetchVideoInfo(bvid)
+    const info = await resolveVideo(videoId)
     if (!info) return []
-    return (await fetchSubtitles({ aid: info.aid, cid: info.cid, bvid })) ?? []
+    return (await fetchSubtitles({ aid: info.aid, cid: info.cid, videoId: info.videoId })) ?? []
   })().catch((e: unknown) => {
-    tracks.delete(bvid)
+    tracks.delete(videoId)
     console.warn('[bb-subsgen] track fetch failed', e)
     return [] as Cue[]
   })
 
-  tracks.set(bvid, fetching)
+  tracks.set(videoId, fetching)
   return fetching
 }
 
@@ -63,7 +63,7 @@ export interface ExplainRequest {
   line: string
   /** The word being asked about, when the button was pressed on one. */
   target?: string
-  bvid?: string
+  videoId?: string
   start?: number
   sourceTitle?: string
   /** The flashcard this came from, so the conversation can be found from it. */
@@ -84,15 +84,15 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
     before: [],
     after: [],
     ...(req.target !== undefined ? { target: req.target } : {}),
-    ...(req.bvid !== undefined ? { bvid: req.bvid } : {}),
+    ...(req.videoId !== undefined ? { videoId: req.videoId } : {}),
     ...(req.start !== undefined ? { start: req.start } : {}),
     ...(req.sourceTitle !== undefined ? { sourceTitle: req.sourceTitle } : {}),
   }
 
   const requestId = newRequestId()
 
-  if (req.bvid) {
-    const cues = await trackFor(req.bvid)
+  if (req.videoId) {
+    const cues = await trackFor(req.videoId)
     const found = cues.length ? lineWindow(cues, req.line, req.start) : null
 
     if (found) {
@@ -108,7 +108,7 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
         message: cues.length
           ? 'That line is not in this video’s track — explaining it on its own.'
           : 'No subtitle track came back — explaining the line on its own.',
-        detail: `bvid ${req.bvid}, start ${req.start ?? '—'}\n${req.line}`,
+        detail: `videoId ${req.videoId}, start ${req.start ?? '—'}\n${req.line}`,
       })
     }
   }

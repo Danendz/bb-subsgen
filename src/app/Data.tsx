@@ -4,6 +4,7 @@ import {
   emptyBackup,
   isBackup,
   merge,
+  upgrade,
   type Backup,
   type Conflict,
 } from '../flashcards/backup'
@@ -242,16 +243,20 @@ export function Data() {
       return
     }
 
+    // Upgraded at the one point a file enters the app, so conflict detection,
+    // the merge and the restore all see a single shape.
+    const incoming = upgrade(parsed)
+
     const local = await exportBackup()
-    const conflicts = conflictsOf(local, parsed)
+    const conflicts = conflictsOf(local, incoming)
 
     // Nothing to arbitrate: apply straight away rather than asking a question
     // with one possible answer.
     if (!conflicts.length) {
-      await apply(local, parsed, 'local')
+      await apply(local, incoming, 'local')
       return
     }
-    setPending({ incoming: parsed, local, conflicts })
+    setPending({ incoming, local, conflicts })
   }
 
   const apply = async (local: Backup, incoming: Backup, prefer: 'local' | 'incoming') => {

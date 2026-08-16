@@ -3,10 +3,13 @@
   "name": "bb-subsgen",
   "version": "0.0.1",
   "description": "Hover pinyin + CC-CEDICT glosses over Chinese text, on Bilibili subtitles and any site you opt into.",
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "offscreen"],
   "host_permissions": [
     "https://*.bilibili.com/*",
-    "https://*.hdslb.com/*"
+    "https://*.hdslb.com/*",
+    "https://*.bilivideo.com/*",
+    "https://*.bilivideo.cn/*",
+    "https://*.akamaized.net/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
@@ -15,7 +18,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.bilibili.com/video/*"],
+      "matches": [
+        "https://www.bilibili.com/video/*",
+        "https://www.bilibili.com/bangumi/play/*"
+      ],
       "js": ["src/content/main.ts"],
       "run_at": "document_start"
     },

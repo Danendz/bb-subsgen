@@ -7,6 +7,8 @@ export type ProgressState =
   | { phase: 'idle' }
   | { phase: 'download'; label: string; fraction: number }
   | { phase: 'pass'; done: number; total: number }
+  /** Chunks of audio turned into lines. `total` is 0 until the plan is known. */
+  | { phase: 'transcribe'; done: number; total: number }
 
 export interface ProgressView {
   visible: boolean
@@ -41,6 +43,20 @@ export function progressView(state: ProgressState, waiting: boolean): ProgressVi
       visible: true,
       text: `Downloading ${state.label}… ${Math.round(state.fraction * 100)}%`,
       fraction: state.fraction,
+    }
+  }
+
+  // Always reports, for the same reason the download does: until it finishes
+  // there are no cues at all, so there is nothing on screen for it to cover and
+  // nobody who is not waiting on it. `total` is 0 until the chunk plan comes
+  // back, which is a bar with no width rather than a bar that lies.
+  if (state.phase === 'transcribe') {
+    return {
+      visible: true,
+      text: state.total
+        ? `Transcribing… ${state.done} / ${state.total}`
+        : 'Transcribing…',
+      fraction: state.total ? state.done / state.total : 0,
     }
   }
 

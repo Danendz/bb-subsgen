@@ -26,11 +26,11 @@ describe('explainUrl', () => {
 
   test('carries everything the passage is rebuilt from', () => {
     const params = paramsOf(
-      explainUrl({ line: '我吃了饭', word: '了', bvid: 'BV1xx', start: 12.5, title: '播客' }, BASE),
+      explainUrl({ line: '我吃了饭', word: '了', videoId: 'BV1xx', start: 12.5, title: '播客' }, BASE),
     )
 
     expect(params.get('word')).toBe('了')
-    expect(params.get('bvid')).toBe('BV1xx')
+    expect(params.get('videoId')).toBe('BV1xx')
     expect(params.get('start')).toBe('12.5')
     expect(params.get('title')).toBe('播客')
   })
@@ -44,7 +44,7 @@ describe('explainUrl', () => {
     const params = paramsOf(explainUrl({ line: '你好' }, BASE))
 
     expect(params.has('word')).toBe(false)
-    expect(params.has('bvid')).toBe(false)
+    expect(params.has('videoId')).toBe(false)
     expect(params.has('start')).toBe(false)
   })
 

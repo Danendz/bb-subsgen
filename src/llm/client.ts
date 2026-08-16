@@ -99,7 +99,8 @@ export function permissionPatternFor(baseUrl: string): string | null {
   }
 }
 
-async function failureBody(res: Response): Promise<string> {
+/** Shared with asr.ts, which fails in exactly the same ways for the same reasons. */
+export async function failureBody(res: Response): Promise<string> {
   try {
     return (await res.text()).slice(0, 4000)
   } catch {
@@ -114,7 +115,7 @@ async function failureBody(res: Response): Promise<string> {
  * the single most common thing that will go wrong here and the least helpful
  * message it could carry.
  */
-function connectionError(baseUrl: string, cause: unknown): LlmError {
+export function connectionError(baseUrl: string, cause: unknown): LlmError {
   if (cause instanceof DOMException && cause.name === 'AbortError') {
     return new LlmError('Request cancelled', { cause })
   }
@@ -286,6 +287,27 @@ function logReply(opts: ChatOptions, requestId: string, reply: LlmReply, ms: num
   })
 }
 
+/**
+ * The reply, from whichever field the server put it in.
+ *
+ * A reasoning model's scratchpad arrives either inline as `<think>` — handled
+ * downstream by stripThinkBlocks — or split off into `reasoning_content`, which
+ * is what LM Studio, vLLM and llama.cpp do when they have a parser for the
+ * model. That split is only as good as the parser: LM Studio's Qwen3.6 parser
+ * classifies the *entire* reply as reasoning, so `content` comes back empty and
+ * `reasoning_content` holds the answer, verbatim and correct. Reproduced
+ * directly against the server — finish_reason `stop`, 75 of 76 completion
+ * tokens counted as reasoning, and a perfectly good JSON body in the wrong
+ * field.
+ *
+ * Only ever a fallback. Where a model reasons and then answers, both fields are
+ * populated and only the answer is wanted; concatenating them would feed the
+ * scratchpad to the JSON extractor and to the chat window alike.
+ */
+function answerOf(content: string | undefined, reasoning: string | undefined): string {
+  return content?.trim() ? content : (reasoning ?? '')
+}
+
 /** One whole reply, waited for. Used by the batch translator, which has nothing to show mid-flight. */
 export async function chatCompletion(opts: ChatOptions): Promise<LlmReply> {
   const requestId = newRequestId()
@@ -293,12 +315,15 @@ export async function chatCompletion(opts: ChatOptions): Promise<LlmReply> {
   const res = await post(opts, false, requestId)
 
   const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>
+    choices?: Array<{
+      message?: { content?: string; reasoning_content?: string }
+      finish_reason?: string | null
+    }>
     usage?: unknown
   }
   const choice = payload.choices?.[0]
   const reply: LlmReply = {
-    content: choice?.message?.content ?? '',
+    content: answerOf(choice?.message?.content, choice?.message?.reasoning_content),
     finishReason: choice?.finish_reason ?? null,
     usage: usageOf(payload.usage),
   }
@@ -327,6 +352,9 @@ export async function streamChatCompletion(opts: StreamOptions): Promise<LlmRepl
   if (!res.body) throw new LlmError('The server replied without a body to stream')
 
   let content = ''
+  // Accumulated but not reported: see answerOf. Streaming it would put the
+  // scratchpad on screen for every model whose server does split the fields.
+  let reasoning = ''
   let finishReason: string | null = null
   let usage: LlmUsage | null = null
 
@@ -334,7 +362,10 @@ export async function streamChatCompletion(opts: StreamOptions): Promise<LlmRepl
     if (payload === SSE_DONE) return
 
     let chunk: {
-      choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>
+      choices?: Array<{
+        delta?: { content?: string; reasoning_content?: string }
+        finish_reason?: string | null
+      }>
       usage?: unknown
     }
     try {
@@ -364,9 +395,15 @@ export async function streamChatCompletion(opts: StreamOptions): Promise<LlmRepl
       content += delta
       opts.onDelta(delta)
     }
+    if (choice.delta?.reasoning_content) reasoning += choice.delta.reasoning_content
   })
 
-  const reply: LlmReply = { content, finishReason, usage }
+  // Reported in one piece at the end, once "no content is coming" is settled,
+  // so a caller rendering from onDelta is not left with a blank window.
+  const answer = answerOf(content, reasoning)
+  if (answer && !content) opts.onDelta(answer)
+
+  const reply: LlmReply = { content: answer, finishReason, usage }
   logReply(opts, requestId, reply, Date.now() - started)
   return reply
 }

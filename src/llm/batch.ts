@@ -97,6 +97,9 @@ export interface Reconciled {
 interface RawLine {
   id?: unknown
   zh?: unknown
+  /** What the schema asks for. */
+  text?: unknown
+  /** What a model reaching past the schema tends to produce anyway. */
   en?: unknown
 }
 
@@ -132,7 +135,11 @@ export function reconcile(sent: BatchLine[], received: unknown): Reconciled {
     if (!Number.isInteger(id) || !wanted.has(id)) continue
     if (accepted.has(id)) continue // a repeat; the first answer stands
 
-    const en = typeof row.en === 'string' ? row.en.trim() : ''
+    // `text` is what was asked for; `en` is accepted because the schema is a
+    // request and a model that ignores it should not lose its line over the
+    // name it chose.
+    const translated = [row.text, row.en].find((value) => typeof value === 'string' && value.trim())
+    const en = typeof translated === 'string' ? translated.trim() : ''
     if (!en) continue
 
     // An echo that disagrees means the reply has slipped out of step with the
@@ -150,7 +157,15 @@ export function reconcile(sent: BatchLine[], received: unknown): Reconciled {
   }
 }
 
-/** The shape the server is asked to answer in. */
+/**
+ * The shape the server is asked to answer in.
+ *
+ * The output field is called `text` and must never be named after a language.
+ * Verified against LM Studio: the same model, prompt and temperature, asked to
+ * translate into Russian, answers in English when this field is called `en` and
+ * in Russian when it is not. A field name sits closer to the tokens being
+ * generated than the system prompt does, and small models follow it instead.
+ */
 export const BATCH_SCHEMA: JsonSchemaFormat = {
   type: 'json_schema',
   json_schema: {
@@ -166,9 +181,9 @@ export const BATCH_SCHEMA: JsonSchemaFormat = {
             properties: {
               id: { type: 'integer' },
               zh: { type: 'string' },
-              en: { type: 'string' },
+              text: { type: 'string' },
             },
-            required: ['id', 'zh', 'en'],
+            required: ['id', 'zh', 'text'],
             additionalProperties: false,
           },
         },
@@ -221,7 +236,7 @@ export function batchSystem({ lang, video }: BatchPrompt): string {
   return parts.join('\n')
 }
 
-export function batchUser({ lines, glossary, seam }: BatchPrompt): string {
+export function batchUser({ lines, lang, glossary, seam }: BatchPrompt): string {
   const parts: string[] = []
 
   if (seam?.length) {
@@ -239,9 +254,14 @@ export function batchUser({ lines, glossary, seam }: BatchPrompt): string {
     )
   }
 
+  // The language is named here as well as in the system turn. The glossary
+  // above is English whatever the target is — CC-CEDICT only has the one — so
+  // by this point the request is surrounded by English, and the last
+  // instruction before the lines themselves is the one worth spending.
   parts.push(
     [
-      `Translate these ${lines.length} lines. Return exactly ${lines.length} entries.`,
+      `Translate these ${lines.length} lines into ${LANGUAGE_NAME[lang]}.`,
+      `Return exactly ${lines.length} entries, each with its translation in the "text" field.`,
       ...lines.map((line) => `${line.id}\t${line.zh}`),
     ].join('\n'),
   )

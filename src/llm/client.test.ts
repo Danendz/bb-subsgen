@@ -214,6 +214,43 @@ describe('chatCompletion', () => {
     expect(entries.at(-1)!.message).toContain('cut off')
   })
 
+  // Reproduced against LM Studio 's Qwen3.6 reasoning parser, which classifies
+  // the whole reply as reasoning and leaves content empty. Verbatim shape:
+  // content: '', reasoning_content: the JSON, reasoning_tokens: 75 of 76.
+  test('falls back to reasoning_content when the server left content empty', async () => {
+    const answer = '{"lines": [{"id": 0, "zh": "我很好", "en": "I am well."}]}'
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        choices: [
+          { message: { content: '', reasoning_content: answer }, finish_reason: 'stop' },
+        ],
+      }),
+    )
+
+    const reply = await chatCompletion({ baseUrl: BASE, model: 'm', messages: [], fetchImpl })
+
+    expect(reply.content).toBe(answer)
+  })
+
+  // The ordinary reasoning model: scratchpad in one field, answer in the other.
+  // Concatenating them would feed the scratchpad to the JSON extractor.
+  test('ignores reasoning_content whenever there is real content', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        choices: [
+          {
+            message: { content: 'the answer', reasoning_content: 'let me think about this' },
+            finish_reason: 'stop',
+          },
+        ],
+      }),
+    )
+
+    const reply = await chatCompletion({ baseUrl: BASE, model: 'm', messages: [], fetchImpl })
+
+    expect(reply.content).toBe('the answer')
+  })
+
   test('keeps the server body on a failure, because it names the missing model', async () => {
     const fetchImpl = vi
       .fn()
@@ -286,6 +323,52 @@ describe('streamChatCompletion', () => {
 
     expect(reply.finishReason).toBe('stop')
     expect(reply.usage).toEqual({ promptTokens: 7, completionTokens: 2 })
+  })
+
+  // Same LM Studio parser as the non-streaming case, seen on the wire as
+  // delta.reasoning_content with no delta.content at any point.
+  test('falls back to streamed reasoning_content when no content ever arrives', async () => {
+    const reasoning = (text: string) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: text } }] })}\n\n`
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(sseResponse([reasoning('the '), reasoning('answer'), 'data: [DONE]\n\n']))
+    const seen: string[] = []
+
+    const reply = await streamChatCompletion({
+      baseUrl: BASE,
+      model: 'm',
+      messages: [],
+      fetchImpl,
+      onDelta: (d) => seen.push(d),
+    })
+
+    expect(reply.content).toBe('the answer')
+    // Held back until the end rather than streamed: while content may still
+    // arrive, this is scratchpad, and scratchpad must not flash up on screen.
+    expect(seen).toEqual(['the answer'])
+  })
+
+  test('drops streamed reasoning once real content arrives', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseResponse([
+        `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking' } }] })}\n\n`,
+        frame('the answer'),
+        'data: [DONE]\n\n',
+      ]),
+    )
+    const seen: string[] = []
+
+    const reply = await streamChatCompletion({
+      baseUrl: BASE,
+      model: 'm',
+      messages: [],
+      fetchImpl,
+      onDelta: (d) => seen.push(d),
+    })
+
+    expect(reply.content).toBe('the answer')
+    expect(seen).toEqual(['the answer'])
   })
 
   test('skips an unparseable frame and keeps the rest of the reply', async () => {

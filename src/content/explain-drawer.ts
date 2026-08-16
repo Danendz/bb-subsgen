@@ -19,7 +19,7 @@ export interface ExplainParams {
   /** The line as it is on screen — what the passage is rebuilt from. */
   line: string
   word?: string
-  bvid?: string
+  videoId?: string
   start?: number
   title?: string
 }
@@ -34,7 +34,7 @@ export interface ExplainParams {
 export function explainUrl(params: ExplainParams, base: string): string {
   const search = new URLSearchParams({ embed: '1', line: params.line })
   if (params.word) search.set('word', params.word)
-  if (params.bvid) search.set('bvid', params.bvid)
+  if (params.videoId) search.set('videoId', params.videoId)
   if (params.start !== undefined) search.set('start', String(params.start))
   if (params.title) search.set('title', params.title)
 

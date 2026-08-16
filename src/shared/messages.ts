@@ -1,7 +1,8 @@
+import type { Cue } from '../bilibili/subtitles'
 import type { CedictEntry } from '../lang/dict'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { VideoPreamble } from '../llm/batch'
-import type { PassCue } from '../background/llm-translate'
+import type { PassCue, PassStatus } from '../background/llm-translate'
 import type { TranslationLang } from './settings'
 
 export type Status = 'loading' | 'no-track' | 'active'
@@ -19,6 +20,37 @@ export function isGetStatusMessage(msg: unknown): msg is GetStatusMessage {
     typeof msg === 'object' &&
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:get-status'
+  )
+}
+
+/**
+ * Asks the worker how far the translation pass for a tab has got.
+ *
+ * Deliberately not part of `LlmMessage`: everything in that union is
+ * fire-and-forget, for the documented reason that a pass takes tens of minutes
+ * and nothing a reply could say would be worth waiting for. This one is only
+ * ever a reply, so it gets its own pair rather than quietly falsifying that.
+ *
+ * The tab id is carried explicitly because the popup is not a content script —
+ * `sender.tab` is undefined for it, so the worker cannot infer which tab is
+ * being asked about.
+ */
+export interface GetPassStatusMessage {
+  type: 'bb-subsgen:llm-pass-status'
+  tabId: number
+}
+
+export interface PassStatusResponse {
+  /** Null when no pass is running for that tab. */
+  status: PassStatus | null
+}
+
+export function isGetPassStatusMessage(msg: unknown): msg is GetPassStatusMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:llm-pass-status' &&
+    typeof (msg as { tabId?: unknown }).tabId === 'number'
   )
 }
 
@@ -112,7 +144,7 @@ export function isFlashcardsMessage(msg: unknown): msg is FlashcardsMessage {
 export type LlmMessage =
   | {
       type: 'bb-subsgen:llm-translate-track'
-      bvid: string
+      videoId: string
       lang: TranslationLang
       model: string
       baseUrl: string
@@ -147,10 +179,72 @@ export function isLlmMessage(msg: unknown): msg is LlmMessage {
   )
 }
 
+/**
+ * Transcription, asked for by a content script that found no subtitle track.
+ *
+ * Fire-and-forget like the translation pass, and for the same reason: this takes
+ * minutes, and the results come back as `asr-cues` rather than as a reply. The
+ * worker is asked rather than the offscreen document directly because a content
+ * script may not create one, and because the worker owns the transcript cache
+ * that usually makes the whole request unnecessary.
+ */
+export type AsrMessage =
+  | {
+      type: 'bb-subsgen:asr-transcribe'
+      videoId: string
+      cid: number
+      model: string
+      baseUrl: string
+      /** Seconds; decides which chunk is transcribed first. */
+      playhead: number
+    }
+  | { type: 'bb-subsgen:asr-cancel' }
+
+const ASR_TYPES = new Set<string>(['bb-subsgen:asr-transcribe', 'bb-subsgen:asr-cancel'])
+
+export function isAsrMessage(msg: unknown): msg is AsrMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    typeof (msg as { type?: unknown }).type === 'string' &&
+    ASR_TYPES.has((msg as { type: string }).type)
+  )
+}
+
+/**
+ * Cues so far, sent as each chunk lands and once more at the end.
+ *
+ * Always the whole track rather than the newest chunk: chunks are transcribed
+ * playhead-first, so they finish out of order, and everything downstream indexes
+ * cues by position. Re-sending a sorted list costs a few hundred kilobytes over
+ * an episode and removes a whole class of splicing bug.
+ */
+export interface AsrCuesMessage {
+  type: 'bb-subsgen:asr-cues'
+  videoId: string
+  cues: Cue[]
+  /** Chunks finished, and expected. What the progress pill counts. */
+  done: number
+  total: number
+  /** Whether anything more is coming. A cached transcript arrives complete. */
+  complete: boolean
+  /** Set when the run ended early; `cues` then holds whatever was finished. */
+  error?: string
+}
+
+export function isAsrCuesMessage(msg: unknown): msg is AsrCuesMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:asr-cues' &&
+    Array.isArray((msg as { cues?: unknown }).cues)
+  )
+}
+
 /** What the worker sends back as each batch lands. */
 export interface LlmTranslationsMessage {
   type: 'bb-subsgen:llm-translations'
-  bvid: string
+  videoId: string
   lang: TranslationLang
   lines: Array<{ index: number; text: string }>
 }

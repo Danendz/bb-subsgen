@@ -11,7 +11,16 @@ vi.mock('./llm-cache', () => ({
   evict: vi.fn(async () => 0),
 }))
 
-import { cancelPass, reportPlayhead, setChatBusy, startPass, type PassCue } from './llm-translate'
+import {
+  cancelPass,
+  cancelPassIfNavigatedAway,
+  passStatus,
+  reportPlayhead,
+  setChatBusy,
+  startPass,
+  watchTabLiveness,
+  type PassCue,
+} from './llm-translate'
 import { readTrack, writeLines } from './llm-cache'
 
 const TAB = 7
@@ -43,7 +52,7 @@ function idsIn(user: string): number[] {
 function request(over: Partial<Parameters<typeof startPass>[0]> = {}) {
   return {
     tabId: TAB,
-    bvid: 'BV1',
+    videoId: 'BV1',
     lang: 'en' as const,
     model: 'gemma',
     baseUrl: 'http://localhost:1234/v1',
@@ -174,6 +183,209 @@ describe('startPass', () => {
     })
   })
 
+  // What the popup's progress bar reads. The popup is short-lived and the pass
+  // is not, so it asks rather than listens — a popup opened mid-pass has to be
+  // able to fill its bar immediately.
+  describe('passStatus', () => {
+    test('is null when nothing is running', () => {
+      expect(passStatus(TAB)).toBeNull()
+    })
+
+    test('is null for a tab whose pass is not the active one', async () => {
+      const seen: Array<ReturnType<typeof passStatus>> = []
+      const inner = globalThis.fetch
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        seen.push(passStatus(TAB + 1))
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: cues(4) }))
+
+      expect(seen).not.toHaveLength(0)
+      expect(seen.every((s) => s === null)).toBe(true)
+    })
+
+    test('counts only the lines that were ever going to be translated', async () => {
+      const track = cues(4)
+      track[1].text = '   '
+      let total: number | undefined
+      const inner = globalThis.fetch
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        total ??= passStatus(TAB)?.total
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: track }))
+
+      expect(total).toBe(3)
+    })
+
+    test('climbs as batches land, and carries the video and model', async () => {
+      const seen: number[] = []
+      const inner = globalThis.fetch
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        const status = passStatus(TAB)!
+        seen.push(status.translated)
+        expect(status).toMatchObject({ videoId: 'BV1', model: 'gemma', total: 60 })
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: cues(60) }))
+
+      // Read before each batch is sent: nothing, then 25, then 50.
+      expect(seen).toEqual([0, 25, 50])
+    })
+
+    // A re-watch should show a full bar at once rather than climbing from zero.
+    test('counts cached lines before anything is asked for', async () => {
+      vi.mocked(readTrack).mockResolvedValue(new Map([[0, 'cached 0'], [2, 'cached 2']]))
+      let first: number | undefined
+      const inner = globalThis.fetch
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        first ??= passStatus(TAB)?.translated
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: cues(4) }))
+
+      expect(first).toBe(2)
+    })
+
+    test('is null again once the pass has finished', async () => {
+      await startPass(request({ cues: cues(4) }))
+
+      expect(passStatus(TAB)).toBeNull()
+    })
+  })
+
+  /**
+   * The backstop for a tab that navigates without closing.
+   *
+   * `tabs.onRemoved` covers a closed tab and the content script covers SPA
+   * navigation, but neither covers typing a new address or following a link off
+   * the site: the content script is destroyed without getting to say so, and
+   * the tab still exists. Only the worker can notice, and until it did the pass
+   * kept translating a video nobody had open.
+   */
+  describe('cancelPassIfNavigatedAway', () => {
+    /** Runs `act` while the first batch is in flight, then lets the pass finish. */
+    async function midPass(cueCount: number, act: () => void) {
+      let acted = false
+      const inner = globalThis.fetch
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        if (!acted) {
+          acted = true
+          act()
+        }
+        return inner(url, init)
+      }) as typeof fetch
+      await startPass(request({ cues: cues(cueCount) }))
+    }
+
+    test('cancels when the tab has left the video behind', async () => {
+      await midPass(75, () => cancelPassIfNavigatedAway(TAB, 'https://www.bilibili.com/'))
+
+      expect(passStatus(TAB)).toBeNull()
+      expect(sent).toHaveLength(1)
+    })
+
+    test('cancels when the tab has moved to a different video', async () => {
+      await midPass(75, () =>
+        cancelPassIfNavigatedAway(TAB, 'https://www.bilibili.com/video/BV2/'),
+      )
+
+      expect(sent).toHaveLength(1)
+    })
+
+    test('leaves a pass alone when the tab is still on its video', async () => {
+      await midPass(75, () =>
+        cancelPassIfNavigatedAway(TAB, 'https://www.bilibili.com/video/BV1?t=90'),
+      )
+
+      // The whole track, not just the batch that was in flight.
+      expect(sent).toHaveLength(3)
+    })
+
+    test('ignores a navigation in some other tab', async () => {
+      await midPass(75, () => cancelPassIfNavigatedAway(TAB + 1, 'https://example.com/'))
+
+      expect(sent).toHaveLength(3)
+    })
+
+    test('is harmless when no pass is running', () => {
+      expect(() => cancelPassIfNavigatedAway(TAB, 'https://example.com/')).not.toThrow()
+    })
+  })
+
+  /**
+   * The catch-all for a content script that dies without warning.
+   *
+   * `cancelPassIfNavigatedAway` only sees a URL the extension has permission
+   * for, which is Bilibili and nothing else — so leaving the site entirely, the
+   * most ordinary way to "change the page", is invisible to it. A port has no
+   * such condition: whatever kills the page kills the port with it.
+   */
+  describe('watchTabLiveness', () => {
+    /** A fake of the half of chrome.runtime.Port that matters here. */
+    function fakePort(tabId: number | undefined) {
+      const handlers: Array<() => void> = []
+      return {
+        port: {
+          sender: tabId === undefined ? {} : { tab: { id: tabId } },
+          onDisconnect: { addListener: (fn: () => void) => handlers.push(fn) },
+        } as unknown as chrome.runtime.Port,
+        disconnect: () => handlers.forEach((fn) => fn()),
+      }
+    }
+
+    test('cancels the pass when the page holding the port goes away', async () => {
+      const { port, disconnect } = fakePort(TAB)
+      const inner = globalThis.fetch
+      let done = false
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        if (!done) {
+          done = true
+          watchTabLiveness(port)
+          disconnect()
+        }
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: cues(75) }))
+
+      expect(passStatus(TAB)).toBeNull()
+      expect(sent).toHaveLength(1)
+    })
+
+    test('leaves other tabs’ passes alone', async () => {
+      const { port, disconnect } = fakePort(TAB + 1)
+      const inner = globalThis.fetch
+      let done = false
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        if (!done) {
+          done = true
+          watchTabLiveness(port)
+          disconnect()
+        }
+        return inner(url, init)
+      }) as typeof fetch
+
+      await startPass(request({ cues: cues(75) }))
+
+      expect(sent).toHaveLength(3)
+    })
+
+    // A port from the app page or the drawer rather than a content script.
+    test('ignores a port with no tab behind it', () => {
+      const { port, disconnect } = fakePort(undefined)
+
+      expect(() => {
+        watchTabLiveness(port)
+        disconnect()
+      }).not.toThrow()
+    })
+  })
+
   describe('ordering', () => {
     test('starts at the top of the track', async () => {
       await startPass(request({ cues: cues(60) }))
@@ -250,8 +462,8 @@ describe('startPass', () => {
     })
 
     test('starting a new pass supersedes the one running', async () => {
-      const first = startPass(request({ bvid: 'BV1', cues: cues(100) }))
-      await startPass(request({ bvid: 'BV2', cues: cues(2) }))
+      const first = startPass(request({ videoId: 'BV1', cues: cues(100) }))
+      await startPass(request({ videoId: 'BV2', cues: cues(2) }))
       await first
 
       expect(posted.every((line) => line.text.startsWith('line'))).toBe(true)

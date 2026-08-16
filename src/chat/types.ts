@@ -16,7 +16,7 @@ export interface ChatContext {
   /** The lines around it that were sent for context. */
   before: string[]
   after: string[]
-  bvid?: string
+  videoId?: string
   /** Cue start in seconds — what a jump-back link rewinds from. */
   start?: number
   /** Video or page title, for display. */

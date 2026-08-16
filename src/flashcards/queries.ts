@@ -35,12 +35,12 @@ export function getItem(db: IDBDatabase, id: string): Promise<Item | undefined> 
 }
 
 /** Every word counted in one video, via the by-video index. */
-export function videoWords(db: IDBDatabase, bvid: string): Promise<VideoWord[]> {
+export function videoWords(db: IDBDatabase, videoId: string): Promise<VideoWord[]> {
   const index = db
     .transaction(STORES.videoWords, 'readonly')
     .objectStore(STORES.videoWords)
     .index('by-video')
-  return request<VideoWord[]>(index.getAll(IDBKeyRange.only(bvid)))
+  return request<VideoWord[]>(index.getAll(IDBKeyRange.only(videoId)))
 }
 
 /** The words the overlay stops annotating — the same rule the mirror publishes. */

@@ -13,7 +13,11 @@
 import { reschedules, schedule } from './scheduler'
 import type { Exposure, Item, Review, Video, VideoWord } from './types'
 
-export const BACKUP_VERSION = 1
+/**
+ * 1 — the original format.
+ * 2 — `bvid` became `videoId`, because bangumi episodes have no BV id.
+ */
+export const BACKUP_VERSION = 2
 
 export interface Backup {
   version: number
@@ -55,6 +59,39 @@ export function isBackup(value: unknown): value is Backup {
   )
 }
 
+/**
+ * Brings a parsed file up to the current shape.
+ *
+ * The database migration next door cannot reach this: a backup is a file on
+ * someone's disk, exported months ago and imported long after the schema moved
+ * on. Reading `videoId` off a version 1 file yields undefined for every row,
+ * which would file every per-video word under the same missing id and merge
+ * unrelated videos into one — silently, since nothing here throws.
+ *
+ * Idempotent: a file already at the current version is returned untouched.
+ */
+export function upgrade(backup: Backup): Backup {
+  if (backup.version >= 2) return backup
+
+  return {
+    ...backup,
+    version: BACKUP_VERSION,
+    items: (backup.items ?? []).map((item) => ({
+      ...item,
+      contexts: (item.contexts ?? []).map(renameVideoId),
+    })),
+    videoWords: (backup.videoWords ?? []).map(renameVideoId),
+    videos: (backup.videos ?? []).map(renameVideoId),
+  }
+}
+
+/** Moves a `bvid` onto `videoId`, leaving a row that never carried one alone. */
+function renameVideoId<T extends object>(row: T): T {
+  if (!('bvid' in row)) return row
+  const { bvid, ...rest } = row as T & { bvid?: string }
+  return (bvid === undefined ? rest : { ...rest, videoId: bvid }) as T
+}
+
 /** Identifies one review, for deduplicating the same event present in both files. */
 function reviewKey(review: Review): string {
   return `${review.itemId}@${review.at}`
@@ -71,7 +108,7 @@ const MAX_CONTEXTS = 20
 function mergeContexts(a: Item, b: Item): Item['contexts'] {
   const byKey = new Map<string, Item['contexts'][number]>()
   for (const context of [...a.contexts, ...b.contexts]) {
-    byKey.set(`${context.text}|${context.bvid ?? ''}|${context.url ?? ''}`, context)
+    byKey.set(`${context.text}|${context.videoId ?? ''}|${context.url ?? ''}`, context)
   }
   return [...byKey.values()].sort((x, y) => x.at - y.at).slice(-MAX_CONTEXTS)
 }
@@ -225,9 +262,9 @@ function mergeExposures(local: Exposure[], incoming: Exposure[]): Exposure[] {
 }
 
 function mergeVideoWords(local: VideoWord[], incoming: VideoWord[]): VideoWord[] {
-  const byKey = new Map(local.map((w) => [`${w.bvid}|${w.headword}`, w]))
+  const byKey = new Map(local.map((w) => [`${w.videoId}|${w.headword}`, w]))
   for (const entry of incoming) {
-    const key = `${entry.bvid}|${entry.headword}`
+    const key = `${entry.videoId}|${entry.headword}`
     const mine = byKey.get(key)
     byKey.set(key, mine ? { ...entry, count: mine.count + entry.count } : entry)
   }
@@ -235,11 +272,11 @@ function mergeVideoWords(local: VideoWord[], incoming: VideoWord[]): VideoWord[]
 }
 
 function mergeVideos(local: Video[], incoming: Video[]): Video[] {
-  const byId = new Map(local.map((v) => [v.bvid, v]))
+  const byId = new Map(local.map((v) => [v.videoId, v]))
   for (const entry of incoming) {
-    const mine = byId.get(entry.bvid)
+    const mine = byId.get(entry.videoId)
     byId.set(
-      entry.bvid,
+      entry.videoId,
       mine
         ? {
             ...entry,

@@ -15,6 +15,7 @@ import { Hint, Section } from '../settings/controls'
 import {
   LanguageSection,
   LocalModelSection,
+  SpeechSection,
   modifierLabel,
   ReaderOptions,
   StudyingSection,
@@ -130,6 +131,7 @@ export function Settings() {
 
       <LanguageSection settings={settings} update={update} />
       <LocalModelSection settings={settings} update={update} />
+      <SpeechSection settings={settings} update={update} />
 
       <Section title="Page reader">
         <ReaderSites origins={settings.readerOrigins} />

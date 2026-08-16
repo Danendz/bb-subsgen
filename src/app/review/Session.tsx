@@ -18,6 +18,7 @@ import { segment } from '../../lang/segment'
 import { findPatterns, type PatternMatch } from '../../lang/grammar/match'
 import type { Pattern } from '../../lang/grammar/patterns'
 import { parseDefinitions } from '../../lang/definitions'
+import { isEpisodeId } from '../../bilibili/resolve'
 import { rankEntries } from '../../lang/entries'
 import type { Lexicon } from '../../lang/dict'
 import { lookupDefs } from '../../shared/dict-client'
@@ -43,11 +44,33 @@ const DISTRACTORS = 3
  * `bbq=1` asks the content script to hold translations back for that visit —
  * arriving at the answer with the answer already on screen would defeat the
  * point of coming.
+ *
+ * Built on the URL capture stored rather than reassembled from the id, because
+ * the stored one is the page that actually worked: it already carries the part
+ * number of a multi-part video, which reassembly dropped, and it is the only
+ * thing that knows a bangumi episode does not live under `/video/`.
  */
 function contextUrl(context: Context): string | null {
-  if (!context.bvid || context.start === undefined) return null
+  if (!context.videoId || context.start === undefined) return null
+
+  const base = context.url ?? watchUrlFor(context.videoId)
   const at = Math.max(0, Math.floor(context.start) - REWIND_S)
-  return `https://www.bilibili.com/video/${context.bvid}/?t=${at}&bbq=1`
+
+  try {
+    const url = new URL(base)
+    url.searchParams.set('t', String(at))
+    url.searchParams.set('bbq', '1')
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+/** The fallback for rows captured before the URL was stored alongside them. */
+function watchUrlFor(videoId: string): string {
+  return isEpisodeId(videoId)
+    ? `https://www.bilibili.com/bangumi/play/${videoId}`
+    : `https://www.bilibili.com/video/${videoId}/`
 }
 
 function timestamp(seconds: number): string {
@@ -320,7 +343,7 @@ export function Session({
         // A sentence or grammar card is a question about the whole line; only a
         // word card has a word to single out.
         ...(current.kind === 'word' ? { target: current.text } : {}),
-        ...(context.bvid !== undefined ? { bvid: context.bvid } : {}),
+        ...(context.videoId !== undefined ? { videoId: context.videoId } : {}),
         ...(context.start !== undefined ? { start: context.start } : {}),
         ...(context.title !== undefined ? { sourceTitle: context.title } : {}),
         itemId: current.id,
@@ -644,6 +667,15 @@ export function Session({
                 </a>{' '}
                 <span class="muted">— translations stay hidden</span>
               </p>
+            )}
+
+            {/* Said plainly rather than hidden behind an icon. This video had no
+                subtitles, so the Chinese above is a speech model's guess at what
+                was said — and a homophone it got wrong is indistinguishable from
+                a word you simply do not know yet, which is precisely the
+                confusion worth heading off before you try to learn it. */}
+            {context?.source === 'asr' && (
+              <p class="small muted">Transcribed from the audio — this line may be misheard.</p>
             )}
 
             {/* Only offered when a model is actually configured: a button that

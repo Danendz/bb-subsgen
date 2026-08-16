@@ -14,8 +14,13 @@ import { withUserActivation } from './activation'
 import { runTranslationPass } from './translations'
 import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './controls'
 import { isWaiting, progressView, type ProgressState } from './progress'
-import { parseBvidFromUrl, fetchVideoInfo, watchBvidChange } from '../bilibili/resolve'
-import { fetchSubtitles, type Cue, type SubtitleTrack } from '../bilibili/subtitles'
+import { parseVideoIdFromUrl, resolveVideo, watchVideoChange } from '../bilibili/resolve'
+import {
+  fetchSubtitles,
+  looksLikeTranscript,
+  type Cue,
+  type SubtitleTrack,
+} from '../bilibili/subtitles'
 import { segment, type Token } from '../lang/segment'
 import { findPatterns } from '../lang/grammar/match'
 import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
@@ -36,16 +41,21 @@ import {
   type TranslationLang,
 } from '../shared/settings'
 import {
+  isAsrCuesMessage,
   isGetStatusMessage,
   isLlmTranslationsMessage,
+  type AsrCuesMessage,
+  type AsrMessage,
   type LlmMessage,
   type Status,
 } from '../shared/messages'
 import { openExplainDrawer } from './explain-drawer'
-import { bufferedAhead, forCard, latch, preferred } from './tier'
+import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
+// Bilibili's own page state, so these are Bilibili's field names — `bvid` here
+// is theirs and stays spelled that way. Absent entirely on bangumi.
 interface InitialState {
   videoData?: {
     aid?: number
@@ -62,29 +72,52 @@ declare global {
   }
 }
 
-/** Cues plus the video they belong to — the bvid is what every capture is filed under. */
-async function loadCuesForCurrentVideo(): Promise<{
+/** Cues plus the video they belong to — the videoId is what every capture is filed under. */
+interface LoadedVideo {
+  /**
+   * Empty when the video has no subtitle track at all.
+   *
+   * Not an error and not null: most of bangumi is exactly this, and the audio is
+   * still there to be transcribed. Deciding what to do about it belongs to the
+   * caller, which is the only thing that knows whether a speech server is
+   * configured.
+   */
   cues: Cue[]
-  bvid: string
+  videoId: string
+  /** Needed to ask for the audio stream, when there turns out to be no track. */
+  cid: number
+  /** Runtime in seconds, or 0 when unknown — see `looksLikeTranscript`. */
+  duration: number
   video: { title: string; description: string }
-} | null> {
-  const bvid = parseBvidFromUrl(location.href)
-  if (!bvid) return null
+}
 
-  const info = await fetchVideoInfo(bvid)
+async function loadCuesForCurrentVideo(): Promise<LoadedVideo | null> {
+  const fromUrl = parseVideoIdFromUrl(location.href)
+  if (!fromUrl) return null
+
+  const info = await resolveVideo(fromUrl)
   if (!info) {
-    console.warn('[bb-subsgen] could not resolve aid/cid for', bvid)
+    console.warn('[bb-subsgen] could not resolve aid/cid for', fromUrl)
     return null
   }
-  console.log('[bb-subsgen] resolved', bvid, info)
+  // The resolver's id, not the URL's: a season URL settles on an episode, and
+  // that episode is what every capture has to be filed under.
+  const { videoId } = info
+  console.log('[bb-subsgen] resolved', videoId, info)
 
+  // Always asked for first, and always preferred: a published track is the text
+  // the publisher meant, where a transcript is a machine's best guess at it.
   const cues = await fetchSubtitles(
-    { aid: info.aid, cid: info.cid, bvid },
+    { aid: info.aid, cid: info.cid, videoId },
     window.__INITIAL_STATE__?.videoData?.subtitle?.list,
   )
-  return cues
-    ? { cues, bvid, video: { title: info.title, description: info.description } }
-    : null
+  return {
+    cues: cues ?? [],
+    videoId,
+    cid: info.cid,
+    duration: info.duration,
+    video: { title: info.title, description: info.description },
+  }
 }
 
 function labelFor(lang: TranslationLang): string {
@@ -151,6 +184,8 @@ async function main() {
   const [words, initialSettings] = await Promise.all([loadWords(), loadSettings()])
   let settings = initialSettings
   let stopMount: (() => void) | null = null
+  /** The transcript subscription, which belongs to the video rather than the overlay. */
+  let stopAsr: (() => void) | null = null
   let rerenderCurrentCue: (() => void) | null = null
   let startTranslation: (() => void) | null = null
   let startLlmTranslation: (() => void) | null = null
@@ -173,7 +208,7 @@ async function main() {
    * the whole point of this is that "late" must never mean "while you are
    * reading it". Once a line has shown something, this is what it keeps showing.
    */
-  const shown = new Map<TranslationLang, Map<number, string>>()
+  const shown = new Map<TranslationLang, Map<number, Shown>>()
   /** Languages whose model output is now buffered far enough ahead to prefer. */
   const latched = new Set<TranslationLang>()
   let status: Status = 'loading'
@@ -190,10 +225,10 @@ async function main() {
   const quizForThisVisit = new URLSearchParams(location.search).get('bbq') === '1'
   const quizMode = () => settings.quizMode || quizForThisVisit
 
-  const laneFor = (
-    lanes: Map<TranslationLang, Map<number, string>>,
+  const laneFor = <V>(
+    lanes: Map<TranslationLang, Map<number, V>>,
     lang: TranslationLang,
-  ): Map<number, string> => {
+  ): Map<number, V> => {
     let cache = lanes.get(lang)
     if (!cache) {
       cache = new Map()
@@ -213,13 +248,75 @@ async function main() {
    * nothing a response could say — and a dropped message is never worth
    * surfacing on a video.
    */
-  const tellWorker = (msg: LlmMessage): void => {
+  const tellWorker = (msg: LlmMessage | AsrMessage): void => {
     void chrome.runtime.sendMessage(msg).catch(() => {})
+  }
+
+  /**
+   * Held open for as long as a pass is running, and for nothing else.
+   *
+   * Its only job is to be dropped: navigating off Bilibili destroys this
+   * content script without giving it the chance to send a cancel, and the
+   * worker cannot see that URL to notice for itself. The port going with the
+   * page is what stops the model translating a video nobody has open.
+   */
+  let passPort: chrome.runtime.Port | null = null
+
+  const holdPassPort = () => {
+    if (passPort) return
+    try {
+      passPort = chrome.runtime.connect({ name: 'bb-subsgen:pass' })
+      // The worker being gone is not worth surfacing on a video; the pass it
+      // would have been watching cannot be running either.
+      passPort.onDisconnect.addListener(() => {
+        passPort = null
+      })
+    } catch {
+      passPort = null
+    }
+  }
+
+  const releasePassPort = () => {
+    passPort?.disconnect()
+    passPort = null
+  }
+
+  /**
+   * The same idea for transcription, on a port of its own.
+   *
+   * Separate because the two runs end at different moments: switching
+   * translation off releases the pass port, and a transcript in progress has no
+   * reason to be cancelled by that. Sharing one port would make either
+   * release end both runs.
+   *
+   * This one also has to hold the worker open, not merely notice the page
+   * leaving. A transcription is minutes during which the worker does nothing at
+   * all — the audio is fetched and decoded in the offscreen document — and a
+   * worker shut down as idle loses the run's state along with it.
+   */
+  let asrPort: chrome.runtime.Port | null = null
+
+  const holdAsrPort = () => {
+    if (asrPort) return
+    try {
+      asrPort = chrome.runtime.connect({ name: 'bb-subsgen:asr' })
+      asrPort.onDisconnect.addListener(() => {
+        asrPort = null
+      })
+    } catch {
+      asrPort = null
+    }
+  }
+
+  const releaseAsrPort = () => {
+    asrPort?.disconnect()
+    asrPort = null
   }
 
   const stopTranslation = () => {
     translationAbort?.abort()
     translationAbort = null
+    releasePassPort()
     tellWorker({ type: 'bb-subsgen:llm-cancel' })
   }
 
@@ -230,10 +327,19 @@ async function main() {
 
   /** Subscribes to batches from the worker, and returns the unsubscribe. */
   const onLlmTranslations = (
-    handle: (msg: { bvid: string; lang: TranslationLang; lines: Array<{ index: number; text: string }> }) => void,
+    handle: (msg: { videoId: string; lang: TranslationLang; lines: Array<{ index: number; text: string }> }) => void,
   ): (() => void) => {
     const listener = (msg: unknown) => {
       if (isLlmTranslationsMessage(msg)) handle(msg)
+    }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => chrome.runtime.onMessage.removeListener(listener)
+  }
+
+  /** Subscribes to the transcript as it is produced, and returns the unsubscribe. */
+  const onAsrCues = (handle: (msg: AsrCuesMessage) => void): (() => void) => {
+    const listener = (msg: unknown) => {
+      if (isAsrCuesMessage(msg)) handle(msg)
     }
     chrome.runtime.onMessage.addListener(listener)
     return () => chrome.runtime.onMessage.removeListener(listener)
@@ -245,6 +351,13 @@ async function main() {
     rerenderCurrentCue = null
     startTranslation = null
     stopTranslation()
+    // Deliberately not part of `stopTranslation`, which also runs when the target
+    // language changes. A transcript is the Chinese itself, so it survives that;
+    // it is only a change of video that makes it worthless.
+    tellWorker({ type: 'bb-subsgen:asr-cancel' })
+    releaseAsrPort()
+    stopAsr?.()
+    stopAsr = null
     translations.clear()
     llmTranslations.clear()
     shown.clear()
@@ -255,11 +368,68 @@ async function main() {
     const loaded = await loadCuesForCurrentVideo()
     if (!loaded) {
       status = 'no-track'
+      console.log('[bb-subsgen] could not resolve this video')
+      return
+    }
+    const { videoId, cid, duration, video: videoInfo } = loaded
+
+    /**
+     * Mutated in place when a transcript lands, never reassigned.
+     *
+     * The mount below closes over this array, and so does `watchPlayback`, which
+     * re-reads it on every frame. Filling it is therefore all it takes to bring
+     * a transcribed video to life — no remount, and no second code path for
+     * cues that arrived late.
+     */
+    const cues = loaded.cues
+
+    // A track too sparse to be this video's dialogue counts as no track at all,
+    // but only where there is something better to put in its place. Discarding
+    // a publisher's own text for nothing would be strictly worse than showing
+    // an odd line, so the check is deliberately downstream of the ASR one.
+    const usable = looksLikeTranscript(cues, duration)
+    const canTranscribe =
+      settings.asrEnabled && Boolean(settings.asrBaseUrl) && Boolean(settings.asrModel)
+    const transcribing = !usable && canTranscribe
+
+    const verdict = usable
+      ? 'using the track'
+      : cues.length === 0
+        ? canTranscribe
+          ? 'no track; transcribing'
+          : 'no track, and speech to text is off (Settings → Speech to text)'
+        : canTranscribe
+          ? 'too sparse to be this video’s dialogue; transcribing instead'
+          : 'too sparse to be this video’s dialogue, but speech to text is off, so keeping it'
+
+    console.log(
+      `[bb-subsgen] ${cues.length} cues over ${Math.round(duration)}s — ${verdict}`,
+    )
+
+    // Emptied rather than ignored: everything downstream reads this array, and
+    // leaving the advert in it would put the advert on screen.
+    if (transcribing) cues.length = 0
+
+    if (!cues.length && !transcribing) {
+      status = 'no-track'
       console.log('[bb-subsgen] no subtitle track for this video')
       return
     }
-    const { cues, bvid, video: videoInfo } = loaded
     status = 'active'
+
+    /**
+     * Progress, and the overlay's way of painting it — deliberately out here.
+     *
+     * `mount` re-runs its callback whenever Bilibili replaces the `<video>`
+     * element, which on bangumi it does during DRM and DASH setup. Everything
+     * inside is therefore per-overlay and may happen several times; a
+     * transcription is per-video and must happen exactly once. Anything the run
+     * needs has to outlive the mount, or a remount restarts it.
+     */
+    let progress: ProgressState = transcribing
+      ? { phase: 'transcribe', done: 0, total: 0 }
+      : { phase: 'idle' }
+    let repaintProgress: (() => void) | null = null
 
     stopMount = mount(({ shadowRoot, video, container }) => {
       let lastIndex = -1
@@ -271,7 +441,7 @@ async function main() {
       let engagedMs = 0
       let captured = false
 
-      const buffer = createExposureBuffer({ bvid, title: document.title, url: location.href })
+      const buffer = createExposureBuffer({ videoId, title: document.title, url: location.href })
 
       /**
        * Where a word or line was met, frozen for the card.
@@ -290,10 +460,13 @@ async function main() {
           nmt: cacheFor(settings.translationLang).get(index),
           llm: llmCacheFor(settings.translationLang).get(index),
         }),
-        bvid,
+        videoId,
         start: cues[index].start,
         url: location.href,
         title: document.title,
+        // Every cue on a transcribed video came from the transcript: `transcribing`
+        // is only ever true when the track was empty, so there is no mixture.
+        source: transcribing ? 'asr' : 'cc',
         at: Date.now(),
       })
 
@@ -316,7 +489,7 @@ async function main() {
           return openExplainDrawer(shadowRoot, {
             line: context.text,
             word: headword,
-            bvid,
+            videoId,
             start: context.start,
             title: document.title,
           })
@@ -341,7 +514,7 @@ async function main() {
           if (overThreshold) captureCurrentLine()
           recordSignal({
             at: Date.now(),
-            bvid,
+            videoId,
             start: cues[lastIndex].start,
             ms,
             hidden: withheld,
@@ -349,10 +522,10 @@ async function main() {
           })
         },
       })
-      let progress: ProgressState = { phase: 'idle' }
-      // Blank cues are never translated, so they'd otherwise make the pass
-      // look permanently unfinished.
-      const translatable = cues.filter((cue) => cue.text.trim()).length
+      // Blank cues are never translated, so they'd otherwise make the pass look
+      // permanently unfinished. Counted on demand rather than once, because a
+      // transcript arrives after this point and changes the answer.
+      const translatable = () => cues.filter((cue) => cue.text.trim()).length
 
       const renderProgress = () => {
         const cache = cacheFor(settings.translationLang)
@@ -361,6 +534,8 @@ async function main() {
           progressView(progress, isWaiting(lastIndex, (index) => cache.has(index))),
         )
       }
+      // So a run already under way can paint into whichever overlay is current.
+      repaintProgress = renderProgress
 
       /**
        * The translation a line shows, and the moment it stops being able to change.
@@ -370,20 +545,23 @@ async function main() {
        * the only thing that makes a rewrite unacceptable. A line still ahead of
        * the playhead may be upgraded freely; the one you are looking at may not.
        */
-      const translationFor = (index: number): string => {
-        if (index < 0) return ''
+      const translationFor = (index: number): Shown => {
+        if (index < 0) return { text: '', source: null }
         const lang = settings.translationLang
 
         const settled = shownFor(lang).get(index)
         if (settled !== undefined) return settled
 
-        const text = preferred({
+        const result = preferred({
           nmt: cacheFor(lang).get(index),
           llm: llmCacheFor(lang).get(index),
           latched: latched.has(lang),
         })
-        if (text && index === lastIndex) shownFor(lang).set(index, text)
-        return text
+        // The mark freezes with the text: a line that showed the on-device
+        // translation stays undotted even once the model's arrives, so the dot
+        // never appears under a line you are part way through reading.
+        if (result.text && index === lastIndex) shownFor(lang).set(index, result)
+        return result
       }
 
       /** Opens the gate once the model is far enough ahead to stay ahead. */
@@ -396,15 +574,30 @@ async function main() {
           (index) => llm.has(index),
           (index) => Boolean(cues[index].text.trim()),
         )
-        if (latch(false, buffered)) latched.add(lang)
+        const opened = latch(false, buffered)
+        if (opened) latched.add(lang)
+
+        // Diagnostic, on the page console rather than the model log, which the
+        // worker owns. This is the one place that can answer "the model has
+        // translated the line I am watching, so why am I still reading the
+        // on-device version" — the gap between `have` and the threshold is the
+        // whole answer, and it is invisible from anywhere else.
+        console.debug(
+          `[bb-subsgen] llm buffer: ${buffered}/${BUFFER_CUES} contiguous cues ahead of ${lastIndex}` +
+            `, ${llm.size} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
+        )
       }
 
-      const cueView = (): CueView => ({
-        tokens: currentTokens,
-        translation: translationFor(lastIndex),
-        known,
-        quiz: quizMode(),
-      })
+      const cueView = (): CueView => {
+        const { text, source } = translationFor(lastIndex)
+        return {
+          tokens: currentTokens,
+          translation: text,
+          translationSource: source,
+          known,
+          quiz: quizMode(),
+        }
+      }
 
       const render = () => {
         if (lastIndex === -1) {
@@ -498,7 +691,12 @@ async function main() {
       const stopForward = forwardHoverToPlayer(container, shadowRoot.host)
 
       rerenderCurrentCue = () => {
-        if (!settings.showTranslation) progress = { phase: 'idle' }
+        // Only the translation phases are the translation's to clear.
+        // Transcription is producing the Chinese itself, and goes on being worth
+        // reporting whether or not a translation is wanted underneath it.
+        if (!settings.showTranslation && progress.phase !== 'transcribe') {
+          progress = { phase: 'idle' }
+        }
         render()
         applyGeometry()
         renderProgress()
@@ -517,6 +715,13 @@ async function main() {
         if (index >= 0) tellWorker({ type: 'bb-subsgen:llm-playhead', index })
       })
 
+      // Painted here rather than left to the first frame callback. On a
+      // transcribed video there are no cues yet, so the only thing that would
+      // ever have triggered this is playback itself — and a paused video, which
+      // is exactly where someone waiting for subtitles leaves it, shows nothing
+      // at all while several minutes of work go on unannounced.
+      renderProgress()
+
       startTranslation = () => {
         if (!settings.showTranslation || translationAbort) return
         // Captured, not re-read: a result arriving after the user switches
@@ -526,7 +731,7 @@ async function main() {
         const controller = new AbortController()
         translationAbort = controller
 
-        progress = { phase: 'pass', done: cache.size, total: translatable }
+        progress = { phase: 'pass', done: cache.size, total: translatable() }
         renderProgress()
 
         void translateTrack({
@@ -541,7 +746,7 @@ async function main() {
             renderProgress()
           },
           onReady: () => {
-            progress = { phase: 'pass', done: cache.size, total: translatable }
+            progress = { phase: 'pass', done: cache.size, total: translatable() }
             renderProgress()
           },
           onResult: (index, translated) => {
@@ -550,14 +755,20 @@ async function main() {
             // Through the tier rather than straight to the overlay: this line
             // may already have settled on the model's translation, and the
             // on-device one arriving late must not displace it.
-            if (index === lastIndex) setTranslation(shadowRoot, translationFor(index))
-            progress = { phase: 'pass', done: cache.size, total: translatable }
+            if (index === lastIndex) {
+              const { text, source } = translationFor(index)
+              setTranslation(shadowRoot, text, source)
+            }
+            progress = { phase: 'pass', done: cache.size, total: translatable() }
             renderProgress()
           },
           signal: controller.signal,
         })
       }
-      startTranslation()
+      // Both passes key their caches by cue index, so neither may start on a
+      // video whose cues have not arrived yet. The transcript handler below
+      // starts them once the list is final.
+      if (!transcribing) startTranslation()
 
       /**
        * Hands the track to the worker, which owns the model and the cache.
@@ -571,9 +782,10 @@ async function main() {
         if (!settings.llmEnabled || !settings.llmTranslationEnabled) return
         if (!settings.llmBaseUrl || !settings.llmTranslationModel) return
 
+        holdPassPort()
         tellWorker({
           type: 'bb-subsgen:llm-translate-track',
-          bvid,
+          videoId,
           lang: settings.translationLang,
           model: settings.llmTranslationModel,
           baseUrl: settings.llmBaseUrl,
@@ -585,10 +797,10 @@ async function main() {
           })),
         })
       }
-      startLlmTranslation()
+      if (!transcribing) startLlmTranslation()
 
       const stopLlmResults = onLlmTranslations((msg) => {
-        if (msg.bvid !== bvid) return // a previous video's pass, still landing
+        if (msg.videoId !== videoId) return // a previous video's pass, still landing
         const cache = llmCacheFor(msg.lang)
         for (const line of msg.lines) cache.set(line.index, line.text)
 
@@ -597,7 +809,8 @@ async function main() {
         // Only ever the line on screen, and only if it has not settled yet:
         // everything else this batch touched is still ahead of the playhead.
         if (msg.lines.some((line) => line.index === lastIndex)) {
-          setTranslation(shadowRoot, translationFor(lastIndex))
+          const { text, source } = translationFor(lastIndex)
+          setTranslation(shadowRoot, text, source)
         }
       })
 
@@ -612,9 +825,74 @@ async function main() {
         stopLlmResults()
       }
     })
+
+    if (!transcribing) return
+
+    /**
+     * Fills the cue list once the transcript is finished, and only then.
+     *
+     * Partial results are deliberately not shown. Chunks are transcribed
+     * playhead-first, so they finish out of order, and splicing an early one
+     * into the middle would renumber every line after it — underneath the
+     * index-keyed caches in the overlay, which have no way to notice. Waiting
+     * costs a couple of minutes on the first viewing of an episode and nothing
+     * on any viewing after it, because the worker caches what comes back.
+     *
+     * Subscribed out here rather than inside the mount so a remount cannot drop
+     * a chunk that lands between the old overlay going and the new one arriving.
+     */
+    stopAsr = onAsrCues((msg) => {
+      if (msg.videoId !== videoId) return // a previous video's run, still landing
+
+      progress = { phase: 'transcribe', done: msg.done, total: msg.total }
+      if (!msg.complete) {
+        console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
+        repaintProgress?.()
+        return
+      }
+
+      // Whether it worked or not, the worker no longer needs holding open.
+      releaseAsrPort()
+      if (msg.error) console.warn('[bb-subsgen] transcription:', msg.error)
+      cues.push(...msg.cues)
+      progress = { phase: 'idle' }
+      console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
+
+      // `watchPlayback` re-reads the array on every frame, so the line under the
+      // playhead appears by itself. The passes have to be told.
+      startTranslation?.()
+      startLlmTranslation?.()
+      repaintProgress?.()
+    })
+
+    // Asked for exactly once per video, and this is the only place that can
+    // promise it. Bilibili replaces the `<video>` element during DASH and DRM
+    // setup on bangumi, which remounts the overlay; asking from in there sent a
+    // second request that cancelled the first — tearing down the offscreen
+    // document mid-transcription, which the speech server sees as the client
+    // hanging up, and starting the whole download and decode again from nothing.
+    //
+    // The work itself happens in the worker and the offscreen document, and logs
+    // there rather than here: chrome://extensions → "service worker" is where a
+    // failed fetch or a refused server shows up in full.
+    console.log(
+      `[bb-subsgen] asking for a transcript of ${videoId} (cid ${cid})`,
+      `from ${settings.asrBaseUrl} as ${settings.asrModel}`,
+    )
+    holdAsrPort()
+    tellWorker({
+      type: 'bb-subsgen:asr-transcribe',
+      videoId,
+      cid,
+      model: settings.asrModel,
+      baseUrl: settings.asrBaseUrl,
+      // So the part being watched is transcribed first, which matters when
+      // arriving partway through an episode.
+      playhead: document.querySelector('video')?.currentTime ?? 0,
+    })
   }
 
-  watchBvidChange(loadCurrentVideo)
+  watchVideoChange(loadCurrentVideo)
   onSettingsChanged((next) => {
     const enabledChanged = next.enabled !== settings.enabled
     const translationToggled = next.showTranslation !== settings.showTranslation
@@ -622,7 +900,11 @@ async function main() {
     const llmToggled =
       next.llmEnabled !== settings.llmEnabled ||
       next.llmTranslationEnabled !== settings.llmTranslationEnabled ||
-      next.llmTranslationModel !== settings.llmTranslationModel
+      next.llmTranslationModel !== settings.llmTranslationModel ||
+      // Pointing at a different server is as much a change of translator as
+      // picking a different model, and leaving it out meant correcting a typo'd
+      // URL took a page reload to have any effect.
+      next.llmBaseUrl !== settings.llmBaseUrl
     settings = next
     if (enabledChanged) {
       loadCurrentVideo()
@@ -642,7 +924,10 @@ async function main() {
       // Turned on mid-video: the worker already has everything it needs to
       // start, and everything cached from a previous viewing comes back at once.
       if (next.llmEnabled && next.llmTranslationEnabled) startLlmTranslation?.()
-      else tellWorker({ type: 'bb-subsgen:llm-cancel' })
+      else {
+        releasePassPort()
+        tellWorker({ type: 'bb-subsgen:llm-cancel' })
+      }
     }
     rerenderCurrentCue?.()
   })

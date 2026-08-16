@@ -1,14 +1,27 @@
 import { loadSettings, saveSettings, nextFontSize } from './shared/settings'
 import {
+  isAsrMessage,
   isFlashcardsMessage,
+  isGetPassStatusMessage,
   isLlmMessage,
   isLookupDefsMessage,
+  type AsrMessage,
   type FlashcardsMessage,
   type LlmMessage,
   type LookupDefsResponse,
+  type PassStatusResponse,
 } from './shared/messages'
 import {
+  cancelTranscription,
+  handleOffscreenEvent,
+  startTranscription,
+  watchAsrTab,
+} from './background/asr-pass'
+import {
   cancelPass,
+  cancelPassIfNavigatedAway,
+  passStatus,
+  watchTabLiveness,
   reportPlayhead,
   setChatBusy,
   startPass,
@@ -56,7 +69,7 @@ function handleLlm(msg: LlmMessage, tabId: number | undefined): void {
       if (tabId === undefined) return
       void startPass({
         tabId,
-        bvid: msg.bvid,
+        videoId: msg.videoId,
         lang: msg.lang,
         model: msg.model,
         baseUrl: msg.baseUrl,
@@ -77,7 +90,36 @@ function handleLlm(msg: LlmMessage, tabId: number | undefined): void {
   }
 }
 
+function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
+  switch (msg.type) {
+    case 'bb-subsgen:asr-transcribe':
+      // A transcript exists to paint a tab; without one there is nothing to paint.
+      if (tabId === undefined) return
+      void startTranscription(tabId, {
+        videoId: msg.videoId,
+        cid: msg.cid,
+        model: msg.model,
+        baseUrl: msg.baseUrl,
+        playhead: msg.playhead,
+      }).catch((e: unknown) => console.warn('[bb-subsgen] transcription failed', e))
+      return
+    case 'bb-subsgen:asr-cancel':
+      void cancelTranscription(tabId)
+      return
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // First, because these come from the offscreen document rather than a tab and
+  // match none of the guards below.
+  if (handleOffscreenEvent(msg)) return
+
+  if (isGetPassStatusMessage(msg)) {
+    // Synchronous: the pass keeps its own counters, so there is nothing to await.
+    sendResponse({ status: passStatus(msg.tabId) } satisfies PassStatusResponse)
+    return
+  }
+
   if (isLookupDefsMessage(msg)) {
     lookupDefs(msg.headwords).then(
       (entries) => sendResponse({ entries } satisfies LookupDefsResponse),
@@ -100,11 +142,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     handleLlm(msg, sender.tab?.id)
     return
   }
+
+  if (isAsrMessage(msg)) {
+    handleAsr(msg, sender.tab?.id)
+    return
+  }
 })
 
 // A tab closing while its pass is running leaves nothing to paint; the pass is
 // otherwise happy to keep a GPU busy for half an hour on nobody's behalf.
-chrome.tabs.onRemoved.addListener((tabId) => cancelPass(tabId))
+chrome.tabs.onRemoved.addListener((tabId) => {
+  cancelPass(tabId)
+  void cancelTranscription(tabId)
+})
+
+// And the same tab navigating somewhere else without closing, which the content
+// script cannot report because the navigation is what destroys it. Only fires
+// when the URL actually changed — onUpdated is also how a tab announces its
+// title, its favicon and its load state.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) cancelPassIfNavigatedAway(tabId, changeInfo.url)
+})
+
+// And the case neither of the above can see: a tab leaving Bilibili entirely.
+// `changeInfo.url` is only populated for URLs the extension has permission for,
+// so the listener above goes quiet at exactly the moment it is most needed. The
+// port has no such condition — see watchTabLiveness.
+//
+// The transcription port is separate rather than shared. The two runs start and
+// end at different moments — a pass is cancelled by switching translation off,
+// which a transcript has no reason to care about — and one port cannot be
+// released by one of them without silently ending the other.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'bb-subsgen:pass') watchTabLiveness(port)
+  if (port.name === 'bb-subsgen:asr') watchAsrTab(port)
+})
 
 // The mirror is what content scripts read to decide what to annotate, and it
 // lives in chrome.storage.local — which survives the worker but not a fresh

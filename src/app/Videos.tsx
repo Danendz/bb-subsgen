@@ -47,7 +47,7 @@ function VideoList() {
     const known = knownSetOf(items)
     const coverage = new Map<string, Coverage>()
     for (const video of videos) {
-      coverage.set(video.bvid, coverageOf(await videoWords(db, video.bvid), known))
+      coverage.set(video.videoId, coverageOf(await videoWords(db, video.videoId), known))
     }
     return { videos, coverage }
   }, [])
@@ -68,19 +68,19 @@ function VideoList() {
   return (
     <div class="panel">
       {ordered.map((video) => (
-        <div class="row" key={video.bvid}>
+        <div class="row" key={video.videoId}>
           <div class="grow">
             <a
-              href={`#/videos/${video.bvid}`}
+              href={`#/videos/${video.videoId}`}
               onClick={(e) => {
                 e.preventDefault()
-                navigate(`/videos/${video.bvid}`)
+                navigate(`/videos/${video.videoId}`)
               }}
             >
-              {video.title || video.bvid}
+              {video.title || video.videoId}
             </a>
             <div style={{ marginTop: 6 }}>
-              <CoverageBar coverage={data.coverage.get(video.bvid)!} />
+              <CoverageBar coverage={data.coverage.get(video.videoId)!} />
             </div>
           </div>
           <span class="muted small">{video.lines} lines</span>
@@ -90,7 +90,7 @@ function VideoList() {
   )
 }
 
-function VideoDetail({ bvid }: { bvid: string }) {
+function VideoDetail({ videoId }: { videoId: string }) {
   const [limit, setLimit] = useState(80)
 
   const load = useCallback(async () => {
@@ -98,14 +98,14 @@ function VideoDetail({ bvid }: { bvid: string }) {
     const [items, videos, words] = await Promise.all([
       listItems(db),
       listVideos(db),
-      videoWords(db, bvid),
+      videoWords(db, videoId),
     ])
     return {
-      video: videos.find((v) => v.bvid === bvid) ?? null,
+      video: videos.find((v) => v.videoId === videoId) ?? null,
       words: [...words].sort((a, b) => b.count - a.count),
       known: knownSetOf(items),
     }
-  }, [bvid])
+  }, [videoId])
   const { data, loading } = useAsync(load)
 
   const page: VideoWord[] = data?.words.slice(0, limit) ?? []
@@ -131,7 +131,7 @@ function VideoDetail({ bvid }: { bvid: string }) {
       </div>
 
       <div class="panel">
-        <strong>{data.video.title || bvid}</strong>
+        <strong>{data.video.title || videoId}</strong>
         <div style={{ marginTop: 8 }}>
           <CoverageBar coverage={coverage} />
         </div>
@@ -173,6 +173,6 @@ function VideoDetail({ bvid }: { bvid: string }) {
   )
 }
 
-export function Videos({ bvid }: { bvid?: string }) {
-  return bvid ? <VideoDetail bvid={bvid} /> : <VideoList />
+export function Videos({ videoId }: { videoId?: string }) {
+  return videoId ? <VideoDetail videoId={videoId} /> : <VideoList />
 }

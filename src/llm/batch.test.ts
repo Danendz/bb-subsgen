@@ -162,6 +162,29 @@ describe('reconcile', () => {
     expect(reconcile(sent, null).missing).toEqual([0, 1, 2])
     expect(reconcile(sent, { nothing: true }).missing).toEqual([0, 1, 2])
   })
+
+  test('reads the translation from the schema’s own field', () => {
+    const { accepted } = reconcile(sent, { lines: [{ id: 0, zh: '你好', text: 'Привет' }] })
+
+    expect(accepted.get(0)).toBe('Привет')
+  })
+
+  // The schema is a request, not a guarantee, and `en` is what a model reaches
+  // for unprompted. Dropping those lines would be a worse failure than the
+  // field name being untidy.
+  test('still accepts a model that answers in `en` regardless', () => {
+    const { accepted } = reconcile(sent, { lines: [{ id: 0, zh: '你好', en: 'Hello' }] })
+
+    expect(accepted.get(0)).toBe('Hello')
+  })
+
+  test('prefers the field that was actually asked for', () => {
+    const { accepted } = reconcile(sent, {
+      lines: [{ id: 0, zh: '你好', text: 'Привет', en: 'Hello' }],
+    })
+
+    expect(accepted.get(0)).toBe('Привет')
+  })
 })
 
 describe('the prompts', () => {
@@ -203,6 +226,13 @@ describe('the prompts', () => {
     expect(batchUser(base)).toContain('Return exactly 2 entries')
   })
 
+  // The system turn alone loses to a field name; saying it again next to the
+  // lines themselves is the cheapest reinforcement available.
+  test('the user turn names the target language too', () => {
+    expect(batchUser(base)).toContain('English')
+    expect(batchUser({ ...base, lang: 'ru' })).toContain('Russian')
+  })
+
   test('carries the previous batch across the seam, marked not to be returned', () => {
     const user = batchUser({ ...base, seam: [{ zh: '你饿吗', en: 'Are you hungry?' }] })
 
@@ -231,7 +261,19 @@ describe('BATCH_SCHEMA', () => {
   test('requires an id on every entry, which is what makes reconciling possible', () => {
     const items = (BATCH_SCHEMA.json_schema.schema as any).properties.lines.items
 
-    expect(items.required).toEqual(['id', 'zh', 'en'])
+    expect(items.required).toEqual(['id', 'zh', 'text'])
     expect(items.properties.id.type).toBe('integer')
+  })
+
+  /**
+   * Verified against LM Studio: the same model, prompt and temperature, with
+   * only this field's name changed, answers a "translate into Russian" request
+   * in English when the field is called `en` and in Russian when it is not. The
+   * field name outweighs the instruction, so it must not name a language.
+   */
+  test('does not name a language in the output field', () => {
+    const items = (BATCH_SCHEMA.json_schema.schema as any).properties.lines.items
+
+    expect(Object.keys(items.properties)).not.toContain('en')
   })
 })

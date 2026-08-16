@@ -15,33 +15,72 @@
 // messages, the same as everything else that touches storage.
 
 const DB_NAME = 'bb-subsgen-llm'
-const VERSION = 1
+
+/**
+ * 1 — the original schema.
+ * 2 — `bvid` becomes `videoId` on `lines`, and `transcripts` arrives. Both
+ *     stores are rebuilt empty rather than migrated: see `rebuild`.
+ */
+const VERSION = 2
 
 export const STORES = {
   log: 'log',
   lines: 'lines',
+  transcripts: 'transcripts',
 } as const
+
+/**
+ * Drops a store if it is there, then creates it fresh.
+ *
+ * Written to be safe on both paths, so the create and the upgrade can share one
+ * line: a brand-new database has nothing to delete, and an existing one has
+ * contents that are cheaper to regenerate than to migrate.
+ */
+function rebuild(db: IDBDatabase, name: string, create: (db: IDBDatabase) => void): void {
+  if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name)
+  create(db)
+}
 
 /** `dbName` is overridable so tests don't share state. */
 export function openLlmDb(dbName = DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(dbName, VERSION)
 
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result
 
-      const log = db.createObjectStore(STORES.log, { keyPath: 'seq', autoIncrement: true })
-      // The viewer reads newest-first; trimming walks oldest-first off the
-      // primary key, which is insertion order already.
-      log.createIndex('by-at', 'at')
+      if (event.oldVersion < 1) {
+        const log = db.createObjectStore(STORES.log, { keyPath: 'seq', autoIncrement: true })
+        // The viewer reads newest-first; trimming walks oldest-first off the
+        // primary key, which is insertion order already.
+        log.createIndex('by-at', 'at')
+      }
 
-      // Cue identity is positional in memory but not on disk, so the key is the
-      // same (video, time) pair `Context` persists — plus the language and model
-      // that produced it, because changing either invalidates nothing else.
-      const lines = db.createObjectStore(STORES.lines, {
-        keyPath: ['bvid', 'lang', 'model', 'start'],
+      // Everything below is keyed on the video, and the rename to `videoId`
+      // moved that key. Both stores are dropped and recreated empty rather than
+      // copied across: this database is disposable by design (see the note at
+      // the top of the file), so the cost of throwing it away is GPU time on the
+      // next viewing and nothing else. The study database next door is the one
+      // that gets a careful migration, because it is the one that cannot be
+      // rebuilt by asking again.
+      rebuild(db, STORES.lines, (fresh) => {
+        // Cue identity is positional in memory but not on disk, so the key is
+        // the same (video, time) pair `Context` persists — plus the language and
+        // model that produced it, because changing either invalidates nothing else.
+        const lines = fresh.createObjectStore(STORES.lines, {
+          keyPath: ['videoId', 'lang', 'model', 'start'],
+        })
+        lines.createIndex('by-video', 'videoId')
       })
-      lines.createIndex('by-video', 'bvid')
+
+      // Whisper's output for one video, keyed the same way minus the language:
+      // a transcript is the Chinese itself, so there is only ever one per model.
+      rebuild(db, STORES.transcripts, (fresh) => {
+        const transcripts = fresh.createObjectStore(STORES.transcripts, {
+          keyPath: ['videoId', 'model', 'start'],
+        })
+        transcripts.createIndex('by-video', 'videoId')
+      })
     }
 
     req.onsuccess = () => resolve(req.result)

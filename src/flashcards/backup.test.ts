@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { conflictsOf, emptyBackup, isBackup, merge, replay, type Backup } from './backup'
+import { conflictsOf, emptyBackup, isBackup, merge, replay, upgrade, type Backup } from './backup'
 import { DAY_MS } from './scheduler'
 import type { Item, Review } from './types'
 
@@ -34,6 +34,70 @@ const review = (text: string, at: number, grade: Review['grade'] = 'good'): Revi
 function backup(partial: Partial<Backup>): Backup {
   return { ...emptyBackup(), ...partial }
 }
+
+/**
+ * A version 1 file, as one exported before the rename actually looks.
+ *
+ * Written past the current types on purpose: the whole point of `upgrade` is
+ * reading a shape the types no longer describe.
+ */
+function v1(partial: Record<string, unknown>): Backup {
+  return { ...emptyBackup(), version: 1, ...partial } as unknown as Backup
+}
+
+describe('upgrade', () => {
+  test('moves bvid onto videoId for per-video words', () => {
+    const upgraded = upgrade(v1({ videoWords: [{ bvid: 'BV1xx', headword: '憔悴', count: 4 }] }))
+    expect(upgraded.videoWords).toEqual([{ videoId: 'BV1xx', headword: '憔悴', count: 4 }])
+  })
+
+  test('moves it for watched videos, keeping the rest of the row', () => {
+    const upgraded = upgrade(
+      v1({
+        videos: [
+          { bvid: 'BV1xx', title: '航拍中国', url: 'https://x', firstWatched: 1, lastWatched: 2, lines: 9 },
+        ],
+      }),
+    )
+    expect(upgraded.videos).toEqual([
+      { videoId: 'BV1xx', title: '航拍中国', url: 'https://x', firstWatched: 1, lastWatched: 2, lines: 9 },
+    ])
+  })
+
+  test('moves it inside every context a card carries', () => {
+    const upgraded = upgrade(
+      v1({
+        items: [
+          {
+            ...word('憔悴'),
+            contexts: [{ text: '他很憔悴。', translation: 'Haggard.', at: 1, bvid: 'BV1xx' }],
+          },
+        ],
+      }),
+    )
+    expect(upgraded.items[0].contexts[0].videoId).toBe('BV1xx')
+    expect('bvid' in upgraded.items[0].contexts[0]).toBe(false)
+  })
+
+  test('leaves a reader context alone, because it never had one', () => {
+    const context = { text: '他很憔悴。', translation: 'Haggard.', at: 1, url: 'https://zhihu.com' }
+    const upgraded = upgrade(v1({ items: [{ ...word('憔悴'), contexts: [context] }] }))
+    expect(upgraded.items[0].contexts[0]).toEqual(context)
+  })
+
+  test('is idempotent, so a current file passes through untouched', () => {
+    const current = backup({ videoWords: [{ videoId: 'BV1xx', headword: '憔悴', count: 4 }] })
+    expect(upgrade(current)).toBe(current)
+  })
+
+  test('tolerates a file missing the video arrays entirely', () => {
+    // `isBackup` only insists on items and reviews, so the rest may be absent —
+    // and an import that threw here would take the whole deck with it.
+    const upgraded = upgrade(v1({ videoWords: undefined, videos: undefined }))
+    expect(upgraded.videoWords).toEqual([])
+    expect(upgraded.videos).toEqual([])
+  })
+})
 
 describe('isBackup', () => {
   test('accepts a real export and rejects anything else', () => {
@@ -219,7 +283,7 @@ describe('merge', () => {
   })
 
   test('merges videos by id and adds up the lines watched', () => {
-    const video = { bvid: 'BV1', title: 'A', url: 'u', firstWatched: 200, lastWatched: 300, lines: 40 }
+    const video = { videoId: 'BV1', title: 'A', url: 'u', firstWatched: 200, lastWatched: 300, lines: 40 }
     const merged = merge(
       backup({ videos: [video] }),
       backup({ videos: [{ ...video, firstWatched: 100, lastWatched: 150, lines: 10 }] }),
@@ -230,8 +294,8 @@ describe('merge', () => {
 
   test('sums per-video word counts', () => {
     const merged = merge(
-      backup({ videoWords: [{ bvid: 'BV1', headword: '我', count: 3 }] }),
-      backup({ videoWords: [{ bvid: 'BV1', headword: '我', count: 4 }] }),
+      backup({ videoWords: [{ videoId: 'BV1', headword: '我', count: 3 }] }),
+      backup({ videoWords: [{ videoId: 'BV1', headword: '我', count: 4 }] }),
       options,
     )
     expect(merged.videoWords[0].count).toBe(7)

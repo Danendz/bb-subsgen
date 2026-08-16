@@ -34,17 +34,42 @@ export interface Tiers {
   latched: boolean
 }
 
+/** Which of the two translators produced the text on screen. */
+export type Source = 'nmt' | 'llm'
+
+export interface Shown {
+  text: string
+  /** Null when there is no text yet — nothing to attribute. */
+  source: Source | null
+}
+
 /**
- * The translation to show for a line that has not shown one yet.
+ * The translation to show for a line that has not shown one yet, and which
+ * translator it came from.
  *
  * Before the gate opens the on-device translation wins, because mixing the two
  * registers line by line reads worse than either. After it opens the model's
  * wins where it exists. Either way something available beats nothing: a line
  * with only one of the two shows that one.
+ *
+ * The source rides along rather than being recoverable afterwards: the two
+ * translators can and do land on the same sentence, so comparing the displayed
+ * string against both caches would attribute those lines by coin flip.
  */
-export function preferred({ nmt, llm, latched }: Tiers): string {
-  if (latched) return llm ?? nmt ?? ''
-  return nmt ?? llm ?? ''
+export function preferred({ nmt, llm, latched }: Tiers): Shown {
+  const [first, second]: Array<[Source, string | undefined]> = latched
+    ? [
+        ['llm', llm],
+        ['nmt', nmt],
+      ]
+    : [
+        ['nmt', nmt],
+        ['llm', llm],
+      ]
+  const [source, text] = first[1] !== undefined ? first : second
+  // A tier that arrived blank is still nothing to read, so it is nothing to
+  // attribute either.
+  return text ? { text, source } : { text: '', source: null }
 }
 
 /**

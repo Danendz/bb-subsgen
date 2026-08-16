@@ -3,25 +3,49 @@ import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred } from './tier'
 
 describe('preferred', () => {
   test('shows the on-device translation before the gate opens', () => {
-    expect(preferred({ nmt: 'quick', llm: 'better', latched: false })).toBe('quick')
+    expect(preferred({ nmt: 'quick', llm: 'better', latched: false })).toEqual({
+      text: 'quick',
+      source: 'nmt',
+    })
   })
 
   test('shows the model once it has', () => {
-    expect(preferred({ nmt: 'quick', llm: 'better', latched: true })).toBe('better')
+    expect(preferred({ nmt: 'quick', llm: 'better', latched: true })).toEqual({
+      text: 'better',
+      source: 'llm',
+    })
   })
 
   // Seeking past what the model has reached: fall back per line rather than
   // showing nothing.
   test('falls back to the on-device one where the model has not reached', () => {
-    expect(preferred({ nmt: 'quick', llm: undefined, latched: true })).toBe('quick')
+    expect(preferred({ nmt: 'quick', llm: undefined, latched: true })).toEqual({
+      text: 'quick',
+      source: 'nmt',
+    })
   })
 
   test('uses the model when it is all there is, gate or no gate', () => {
-    expect(preferred({ nmt: undefined, llm: 'better', latched: false })).toBe('better')
+    expect(preferred({ nmt: undefined, llm: 'better', latched: false })).toEqual({
+      text: 'better',
+      source: 'llm',
+    })
   })
 
   test('is empty when neither has arrived', () => {
-    expect(preferred({ nmt: undefined, llm: undefined, latched: false })).toBe('')
+    expect(preferred({ nmt: undefined, llm: undefined, latched: false })).toEqual({
+      text: '',
+      source: null,
+    })
+  })
+
+  // The mark has to follow the text it belongs to. A line that is empty because
+  // the model returned an empty string is not a line to dot.
+  test('reports no source for a tier that arrived blank', () => {
+    expect(preferred({ nmt: undefined, llm: '', latched: true })).toEqual({
+      text: '',
+      source: null,
+    })
   })
 })
 
@@ -31,7 +55,7 @@ describe('forCard', () => {
   test('takes the model’s even where the gate would have shown the other', () => {
     const tiers = { nmt: 'quick', llm: 'better' }
 
-    expect(preferred({ ...tiers, latched: false })).toBe('quick')
+    expect(preferred({ ...tiers, latched: false }).text).toBe('quick')
     expect(forCard(tiers)).toBe('better')
   })
 

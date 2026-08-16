@@ -9,7 +9,7 @@ import {
   type TrackKey,
 } from './llm-cache'
 
-const KEY: TrackKey = { bvid: 'BV1', lang: 'en', model: 'gemma' }
+const KEY: TrackKey = { videoId: 'BV1', lang: 'en', model: 'gemma' }
 
 describe('the translation cache', () => {
   let db: IDBDatabase
@@ -52,9 +52,9 @@ describe('the translation cache', () => {
 
   test('keeps videos apart', async () => {
     await writeLinesIn(db, KEY, [{ start: 0, text: 'one' }])
-    await writeLinesIn(db, { ...KEY, bvid: 'BV2' }, [{ start: 0, text: 'two' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'BV2' }, [{ start: 0, text: 'two' }])
 
-    expect((await readTrackIn(db, { ...KEY, bvid: 'BV2' })).get(0)).toBe('two')
+    expect((await readTrackIn(db, { ...KEY, videoId: 'BV2' })).get(0)).toBe('two')
   })
 
   test('an uncached video reads as empty', async () => {
@@ -67,7 +67,7 @@ describe('the translation cache', () => {
 
   test('reports what it is holding', async () => {
     await writeLinesIn(db, KEY, [{ start: 0, text: 'a' }, { start: 1, text: 'b' }])
-    await writeLinesIn(db, { ...KEY, bvid: 'BV2' }, [{ start: 0, text: 'c' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'BV2' }, [{ start: 0, text: 'c' }])
 
     expect(await cacheSizeIn(db)).toEqual({ videos: 2, lines: 3 })
   })
@@ -98,15 +98,15 @@ describe('eviction', () => {
     let clock = 1000
     vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1000))
 
-    await writeLinesIn(db, { ...KEY, bvid: 'oldest' }, [{ start: 0, text: 'a' }])
-    await writeLinesIn(db, { ...KEY, bvid: 'middle' }, [{ start: 0, text: 'b' }])
-    await writeLinesIn(db, { ...KEY, bvid: 'newest' }, [{ start: 0, text: 'c' }, { start: 1, text: 'd' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'oldest' }, [{ start: 0, text: 'a' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'middle' }, [{ start: 0, text: 'b' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'newest' }, [{ start: 0, text: 'c' }, { start: 1, text: 'd' }])
 
     expect(await evictIn(db, 2)).toBe(1)
     vi.restoreAllMocks()
 
-    expect(await readTrackIn(db, { ...KEY, bvid: 'oldest' })).toEqual(new Map())
-    expect((await readTrackIn(db, { ...KEY, bvid: 'newest' })).size).toBe(2)
+    expect(await readTrackIn(db, { ...KEY, videoId: 'oldest' })).toEqual(new Map())
+    expect((await readTrackIn(db, { ...KEY, videoId: 'newest' })).size).toBe(2)
     expect((await cacheSizeIn(db)).videos).toBe(2)
   })
 
@@ -115,15 +115,15 @@ describe('eviction', () => {
     let clock = 1000
     vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1000))
 
-    await writeLinesIn(db, { ...KEY, bvid: 'inProgress' }, [{ start: 0, text: 'early' }])
-    await writeLinesIn(db, { ...KEY, bvid: 'other' }, [{ start: 0, text: 'b' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'inProgress' }, [{ start: 0, text: 'early' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'other' }, [{ start: 0, text: 'b' }])
     // The in-progress track gets another batch, making it the most recent.
-    await writeLinesIn(db, { ...KEY, bvid: 'inProgress' }, [{ start: 1, text: 'late' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'inProgress' }, [{ start: 1, text: 'late' }])
 
     await evictIn(db, 1)
     vi.restoreAllMocks()
 
-    expect((await readTrackIn(db, { ...KEY, bvid: 'inProgress' })).size).toBe(2)
-    expect(await readTrackIn(db, { ...KEY, bvid: 'other' })).toEqual(new Map())
+    expect((await readTrackIn(db, { ...KEY, videoId: 'inProgress' })).size).toBe(2)
+    expect(await readTrackIn(db, { ...KEY, videoId: 'other' })).toEqual(new Map())
   })
 })

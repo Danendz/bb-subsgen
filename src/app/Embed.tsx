@@ -24,7 +24,7 @@ export function Embed() {
   const params = new URLSearchParams(location.search)
   const line = params.get('line') ?? ''
   const word = params.get('word') ?? undefined
-  const bvid = params.get('bvid') ?? undefined
+  const videoId = params.get('videoId') ?? undefined
   const start = params.get('start')
   const sourceTitle = params.get('title') ?? undefined
 
@@ -44,7 +44,7 @@ export function Embed() {
     void openExplainChat({
       line,
       ...(word !== undefined ? { target: word } : {}),
-      ...(bvid !== undefined ? { bvid } : {}),
+      ...(videoId !== undefined ? { videoId } : {}),
       ...(start !== null ? { start: Number(start) } : {}),
       ...(sourceTitle !== undefined ? { sourceTitle } : {}),
     }).then(setChatId, (e: unknown) => {

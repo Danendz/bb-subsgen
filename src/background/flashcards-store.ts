@@ -96,7 +96,7 @@ function withContext(item: Item, context: Context | undefined): Item {
   if (!context) return item
   // The same line met again is not a new context — it is the same evidence.
   const seen = item.contexts.some(
-    (c) => c.text === context.text && c.bvid === context.bvid && c.url === context.url,
+    (c) => c.text === context.text && c.videoId === context.videoId && c.url === context.url,
   )
   if (seen) return item
   return { ...item, contexts: [...item.contexts, context].slice(-MAX_CONTEXTS) }
@@ -129,19 +129,19 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
   }
 
   if (batch.video) {
-    const { bvid, title, url } = batch.video
+    const { videoId, title, url } = batch.video
 
     const videoWords = tx.objectStore(STORES.videoWords)
     for (const [headword, count] of entries) {
-      upsert<VideoWord>(videoWords, [bvid, headword], (existing) =>
-        existing ? { ...existing, count: existing.count + count } : { bvid, headword, count },
+      upsert<VideoWord>(videoWords, [videoId, headword], (existing) =>
+        existing ? { ...existing, count: existing.count + count } : { videoId, headword, count },
       )
     }
 
-    upsert<Video>(tx.objectStore(STORES.videos), bvid, (existing) =>
+    upsert<Video>(tx.objectStore(STORES.videos), videoId, (existing) =>
       existing
         ? { ...existing, title, url, lastWatched: now, lines: existing.lines + batch.lines }
-        : { bvid, title, url, firstWatched: now, lastWatched: now, lines: batch.lines },
+        : { videoId, title, url, firstWatched: now, lastWatched: now, lines: batch.lines },
     )
   }
 

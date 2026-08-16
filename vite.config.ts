@@ -20,8 +20,13 @@ export default defineConfig({
     rollupOptions: {
       // crxjs only picks up HTML the manifest points at, and MV3 has no field
       // for an ordinary extension page — the flashcards app is opened by URL
-      // from the popup, so it has to be declared as an entry by hand.
-      input: { flashcards: 'src/app/index.html' },
+      // from the popup, so it has to be declared as an entry by hand. The
+      // offscreen document is the same case: it is created at runtime by
+      // `chrome.offscreen.createDocument`, so nothing in the manifest names it.
+      input: {
+        flashcards: 'src/app/index.html',
+        offscreen: 'src/offscreen/index.html',
+      },
     },
   },
 })

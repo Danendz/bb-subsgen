@@ -67,7 +67,7 @@ export interface ExposureBuffer {
  *
  * A subtitle line changes every few seconds and carries around eight words, so
  * writing per line would mean thousands of messages across a video. The buffer
- * is per video: `main.ts` builds one after resolving the bvid and stops it on
+ * is per video: `main.ts` builds one after resolving the videoId and stops it on
  * teardown, so a batch can never be attributed to the video that replaced it.
  */
 export function createExposureBuffer(video?: ExposureBatch['video']): ExposureBuffer {

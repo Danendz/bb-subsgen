@@ -22,7 +22,8 @@ import {
 } from '../shared/settings'
 import { isRemote, speak } from '../shared/speak'
 import { hasLlmPermission, requestLlmPermission } from '../shared/llm-permission'
-import { listModels, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
+import { listModels, LlmError, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
+import { ASR_PRESETS } from '../llm/asr'
 import { log } from '../llm/log'
 import { Hint, ModelSelect, Section, Select, Slider, Toggle, useVoices } from './controls'
 
@@ -278,6 +279,149 @@ export function LocalModelSection({ settings, update }: SectionProps) {
           translation runs in the background on the translation model and takes over from Chrome's
           translator once it is far enough ahead — pick something fast for it. The debug log is on
           the flashcards Data tab.
+        </Hint>
+      </div>
+    </Section>
+  )
+}
+
+/**
+ * The speech server, which supplies subtitles for videos that have none.
+ *
+ * Its own section rather than part of "Local model" because it is a different
+ * program on a different port: LM Studio and Ollama serve chat completions and
+ * neither transcribes audio. The two are related only in both being local.
+ */
+export function SpeechSection({ settings, update }: SectionProps) {
+  const [models, setModels] = useState<string[]>([])
+  const [draft, setDraft] = useState(settings.asrBaseUrl)
+  const [status, setStatus] = useState<{ tone: string; message: string } | null>(null)
+
+  const probe = async (baseUrl: string) => {
+    setStatus({ tone: 'busy', message: 'Connecting…' })
+    try {
+      const found = await listModels({ baseUrl, log })
+      setModels(found)
+      setStatus({
+        tone: 'ok',
+        message: found.length
+          ? `Connected — ${found.length} model${found.length === 1 ? '' : 's'}.`
+          : 'Connected.',
+      })
+    } catch (e) {
+      setModels([])
+      // A status code means the server answered, so it is running — it simply
+      // has no model list to give. whisper.cpp is the common case: it serves
+      // transcriptions perfectly well without implementing /v1/models, and
+      // reporting that as a failure would send you debugging a working server.
+      const answered = e instanceof LlmError && e.status !== undefined
+      setStatus(
+        answered
+          ? {
+              tone: 'ok',
+              message: 'Reachable. This server lists no models — type the name it was started with.',
+            }
+          : { tone: 'bad', message: e instanceof Error ? e.message : String(e) },
+      )
+    }
+  }
+
+  useEffect(() => {
+    // On open only, and never as the address is typed. Permission is checked
+    // rather than requested, because asking needs a gesture.
+    if (!settings.asrEnabled || !settings.asrBaseUrl) return
+    void hasLlmPermission(settings.asrBaseUrl).then((granted) => {
+      if (granted) void probe(settings.asrBaseUrl)
+    })
+  }, [])
+
+  const connect = async () => {
+    const baseUrl = normalizeBaseUrl(draft)
+    if (!baseUrl) return
+
+    setDraft(baseUrl)
+    update({ asrBaseUrl: baseUrl })
+
+    if (!(await requestLlmPermission(baseUrl))) {
+      setStatus({
+        tone: 'bad',
+        message: 'Chrome needs permission to reach that address before it can be used.',
+      })
+      return
+    }
+    await probe(baseUrl)
+  }
+
+  return (
+    <Section title="Speech to text">
+      <Toggle
+        label="Transcribe videos with no subtitles"
+        checked={settings.asrEnabled}
+        onChange={(v) => update({ asrEnabled: v })}
+      />
+
+      <div class={settings.asrEnabled ? '' : 'disabled'}>
+        <div class="presets">
+          {ASR_PRESETS.map((preset) => (
+            <button
+              key={preset.baseUrl}
+              class="preset"
+              onClick={() => {
+                setDraft(preset.baseUrl)
+                update({ asrBaseUrl: preset.baseUrl })
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <label class="row">
+          <span class="grow">Server</span>
+          <input
+            class="url"
+            type="text"
+            placeholder="localhost:8080"
+            value={draft}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            onBlur={() => {
+              const tidied = normalizeBaseUrl(draft)
+              setDraft(tidied)
+              if (tidied !== settings.asrBaseUrl) update({ asrBaseUrl: tidied })
+            }}
+          />
+        </label>
+
+        <button class="connect" onClick={() => void connect()}>
+          Connect
+        </button>
+        {status && <p class={`status status-${status.tone}`}>{status.message}</p>}
+
+        {/* Free text with suggestions rather than a menu: a whisper server is
+            usually started with one model already loaded, and the name it
+            answers to is whatever the command line said. */}
+        <label class="row">
+          <span class="grow">Model</span>
+          <input
+            class="url"
+            type="text"
+            list="bb-asr-models"
+            placeholder="large-v3-turbo"
+            value={settings.asrModel}
+            onInput={(e) => update({ asrModel: e.currentTarget.value })}
+          />
+          <datalist id="bb-asr-models">
+            {models.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+        </label>
+
+        <Hint>
+          Most of bangumi ships without subtitles, and this transcribes the audio so those
+          episodes can still be read. It runs once per episode and the result is cached, so a
+          rewatch costs nothing. Start a server with <code>tools/asr-server.sh</code> in the
+          extension's repository — it is a separate program from the chat model above.
         </Hint>
       </div>
     </Section>

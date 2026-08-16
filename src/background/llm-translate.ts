@@ -26,6 +26,7 @@ import { translationGlossary } from '../llm/glossary'
 import { log } from '../llm/log'
 import { extractJson } from '../llm/reply'
 import { newRequestId } from '../llm/types'
+import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import type { TranslationLang } from '../shared/settings'
 import { lookupDefs } from './defs-store'
 import { evict, readTrack, writeLines } from './llm-cache'
@@ -40,7 +41,7 @@ export interface PassCue {
 
 export interface PassRequest {
   tabId: number
-  bvid: string
+  videoId: string
   lang: TranslationLang
   model: string
   baseUrl: string
@@ -50,7 +51,7 @@ export interface PassRequest {
 
 /** What the content script is told, as each batch lands. */
 export interface PassResult {
-  bvid: string
+  videoId: string
   lang: TranslationLang
   lines: Array<{ index: number; text: string }>
 }
@@ -60,6 +61,36 @@ interface Pass {
   abort: AbortController
   /** Re-read every iteration, so seeking re-orders what is left. */
   playhead: number
+  /** Lines that have a translation, the ones that came from cache included. */
+  translated: number
+  /** Lines that will ever have one — blank cues are never sent. */
+  total: number
+}
+
+/** What the popup's progress bar reads. See `passStatus`. */
+export interface PassStatus {
+  videoId: string
+  model: string
+  translated: number
+  total: number
+}
+
+/**
+ * How far the pass for `tabId` has got, or null if it has none running.
+ *
+ * A query rather than a broadcast because the popup is short-lived and the pass
+ * is not: a popup opened halfway through has to fill its bar straight away, and
+ * a listener would leave it blank until the next batch landed — up to a minute
+ * of looking broken.
+ */
+export function passStatus(tabId: number): PassStatus | null {
+  if (!active || active.request.tabId !== tabId) return null
+  return {
+    videoId: active.request.videoId,
+    model: active.request.model,
+    translated: active.translated,
+    total: active.total,
+  }
 }
 
 let active: Pass | null = null
@@ -83,6 +114,47 @@ export function cancelPass(tabId?: number): void {
   if (tabId !== undefined && active.request.tabId !== tabId) return
   active.abort.abort()
   active = null
+}
+
+/**
+ * Ends the pass for a tab that has navigated away from the video it was for.
+ *
+ * The gap this closes: a tab that navigates without closing destroys its
+ * content script without giving it a chance to say so, and `tabs.onRemoved`
+ * never fires because the tab is still there. Nothing else notices — `send`
+ * treats a vanished tab as unremarkable, by design — so the pass carried on
+ * translating a video nobody had open, for as long as the track lasted.
+ *
+ * Deliberately conditional on the videoId rather than cancelling on any URL
+ * change. A timestamp link or a query parameter is still the same video, and
+ * cancelling on those would race the content script, which starts its own pass
+ * on SPA navigation: the worker could cancel the new pass a moment after it
+ * began, on the strength of a URL change that had already been handled.
+ */
+export function cancelPassIfNavigatedAway(tabId: number, url: string): void {
+  if (!active || active.request.tabId !== tabId) return
+  if (parseVideoIdFromUrl(url) === active.request.videoId) return
+  cancelPass(tabId)
+}
+
+/**
+ * Ends a tab's pass when the page that asked for it goes away.
+ *
+ * The port exists only to be dropped. Whatever destroys the page — following a
+ * link off the site, typing a new address, a reload, a crash — takes the port
+ * with it, and none of that requires a permission to observe. That matters:
+ * `cancelPassIfNavigatedAway` can only see URLs the extension holds host
+ * permission for, so a tab leaving Bilibili altogether is invisible to it, and
+ * that is the most ordinary way there is to change the page.
+ *
+ * A side effect worth naming: an open port keeps the service worker alive. The
+ * content script therefore holds one only while a pass is running, which is
+ * exactly when the worker needs to be alive anyway.
+ */
+export function watchTabLiveness(port: chrome.runtime.Port): void {
+  const tabId = port.sender?.tab?.id
+  if (tabId === undefined) return // the app page or the drawer, which own no pass
+  port.onDisconnect.addListener(() => cancelPass(tabId))
 }
 
 export function reportPlayhead(tabId: number, index: number): void {
@@ -193,12 +265,18 @@ async function translateWithRetry(
 export async function startPass(request: PassRequest): Promise<void> {
   cancelPass()
 
-  const pass: Pass = { request, abort: new AbortController(), playhead: 0 }
+  const pass: Pass = {
+    request,
+    abort: new AbortController(),
+    playhead: 0,
+    translated: 0,
+    total: request.cues.filter((cue) => cue.text.trim()).length,
+  }
   active = pass
   const { signal } = pass.abort
   const requestId = newRequestId()
 
-  const key = { bvid: request.bvid, lang: request.lang, model: request.model }
+  const key = { videoId: request.videoId, lang: request.lang, model: request.model }
   const startToIndex = new Map(request.cues.map((cue, index) => [cue.start, index]))
 
   // Everything already known, in one go and before any generation.
@@ -213,6 +291,7 @@ export async function startPass(request: PassRequest): Promise<void> {
     done.set(index, text)
     fromCache.push({ index, text })
   }
+  pass.translated = done.size
   if (fromCache.length) send(request.tabId, { ...key, lines: fromCache })
 
   const pending = planBatches(request.cues.map((cue) => cue.text)).filter((batch) =>
@@ -224,7 +303,7 @@ export async function startPass(request: PassRequest): Promise<void> {
     kind: 'translate-batch',
     requestId,
     model: request.model,
-    message: `${request.bvid}: ${fromCache.length} lines cached, ${pending.length} batches to translate`,
+    message: `${request.videoId}: ${fromCache.length} lines cached, ${pending.length} batches to translate`,
   })
 
   while (pending.length && !signal.aborted) {
@@ -270,6 +349,9 @@ export async function startPass(request: PassRequest): Promise<void> {
       done.set(index, text)
       lines.push({ index, text })
     }
+    // `done` rather than a running total: a retry can re-answer a line already
+    // accepted, and counting the batch would drift past the real figure.
+    pass.translated = done.size
 
     await writeLines(
       key,
@@ -286,7 +368,7 @@ export async function startPass(request: PassRequest): Promise<void> {
     kind: 'translate-batch',
     requestId,
     model: request.model,
-    message: `${request.bvid}: finished with ${done.size} of ${request.cues.length} lines translated`,
+    message: `${request.videoId}: finished with ${done.size} of ${request.cues.length} lines translated`,
   })
 
   // Only once the pass is done: evicting mid-pass could drop the track being

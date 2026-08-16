@@ -139,6 +139,30 @@ export interface Settings {
   llmTranslationModel: string
   /** Keep whole prompts and response bodies in the debug log instead of truncating them. */
   llmVerboseLog: boolean
+  /**
+   * Whether to transcribe the audio of videos that have no subtitle track.
+   *
+   * Most of bangumi is exactly that: surveyed across a season of 航拍中国, none
+   * of the real episodes had one. Without this those pages have nothing to
+   * annotate, because there is no text on them to read.
+   *
+   * Separate from `llmEnabled` and pointed at a separate server, because it is a
+   * separate program: LM Studio and Ollama serve chat completions and neither
+   * transcribes audio. Off by default like every other setting that needs
+   * something installed.
+   */
+  asrEnabled: boolean
+  /**
+   * Where the speech-recognition server is, as an OpenAI-compatible base URL.
+   *
+   * Almost always a different port from `llmBaseUrl`, and deliberately not
+   * derived from it. Both being on localhost means the host permission is
+   * already granted either way — see `permissionPatternFor`, which asks per host
+   * rather than per port for this reason.
+   */
+  asrBaseUrl: string
+  /** Model for transcription — `large-v3-turbo` unless you have swapped it. */
+  asrModel: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -187,6 +211,9 @@ export const DEFAULT_SETTINGS: Settings = {
   llmTranslationEnabled: false,
   llmTranslationModel: '',
   llmVerboseLog: false,
+  asrEnabled: false,
+  asrBaseUrl: '',
+  asrModel: '',
 }
 
 /** Bounds for `studySessionSize`, shared by the picker and the queue. */

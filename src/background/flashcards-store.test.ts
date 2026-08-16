@@ -37,7 +37,7 @@ function get<T>(database: IDBDatabase, store: string, key: IDBValidKey): Promise
 
 const context = (text: string) => ({ text, translation: '', at: 1, url: 'https://example.com' })
 
-const video = { bvid: 'BV1xx', title: 'Test', url: 'https://b.tv/BV1xx' }
+const video = { videoId: 'BV1xx', title: 'Test', url: 'https://b.tv/BV1xx' }
 
 describe('recordExposuresIn', () => {
   test('accumulates counts across flushes', async () => {
@@ -179,11 +179,11 @@ describe('captureSentenceIn', () => {
 
   test('the same line from two videos is one card with two contexts', async () => {
     const database = await db()
-    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), bvid: 'BV1' })
-    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), bvid: 'BV2' })
+    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), videoId: 'BV1' })
+    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), videoId: 'BV2' })
 
     const item = await get<Item>(database, STORES.items, sentenceId('谢谢你。'))
-    expect(item?.contexts.map((c) => c.bvid)).toEqual(['BV1', 'BV2'])
+    expect(item?.contexts.map((c) => c.videoId)).toEqual(['BV1', 'BV2'])
   })
 
   test('keeps the cloze target it was captured for', async () => {

@@ -24,7 +24,7 @@ import type { TranslationLang } from '../shared/settings'
 export const MAX_CACHED_VIDEOS = 50
 
 export interface CachedLine {
-  bvid: string
+  videoId: string
   lang: TranslationLang
   model: string
   /** Cue start in seconds. */
@@ -34,7 +34,7 @@ export interface CachedLine {
 }
 
 export interface TrackKey {
-  bvid: string
+  videoId: string
   lang: TranslationLang
   model: string
 }
@@ -42,11 +42,11 @@ export interface TrackKey {
 /** Everything cached for one video, as start -> translation. */
 export async function readTrackIn(
   db: IDBDatabase,
-  { bvid, lang, model }: TrackKey,
+  { videoId, lang, model }: TrackKey,
 ): Promise<Map<number, string>> {
   const tx = db.transaction(STORES.lines, 'readonly')
   const rows = (await request(
-    tx.objectStore(STORES.lines).index('by-video').getAll(bvid),
+    tx.objectStore(STORES.lines).index('by-video').getAll(videoId),
   )) as CachedLine[]
 
   return new Map(
@@ -84,7 +84,7 @@ export async function evictIn(db: IDBDatabase, max = MAX_CACHED_VIDEOS): Promise
 
   const newest = new Map<string, number>()
   for (const row of rows) {
-    newest.set(row.bvid, Math.max(newest.get(row.bvid) ?? 0, row.at))
+    newest.set(row.videoId, Math.max(newest.get(row.videoId) ?? 0, row.at))
   }
   if (newest.size <= max) return 0
 
@@ -92,13 +92,13 @@ export async function evictIn(db: IDBDatabase, max = MAX_CACHED_VIDEOS): Promise
     [...newest.entries()]
       .sort((a, b) => a[1] - b[1])
       .slice(0, newest.size - max)
-      .map(([bvid]) => bvid),
+      .map(([videoId]) => videoId),
   )
 
   const tx = db.transaction(STORES.lines, 'readwrite')
   const store = tx.objectStore(STORES.lines)
   for (const row of rows) {
-    if (doomed.has(row.bvid)) store.delete([row.bvid, row.lang, row.model, row.start])
+    if (doomed.has(row.videoId)) store.delete([row.videoId, row.lang, row.model, row.start])
   }
   await done(tx)
   return doomed.size
@@ -115,7 +115,7 @@ export async function cacheSizeIn(db: IDBDatabase): Promise<{ videos: number; li
   const tx = db.transaction(STORES.lines, 'readonly')
   const rows = (await request(tx.objectStore(STORES.lines).getAll())) as CachedLine[]
 
-  return { videos: new Set(rows.map((row) => row.bvid)).size, lines: rows.length }
+  return { videos: new Set(rows.map((row) => row.videoId)).size, lines: rows.length }
 }
 
 export async function readTrack(key: TrackKey): Promise<Map<number, string>> {

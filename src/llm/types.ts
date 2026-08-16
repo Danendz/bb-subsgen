@@ -60,7 +60,13 @@ export interface ChatOptions {
 export type LlmLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 /** Which part of the feature spoke. Filterable in the app's log viewer. */
-export type LlmLogKind = 'connect' | 'models' | 'chat' | 'explain' | 'translate-batch'
+export type LlmLogKind =
+  | 'connect'
+  | 'models'
+  | 'chat'
+  | 'explain'
+  | 'translate-batch'
+  | 'transcribe'
 
 export interface NewLlmLogEntry {
   level: LlmLogLevel

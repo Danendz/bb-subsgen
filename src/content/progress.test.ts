@@ -52,4 +52,29 @@ describe('progressView', () => {
   test('shows nothing when idle', () => {
     expect(progressView({ phase: 'idle' }, true).visible).toBe(false)
   })
+
+  test('shows the transcript whether or not a line is being waited on', () => {
+    // Unlike the pass, and for the same reason as the download: until this
+    // finishes there are no cues at all, so there is nothing on screen for it to
+    // cover and nobody who is not waiting on it.
+    const view = progressView({ phase: 'transcribe', done: 2, total: 11 }, false)
+    expect(view.visible).toBe(true)
+    expect(view.text).toBe('Transcribing… 2 / 11')
+    expect(view.fraction).toBeCloseTo(2 / 11)
+  })
+
+  test('shows the transcript without a count before the plan is known', () => {
+    // The chunk count comes back with the first progress report, so there is a
+    // gap where the only honest thing to say is that it has started.
+    const view = progressView({ phase: 'transcribe', done: 0, total: 0 }, true)
+    expect(view.visible).toBe(true)
+    expect(view.text).toBe('Transcribing…')
+    expect(view.fraction).toBe(0)
+  })
+
+  test('still shows the transcript on its last chunk', () => {
+    // The pass hides itself once done meets total; this must not, because the
+    // cues do not exist until the run is over and reported separately.
+    expect(progressView({ phase: 'transcribe', done: 11, total: 11 }, false).visible).toBe(true)
+  })
 })

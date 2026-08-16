@@ -51,7 +51,7 @@ describe('the chat store', () => {
   })
 
   test('keeps the item and context it was opened from', async () => {
-    const context = { target: '了', line: '我吃了', before: ['a'], after: ['b'], bvid: 'BV1' }
+    const context = { target: '了', line: '我吃了', before: ['a'], after: ['b'], videoId: 'BV1' }
     const chat = await createChatIn(db, { model: 'm', itemId: 'w:了', context })
 
     expect(await readChatIn(db, chat.id)).toMatchObject({ itemId: 'w:了', context })
