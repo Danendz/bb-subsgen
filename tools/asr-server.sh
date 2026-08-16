@@ -13,6 +13,7 @@
 #   ./tools/asr-server.sh            # build if needed, then serve on :8080
 #   PORT=9000 ./tools/asr-server.sh  # somewhere else
 #   MODEL=large-v3 ./tools/asr-server.sh
+#   VAD=0 ./tools/asr-server.sh      # without voice-activity detection
 #
 set -euo pipefail
 
@@ -29,10 +30,30 @@ MODEL="${MODEL:-large-v3-turbo-q8_0}"
 # Splitting on a word boundary stops a line being cut mid-word.
 MAX_LEN="${MAX_LEN:-24}"
 
+# Voice-activity detection, and the reason lines land on the voice rather than a
+# couple of seconds ahead of it.
+#
+# Whisper starts a segment where the previous one ended — inside the pause, not
+# at the speech — and `--max-len` above then spreads that error across every line
+# it splits out of that segment. Silero deletes the pauses before the model ever
+# sees them, so there is nothing left for a segment to start early in; whisper.cpp
+# maps the timings back onto the real track afterwards, so nothing downstream has
+# to know it happened. It is also faster, having less audio to decode.
+#
+# `VAD=0` turns it off, for the case where something quiet gets clipped.
+VAD="${VAD:-1}"
+VAD_MODEL="${VAD_MODEL:-silero-v5.1.2}"
+
+# Above the 30ms default: a clipped consonant is a worse failure than a line that
+# arrives a tenth of a second early, and this padding is what protects a soft
+# onset from being cut off by the detector.
+VAD_PAD_MS="${VAD_PAD_MS:-100}"
+
 CACHE="${BB_SUBSGEN_CACHE:-$HOME/.cache/bb-subsgen}"
 REPO="$CACHE/whisper.cpp"
 SERVER="$REPO/build/bin/whisper-server"
 MODEL_FILE="$REPO/models/ggml-$MODEL.bin"
+VAD_FILE="$REPO/models/ggml-$VAD_MODEL.bin"
 
 say() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 
@@ -61,6 +82,8 @@ install_service() {
     <key>PORT</key><string>$PORT</string>
     <key>HOST</key><string>$HOST</string>
     <key>MODEL</key><string>$MODEL</string>
+    <key>VAD</key><string>$VAD</string>
+    <key>VAD_MODEL</key><string>$VAD_MODEL</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -133,6 +156,14 @@ if [ ! -f "$MODEL_FILE" ]; then
   (cd "$REPO" && bash ./models/download-ggml-model.sh "$MODEL")
 fi
 
+# Above the `--build-only` exit below, so `--install-service` fetches this while
+# a failure still lands in a terminal rather than in a log file nobody knows to
+# look at. A few megabytes, against several hundred for the speech model.
+if [ "$VAD" != "0" ] && [ ! -f "$VAD_FILE" ] && [ -f "$REPO/models/download-vad-model.sh" ]; then
+  say "Downloading the $VAD_MODEL voice-activity model (once)"
+  (cd "$REPO" && bash ./models/download-vad-model.sh "$VAD_MODEL")
+fi
+
 # Everything above is the one-time setup; this is where `--install-service`
 # stops, having proved the build works before handing it to launchd.
 if [ "${1:-}" = "--build-only" ]; then
@@ -140,11 +171,35 @@ if [ "${1:-}" = "--build-only" ]; then
   exit 0
 fi
 
+# Asked rather than assumed. The clone above is shallow and never updated, so a
+# checkout predating VAD is the ordinary case rather than a hypothetical — and an
+# unknown flag does not degrade, it stops the server from starting at all.
+# Read into a variable rather than piped into grep: `grep -q` leaves on the first
+# match, and under `pipefail` a server killed by the closing pipe would look like
+# a server that does not support the flag.
+VAD_ARGS=()
+if [ "$VAD" != "0" ] && [ -f "$VAD_FILE" ]; then
+  HELP="$("$SERVER" --help 2>&1 || true)"
+  case "$HELP" in
+    *--vad-model*)
+      VAD_ARGS=(--vad --vad-model "$VAD_FILE" --vad-speech-pad-ms "$VAD_PAD_MS")
+      ;;
+    *)
+      say "This whisper.cpp build has no voice-activity detection; lines will run early."
+      say "Delete $REPO and run this again to rebuild from a current checkout."
+      ;;
+  esac
+fi
+
 say "Serving $MODEL on http://$HOST:$PORT"
 say "Put that address in the extension's 'Speech to text' settings."
 
 # `-l zh` rather than auto-detect: it is always Mandarin, and a chunk that opens
 # on music is otherwise a whole five minutes transcribed as the wrong language.
+#
+# The `[@]+` around the VAD arguments is not decoration: launchd runs this with
+# /bin/bash, which is 3.2 on macOS, where expanding an empty array under `set -u`
+# is an error rather than nothing.
 exec "$SERVER" \
   --model "$MODEL_FILE" \
   --host "$HOST" \
@@ -152,4 +207,5 @@ exec "$SERVER" \
   --language zh \
   --max-len "$MAX_LEN" \
   --split-on-word \
+  ${VAD_ARGS[@]+"${VAD_ARGS[@]}"} \
   "$@"

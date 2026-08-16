@@ -56,6 +56,7 @@ import {
   type LlmTranslationsMessage,
   type Status,
 } from '../shared/messages'
+import { alignCues } from '../llm/timing'
 import { openExplainDrawer } from './explain-drawer'
 import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
 
@@ -1032,8 +1033,13 @@ async function main() {
     stopAsr = onAsrCues((msg) => {
       if (msg.videoId !== videoId) return // a previous video's run, still landing
 
+      // Re-timed here rather than at either end of the wire: this is the one
+      // point every ASR cue list passes through — a chunk landing mid-run, the
+      // final list, and a cache hit, which `asr-pass` answers with the same
+      // message. What is stored stays as the model said it, so a better rule
+      // later costs a reload rather than transcribing the episode again.
       cues.length = 0
-      cues.push(...msg.cues)
+      cues.push(...alignCues(msg.cues))
 
       if (msg.complete) {
         // Whether it worked or not, the worker no longer needs holding open.
