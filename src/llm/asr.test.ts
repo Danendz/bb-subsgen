@@ -96,6 +96,76 @@ describe('parseTranscription', () => {
   })
 })
 
+describe('parseTranscription, aligned', () => {
+  /** Centiseconds on the wire, as whisper.cpp counts them. */
+  const word = (t_dtw: number) => ({ word: '新', t_dtw })
+
+  test('takes the start from the alignment, not from the segment', () => {
+    // The whole point, and the size of the gap is the point of the size: a
+    // Whisper segment starts where the previous one ended, so a line after ten
+    // seconds of silence claims all ten of them.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 28.4, end: 44.0, text: '天山在这里。', words: [word(3878), word(4100)] },
+        ],
+      }),
+    )
+    expect(cues).toEqual([{ start: 38.78, end: 44, text: '天山在这里。' }])
+  })
+
+  test('falls back to the segment when nothing was aligned', () => {
+    // `-1` is what whisper.cpp puts there when it was not asked to align, and a
+    // server that is not whisper.cpp has no words at all. Both read as before.
+    const unaligned = JSON.stringify({
+      segments: [{ start: 1.2, end: 3.4, text: '新疆很大。', words: [word(-1), word(-1)] }],
+    })
+    const wordless = JSON.stringify({
+      segments: [{ start: 1.2, end: 3.4, text: '新疆很大。' }],
+    })
+
+    expect(parseTranscription(unaligned)).toEqual([{ start: 1.2, end: 3.4, text: '新疆很大。' }])
+    expect(parseTranscription(wordless)).toEqual([{ start: 1.2, end: 3.4, text: '新疆很大。' }])
+  })
+
+  test('skips an unaligned token at the head of a line', () => {
+    // Losing the line's alignment because its first token has none would throw
+    // away the answer over a detail of how the tokens fell.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [{ start: 10, end: 25, text: '天山在这里。', words: [word(-1), word(2000)] }],
+      }),
+    )
+    expect(cues?.[0].start).toBe(20)
+  })
+
+  test('keeps a line whose end the alignment has overtaken', () => {
+    // Ordinary for a line in the middle of a split segment: its end is the next
+    // line's guessed start, which the alignment has just moved past.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [{ start: 10, end: 14, text: '天山在这里。', words: [word(1600)] }],
+      }),
+    )
+    expect(cues).toEqual([{ start: 16, end: 16.6, text: '天山在这里。' }])
+  })
+
+  test('returns cues in track order even when the alignment reorders them', () => {
+    // The tiling is monotonic and the alignment need not be; everything
+    // downstream binary-searches this list.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 0, end: 9, text: '第二句', words: [word(800)] },
+          { start: 9, end: 12, text: '第一句', words: [word(500)] },
+        ],
+      }),
+    )
+    expect(cues?.map((c) => c.text)).toEqual(['第一句', '第二句'])
+    expect(cues?.map((c) => c.start)).toEqual([5, 8])
+  })
+})
+
 describe('parseTimestamp', () => {
   test('reads the shapes SRT and VTT use between them', () => {
     expect(parseTimestamp('00:00:01,200')).toBeCloseTo(1.2)

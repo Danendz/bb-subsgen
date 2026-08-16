@@ -13,7 +13,7 @@
 #   ./tools/asr-server.sh            # build if needed, then serve on :8080
 #   PORT=9000 ./tools/asr-server.sh  # somewhere else
 #   MODEL=large-v3 ./tools/asr-server.sh
-#   VAD=0 ./tools/asr-server.sh      # without voice-activity detection
+#   FAST=1 ./tools/asr-server.sh     # quicker, and the line timings are wrong
 #
 set -euo pipefail
 
@@ -30,30 +30,51 @@ MODEL="${MODEL:-large-v3-turbo-q8_0}"
 # Splitting on a word boundary stops a line being cut mid-word.
 MAX_LEN="${MAX_LEN:-24}"
 
-# Voice-activity detection, and the reason lines land on the voice rather than a
-# couple of seconds ahead of it.
+# Quick, or correctly timed. There is no setting that is both.
 #
-# Whisper starts a segment where the previous one ended — inside the pause, not
-# at the speech — and `--max-len` above then spreads that error across every line
-# it splits out of that segment. Silero deletes the pauses before the model ever
-# sees them, so there is nothing left for a segment to start early in; whisper.cpp
-# maps the timings back onto the real track afterwards, so nothing downstream has
-# to know it happened. It is also faster, having less audio to decode.
+# A Whisper segment timestamp is not a measurement of anything: segments inside a
+# decode window tile contiguously — `t0 = t1` at src/whisper.cpp:7698 — so a
+# line's start is simply where the previous line ended, and a ten-second silence
+# is spent showing the next line early rather than showing nothing.
 #
-# `VAD=0` turns it off, for the case where something quiet gets clipped.
-VAD="${VAD:-1}"
+# `--dtw` is the way out. It aligns each token to the audio through the decoder's
+# cross-attention, at 20ms resolution, and the server hands that back per word.
+# It costs two things, both of them speed:
+#
+#   - whisper.cpp turns DTW off when flash attention is on (src/whisper.cpp:3718),
+#     so flash attention has to go.
+#   - token times are not mapped back through the VAD table the way segment times
+#     are (src/whisper.cpp:8086), so voice-activity detection has to go with it —
+#     and with it the ~40% of the audio it was skipping.
+#
+# `FAST=1` takes that trade the other way: VAD and flash attention, no alignment,
+# and lines that arrive before the voice does.
+FAST="${FAST:-0}"
 VAD_MODEL="${VAD_MODEL:-silero-v5.1.2}"
-
-# Above the 30ms default: a clipped consonant is a worse failure than a line that
-# arrives a tenth of a second early, and this padding is what protects a soft
-# onset from being cut off by the detector.
-VAD_PAD_MS="${VAD_PAD_MS:-100}"
 
 CACHE="${BB_SUBSGEN_CACHE:-$HOME/.cache/bb-subsgen}"
 REPO="$CACHE/whisper.cpp"
 SERVER="$REPO/build/bin/whisper-server"
 MODEL_FILE="$REPO/models/ggml-$MODEL.bin"
 VAD_FILE="$REPO/models/ggml-$VAD_MODEL.bin"
+
+# whisper.cpp needs to be told which model's alignment heads to read, and spells
+# the answer differently from the model file: `large-v3-turbo-q8_0` is
+# `large.v3.turbo`. An unrecognised name is not a warning but `exit 3`, so a
+# model this cannot place is served without alignment rather than not at all.
+dtw_preset() {
+  # Quantisation is a property of the weights, not of the architecture, and the
+  # alignment heads are the same either way.
+  local plain="${1%%-q[0-9]*}"
+  case "$plain" in
+    tiny | tiny.en | base | base.en | small | small.en | medium | medium.en) echo "$plain" ;;
+    large-v1) echo large.v1 ;;
+    large-v2) echo large.v2 ;;
+    large-v3) echo large.v3 ;;
+    large-v3-turbo) echo large.v3.turbo ;;
+    *) echo "" ;;
+  esac
+}
 
 say() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 
@@ -82,8 +103,7 @@ install_service() {
     <key>PORT</key><string>$PORT</string>
     <key>HOST</key><string>$HOST</string>
     <key>MODEL</key><string>$MODEL</string>
-    <key>VAD</key><string>$VAD</string>
-    <key>VAD_MODEL</key><string>$VAD_MODEL</string>
+    <key>FAST</key><string>$FAST</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -156,10 +176,11 @@ if [ ! -f "$MODEL_FILE" ]; then
   (cd "$REPO" && bash ./models/download-ggml-model.sh "$MODEL")
 fi
 
-# Above the `--build-only` exit below, so `--install-service` fetches this while
-# a failure still lands in a terminal rather than in a log file nobody knows to
-# look at. A few megabytes, against several hundred for the speech model.
-if [ "$VAD" != "0" ] && [ ! -f "$VAD_FILE" ] && [ -f "$REPO/models/download-vad-model.sh" ]; then
+# Only the fast path uses it, and above the `--build-only` exit below so that
+# `--install-service` fetches it while a failure still lands in a terminal rather
+# than in a log file nobody knows to look at. A few megabytes, against several
+# hundred for the speech model.
+if [ "$FAST" != "0" ] && [ ! -f "$VAD_FILE" ] && [ -f "$REPO/models/download-vad-model.sh" ]; then
   say "Downloading the $VAD_MODEL voice-activity model (once)"
   (cd "$REPO" && bash ./models/download-vad-model.sh "$VAD_MODEL")
 fi
@@ -172,20 +193,40 @@ if [ "${1:-}" = "--build-only" ]; then
 fi
 
 # Asked rather than assumed. The clone above is shallow and never updated, so a
-# checkout predating VAD is the ordinary case rather than a hypothetical — and an
-# unknown flag does not degrade, it stops the server from starting at all.
+# checkout predating either flag is the ordinary case rather than a hypothetical
+# — and an unknown flag does not degrade, it stops the server from starting.
 # Read into a variable rather than piped into grep: `grep -q` leaves on the first
 # match, and under `pipefail` a server killed by the closing pipe would look like
 # a server that does not support the flag.
-VAD_ARGS=()
-if [ "$VAD" != "0" ] && [ -f "$VAD_FILE" ]; then
-  HELP="$("$SERVER" --help 2>&1 || true)"
+HELP="$("$SERVER" --help 2>&1 || true)"
+MODE_ARGS=()
+
+if [ "$FAST" != "0" ]; then
   case "$HELP" in
     *--vad-model*)
-      VAD_ARGS=(--vad --vad-model "$VAD_FILE" --vad-speech-pad-ms "$VAD_PAD_MS")
+      if [ -f "$VAD_FILE" ]; then
+        MODE_ARGS=(--vad --vad-model "$VAD_FILE")
+        say "Fast: skipping silence, and line timings will run ahead of the voice."
+      fi
+      ;;
+    *) say "This whisper.cpp build has no voice-activity detection; serving without it." ;;
+  esac
+else
+  DTW_PRESET="$(dtw_preset "$MODEL")"
+  case "$HELP" in
+    *--dtw*)
+      if [ -n "$DTW_PRESET" ]; then
+        # Flash attention off in the same breath, because whisper.cpp answers
+        # `--dtw` with a warning and silence otherwise.
+        MODE_ARGS=(--dtw "$DTW_PRESET" --no-flash-attn)
+        say "Timing each line by aligning it to the audio ($DTW_PRESET). Slower, and right."
+      else
+        say "No alignment heads known for $MODEL, so lines will be timed by Whisper's own"
+        say "segments — which start where the previous line ended, not where the voice does."
+      fi
       ;;
     *)
-      say "This whisper.cpp build has no voice-activity detection; lines will run early."
+      say "This whisper.cpp build cannot align tokens to audio; line timings will be rough."
       say "Delete $REPO and run this again to rebuild from a current checkout."
       ;;
   esac
@@ -197,7 +238,7 @@ say "Put that address in the extension's 'Speech to text' settings."
 # `-l zh` rather than auto-detect: it is always Mandarin, and a chunk that opens
 # on music is otherwise a whole five minutes transcribed as the wrong language.
 #
-# The `[@]+` around the VAD arguments is not decoration: launchd runs this with
+# The `[@]+` around the mode arguments is not decoration: launchd runs this with
 # /bin/bash, which is 3.2 on macOS, where expanding an empty array under `set -u`
 # is an error rather than nothing.
 exec "$SERVER" \
@@ -207,5 +248,5 @@ exec "$SERVER" \
   --language zh \
   --max-len "$MAX_LEN" \
   --split-on-word \
-  ${VAD_ARGS[@]+"${VAD_ARGS[@]}"} \
+  ${MODE_ARGS[@]+"${MODE_ARGS[@]}"} \
   "$@"

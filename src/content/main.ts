@@ -1033,11 +1033,12 @@ async function main() {
     stopAsr = onAsrCues((msg) => {
       if (msg.videoId !== videoId) return // a previous video's run, still landing
 
-      // Re-timed here rather than at either end of the wire: this is the one
-      // point every ASR cue list passes through — a chunk landing mid-run, the
-      // final list, and a cache hit, which `asr-pass` answers with the same
-      // message. What is stored stays as the model said it, so a better rule
-      // later costs a reload rather than transcribing the episode again.
+      // Held on screen here rather than at either end of the wire: this is the
+      // one point every ASR cue list passes through — a chunk landing mid-run,
+      // the final list, and a cache hit, which `asr-pass` answers with the same
+      // message. How long a line stays is presentational, so what is stored
+      // keeps the timings the model gave and changing this costs a reload
+      // rather than transcribing the episode again.
       cues.length = 0
       cues.push(...alignCues(msg.cues))
 

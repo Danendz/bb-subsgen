@@ -361,10 +361,50 @@ export function parseTranscription(body: string): Cue[] | null {
   return parseTimedText(trimmed)
 }
 
+interface VerboseWord {
+  /** Centiseconds, and -1 when the server was not asked to align anything. */
+  t_dtw?: unknown
+}
+
 interface VerboseSegment {
   start?: unknown
   end?: unknown
   text?: unknown
+  words?: unknown
+}
+
+/**
+ * The shortest a line may be, for one whose end arrives before its real start.
+ *
+ * That is not a corruption but the ordinary case for a line in the middle of a
+ * split segment: its end is the *next* line's guessed start, which the alignment
+ * has just moved. `holdTail` will stretch it to meet its neighbour anyway.
+ */
+const MIN_LINE_S = 0.6
+
+/**
+ * When the line was actually spoken, if the server aligned it to the audio.
+ *
+ * A Whisper segment timestamp is not a measurement: segments tile a decode
+ * window contiguously, so a line's start is wherever the previous line stopped
+ * and a ten-second silence is spent showing the next line early. `--dtw` gets
+ * the real answer out of the decoder's cross-attention, at 20ms resolution, and
+ * the server hands it back on each word.
+ *
+ * Null unless it is there. `t_dtw` is -1 when nothing was aligned, and a server
+ * that is not whisper.cpp has no `words` at all; both mean the segment's own
+ * timings are the best available and are read exactly as they were before.
+ */
+function alignedStart(segment: VerboseSegment): number | null {
+  if (!Array.isArray(segment.words)) return null
+
+  for (const word of segment.words as VerboseWord[]) {
+    const dtw = Number(word?.t_dtw)
+    // The first *usable* one rather than the first: an unaligned token at the
+    // head of a line would otherwise throw away the whole line's alignment.
+    if (Number.isFinite(dtw) && dtw >= 0) return dtw / 100
+  }
+  return null
 }
 
 function parseVerboseJson(body: string): Cue[] | null {
@@ -379,11 +419,23 @@ function parseVerboseJson(body: string): Cue[] | null {
   // is all there, and every timing has been thrown away. Unusable, not empty.
   if (!Array.isArray(payload.segments)) return null
 
-  return (payload.segments as VerboseSegment[])
-    .map((segment) =>
-      cueFrom(Number(segment.start), Number(segment.end), String(segment.text ?? '')),
-    )
+  const cues = (payload.segments as VerboseSegment[])
+    .map((segment) => {
+      const aligned = alignedStart(segment)
+      const start = aligned ?? Number(segment.start)
+      const end = Number(segment.end)
+      return cueFrom(
+        start,
+        aligned !== null && !(end > start) ? start + MIN_LINE_S : end,
+        String(segment.text ?? ''),
+      )
+    })
     .filter((cue): cue is Cue => cue !== null)
+
+  // Sorted because alignment can reorder what the tiling had in order, and
+  // everything downstream — `findActiveCueIndex`'s binary search, `mergeCues`,
+  // the chunk merge — takes sorted cues as given.
+  return cues.sort((a, b) => a.start - b.start)
 }
 
 /**

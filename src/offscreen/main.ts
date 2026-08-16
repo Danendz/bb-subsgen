@@ -25,7 +25,6 @@ import {
   type Chunk,
 } from '../llm/chunks'
 import { log } from '../llm/log'
-import { snapToOnset } from '../llm/onset'
 import { ASR_SAMPLE_RATE, downmixToMono, encodeWav, sliceSeconds } from '../llm/wav'
 import {
   isOffscreenRequest,
@@ -221,12 +220,8 @@ async function run(request: TranscribeRequest): Promise<void> {
 
       if (heard.cues) {
         unfinished.delete(chunk)
-        // The padding either side is what the model heard, not what it may
-        // report. Ownership is settled before the timings are corrected: a snap
-        // moves a start later, and deciding ownership afterwards could push a
-        // cue past the end of the chunk that owns it, leaving a hole no other
-        // chunk would fill.
-        byChunk.set(chunk.index, snapToOnset(ownedCues(heard.cues, chunk), samples))
+        // The padding either side is what the model heard, not what it may report.
+        byChunk.set(chunk.index, ownedCues(heard.cues, chunk))
       } else if (heard.error) {
         lastError = heard.error
       }
