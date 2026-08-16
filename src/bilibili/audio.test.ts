@@ -1,5 +1,12 @@
 import { describe, expect, test, vi } from 'vitest'
-import { fetchAudioTrack, pickAudioStream, playurlUrl, readPlayurl } from './audio'
+import {
+  fetchAudioBytes,
+  fetchAudioTrack,
+  pickAudioStream,
+  playurlUrl,
+  readPlayurl,
+  resolveAudioSource,
+} from './audio'
 
 describe('playurlUrl', () => {
   test('asks the pgc endpoint for a bangumi episode', () => {
@@ -109,5 +116,97 @@ describe('fetchAudioTrack', () => {
     }) as unknown as typeof fetch
 
     expect(await fetchAudioTrack({ videoId: 'ep335910', cid: 678, fetchImpl })).toBeNull()
+  })
+})
+
+describe('fetchAudioBytes', () => {
+  test('hands back the bytes the CDN served', async () => {
+    const fetchImpl = vi.fn(async () => new Response('audio')) as unknown as typeof fetch
+
+    const result = await fetchAudioBytes('https://cdn/lo', { fetchImpl })
+    expect('bytes' in result && new TextDecoder().decode(result.bytes)).toBe('audio')
+  })
+
+  /**
+   * The failure this whole arrangement exists to avoid, so it is worth naming.
+   * Bilibili's CDN answers 403 to a request without a bilibili referrer, which
+   * is every request an extension page can make.
+   */
+  test('reports the status when the CDN refuses', async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response('', { status: 403 }),
+    ) as unknown as typeof fetch
+
+    expect(await fetchAudioBytes('https://cdn/lo', { fetchImpl })).toEqual({
+      error: 'Could not fetch the audio: 403',
+    })
+  })
+
+  test('refuses a URL that is not https rather than fetching it', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch
+
+    const result = await fetchAudioBytes('http://cdn/lo', { fetchImpl })
+    expect(result).toEqual({ error: 'The audio is not served over https.' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  test('reports a network failure rather than throwing at the caller', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof fetch
+
+    expect(await fetchAudioBytes('https://cdn/lo', { fetchImpl })).toEqual({
+      error: 'Could not fetch the audio: Failed to fetch',
+    })
+  })
+})
+
+describe('resolveAudioSource', () => {
+  const playurl = (over: Record<string, unknown> = {}) =>
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 0,
+            result: {
+              dash: {
+                audio: [
+                  { baseUrl: 'https://cdn/hi', bandwidth: 148_000 },
+                  { baseUrl: 'https://cdn/lo', bandwidth: 66_000 },
+                ],
+              },
+              timelength: 3_000_000,
+              ...over,
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch
+
+  test('names the cheapest stream, its runtime, and who may fetch it', async () => {
+    expect(
+      await resolveAudioSource({ videoId: 'ep335910', cid: 678, fetchImpl: playurl() }),
+    ).toEqual({
+      url: 'https://cdn/lo',
+      durationSeconds: 3000,
+      via: 'page',
+    })
+  })
+
+  test('always answers `page`, because the CDN checks the referrer', async () => {
+    // Not a preference and not a fallback: an extension page cannot send a
+    // bilibili referrer at all, so these bytes have exactly one route in.
+    const source = await resolveAudioSource({
+      videoId: 'BV1bVuo6AESP',
+      cid: 1,
+      fetchImpl: playurl(),
+    })
+    expect(source?.via).toBe('page')
+  })
+
+  test('is null when there is no stream to name', async () => {
+    // A legacy muxed video, a region lock, an episode that will not play — the
+    // caller does the same thing for all of them, so they answer alike.
+    const fetchImpl = playurl({ dash: { audio: [] } })
+    expect(await resolveAudioSource({ videoId: 'ep335910', cid: 678, fetchImpl })).toBeNull()
   })
 })

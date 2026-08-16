@@ -1,4 +1,4 @@
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /** Binary search for the cue active at `time`. Cues must be sorted by start. -1 if none active. */
 export function findActiveCueIndex(cues: Cue[], time: number): number {

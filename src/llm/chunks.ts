@@ -16,7 +16,7 @@
 // rather than a guess about whether two transcriptions of the same second are
 // the same sentence.
 
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /** Seconds of track each chunk is responsible for. */
 export const CHUNK_SPAN_S = 300

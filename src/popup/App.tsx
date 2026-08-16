@@ -36,13 +36,13 @@ import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 
-type TabStatus = Status | 'not-bilibili'
+type TabStatus = Status | 'no-video'
 
 const STATUS_LABEL: Record<TabStatus, string> = {
   loading: 'Loading subtitles…',
   'no-track': 'No subtitle track on this video.',
   active: 'Active on this video.',
-  'not-bilibili': 'Open a Bilibili video for subtitles.',
+  'no-video': 'Open a Bilibili or YouTube video for subtitles.',
 }
 
 async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -51,14 +51,14 @@ async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
 }
 
 async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
-  if (!tabId) return 'not-bilibili'
+  if (!tabId) return 'no-video'
   try {
     const response = (await chrome.tabs.sendMessage(tabId, {
       type: 'bb-subsgen:get-status',
     })) as StatusResponse | undefined
-    return response?.status ?? 'not-bilibili'
+    return response?.status ?? 'no-video'
   } catch {
-    return 'not-bilibili' // no content script on this tab
+    return 'no-video' // no content script on this tab
   }
 }
 

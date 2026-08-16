@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { findActiveCueIndex, watchPlayback } from './sync'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 const cues: Cue[] = [
   { start: 1, end: 3, text: 'a' },

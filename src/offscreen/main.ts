@@ -1,4 +1,4 @@
-// The offscreen document: fetch the audio, decode it, transcribe it in chunks.
+// The offscreen document: decode the audio and transcribe it in chunks.
 //
 // It exists because of two platform limits that between them rule out every
 // other place this could run:
@@ -11,9 +11,22 @@
 //
 // An offscreen document is the one context that is both a DOM and the extension
 // origin, so it can do both halves.
+//
+// The download may go either way, and the request says which. Bilibili's CDN
+// wants a bilibili referrer, which is the one thing an extension page cannot
+// send, so those bytes come via the content script — see `askPageForAudio`. A
+// localhost helper is the opposite: reachable from here, and blocked outright
+// for a public page. Being the extension origin is what makes localhost
+// reachable and the CDN unreachable; `AudioSource.via` names which side of that
+// line a given track falls on.
+//
+// What this file deliberately does not know is *which site* it is transcribing.
+// It used to: it called Bilibili's playurl API itself, which is why a `cid` had
+// to be threaded through the content script, the worker and the protocol to
+// reach it. The audio is now located by whoever knows the site and arrives here
+// already resolved.
 
-import { fetchAudioTrack } from '../bilibili/audio'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 import { transcribeWithRetry } from '../llm/asr'
 import {
   chunkFor,
@@ -25,9 +38,11 @@ import {
   type Chunk,
 } from '../llm/chunks'
 import { log } from '../llm/log'
-import { ASR_SAMPLE_RATE, downmixToMono, encodeWav, sliceSeconds } from '../llm/wav'
+import { ASR_SAMPLE_RATE, decodeWav, downmixToMono, encodeWav, sliceSeconds } from '../llm/wav'
+import { collectAudio } from './audio-transfer'
 import {
   isOffscreenRequest,
+  type AudioSupply,
   type OffscreenEvent,
   type TranscribeDone,
   type TranscribeRequest,
@@ -67,6 +82,126 @@ function send(event: OffscreenEvent): void {
 async function decodeToMono(bytes: ArrayBuffer): Promise<Float32Array> {
   const context = new OfflineAudioContext(1, 1, ASR_SAMPLE_RATE)
   return downmixToMono(await context.decodeAudioData(bytes))
+}
+
+/**
+ * The samples, however they arrived.
+ *
+ * Audio from the local helper is already mono PCM at the ASR rate — ffmpeg did
+ * the resampling — so it is read straight out of its container and the Web Audio
+ * decode is skipped entirely. That is the difference between one flat copy and
+ * the memory peak described above.
+ *
+ * Chosen by looking at the bytes rather than by a flag on the request. The two
+ * cases are not ambiguous: a WAV says `RIFF`/`WAVE` in its first twelve bytes,
+ * and no site serves its media as uncompressed PCM. Sniffing also means a helper
+ * that starts emitting something else keeps working instead of producing
+ * silence, which a declared format would not.
+ *
+ * The rate and channel count are checked, not assumed. A WAV at some other rate
+ * would decode perfectly and then be *chunked* wrongly — `sliceSeconds` counts in
+ * samples at `ASR_SAMPLE_RATE` — so anything unexpected goes the long way round,
+ * where the audio context resamples it properly.
+ */
+async function samplesFrom(bytes: ArrayBuffer): Promise<Float32Array> {
+  const wav = decodeWav(bytes)
+  if (wav && wav.sampleRate === ASR_SAMPLE_RATE && wav.channels === 1) return wav.samples
+  if (wav) {
+    console.warn(
+      `[bb-subsgen] wav is ${wav.sampleRate}Hz/${wav.channels}ch, not ${ASR_SAMPLE_RATE}Hz mono` +
+        ' — resampling it the long way',
+    )
+  }
+  return decodeToMono(bytes)
+}
+
+/**
+ * Whoever is waiting on the page to hand over an audio download.
+ *
+ * Module scope because the answer arrives as its own message rather than as a
+ * reply, and so lands in the listener at the bottom of this file rather than
+ * anywhere the run can see. At most one, for the same reason there is at most
+ * one `running`.
+ */
+let awaitingAudio: ((supply: AudioSupply) => void) | null = null
+
+/**
+ * Asks the content script to download a stream, because it is allowed to and
+ * this document is not. See `fetchAudioBytes` for what the CDN is checking.
+ *
+ * Resolves rather than rejects on failure: the page reports why it could not,
+ * and that sentence is what the overlay should show. A cancelled run rejects,
+ * which is the existing path for an abort part way through.
+ */
+function askPageForAudio(
+  videoId: string,
+  url: string,
+  signal: AbortSignal,
+): Promise<{ bytes?: ArrayBuffer; error?: string }> {
+  return new Promise((resolve, reject) => {
+    const collector = collectAudio()
+
+    const settle = (supply: AudioSupply) => {
+      // A run that has been superseded may still have slices in flight, and they
+      // are audio nobody is transcribing any more.
+      if (supply.videoId !== videoId) return
+      if (supply.error || supply.data === undefined) {
+        awaitingAudio = null
+        resolve({ error: supply.error ?? 'Could not fetch the audio.' })
+        return
+      }
+
+      const whole = collector.add({
+        data: supply.data,
+        index: supply.index ?? 0,
+        total: supply.total ?? 1,
+      })
+      // Null while slices are still outstanding; the next one resolves this.
+      if (!whole) return
+      awaitingAudio = null
+      resolve({ bytes: whole })
+    }
+    awaitingAudio = settle
+
+    signal.addEventListener(
+      'abort',
+      () => {
+        if (awaitingAudio === settle) awaitingAudio = null
+        reject(new DOMException('Cancelled', 'AbortError'))
+      },
+      { once: true },
+    )
+
+    send({ type: 'bb-subsgen:offscreen-need-audio', videoId, url })
+  })
+}
+
+/**
+ * Downloads audio this document is allowed to fetch itself.
+ *
+ * The localhost half of the split described at the top of this file. Resolves
+ * rather than rejects on failure for the same reason `askPageForAudio` does:
+ * the sentence explaining what went wrong is what the overlay should show, and
+ * a helper that is not running is the most likely thing to have gone wrong.
+ */
+async function fetchAudioDirectly(
+  url: string,
+  signal: AbortSignal,
+): Promise<{ bytes?: ArrayBuffer; error?: string }> {
+  try {
+    const resp = await fetch(url, { signal })
+    if (!resp.ok) {
+      // The helper answers a failed download with the reason in the body — a
+      // dead video, a geo-block, a yt-dlp too old for what the site is serving
+      // now. That sentence is worth far more than the status code.
+      const detail = (await resp.text().catch(() => '')).trim().slice(0, 200)
+      return { error: `Could not fetch the audio: ${resp.status}${detail ? ` — ${detail}` : ''}` }
+    }
+    return { bytes: await resp.arrayBuffer() }
+  } catch (e) {
+    if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
+    return { error: `Could not reach the audio helper: ${e instanceof Error ? e.message : String(e)}` }
+  }
 }
 
 async function run(request: TranscribeRequest): Promise<void> {
@@ -112,10 +247,7 @@ async function run(request: TranscribeRequest): Promise<void> {
   let report = () => done([], { error: lastError })
 
   try {
-    note('info', `Asking Bilibili for the audio of ${videoId} (cid ${request.cid})`)
-
-    const track = await fetchAudioTrack({ videoId, cid: request.cid, signal })
-    if (!track) return done([], { error: 'No audio stream for this video.' })
+    const { audio } = request
 
     // A run handed `only` is picking up the stretches a previous one could not
     // fill, and takes them as given rather than re-planning: the plan depends on
@@ -123,8 +255,8 @@ async function run(request: TranscribeRequest): Promise<void> {
     // differently and the same gap would name different audio.
     const seeded = request.seed ?? []
     const chunks = request.only?.length
-      ? request.only.map((span, index) => chunkFor(span, index, track.duration))
-      : planChunks(track.duration, { playhead })
+      ? request.only.map((span, index) => chunkFor(span, index, audio.durationSeconds))
+      : planChunks(audio.durationSeconds, { playhead })
     if (!chunks.length) return done([], { error: 'This video reports no duration.' })
 
     note(
@@ -132,9 +264,9 @@ async function run(request: TranscribeRequest): Promise<void> {
       seeded.length
         ? `Resuming ${videoId}: ${seeded.length} lines already in hand, ` +
             `${chunks.length} stretch${chunks.length === 1 ? '' : 'es'} to redo`
-        : `Transcribing ${Math.round(track.duration)}s of audio in ${chunks.length} chunks ` +
-            `at ${Math.round(track.stream.bandwidth / 1000)}kbps`,
-      new URL(track.stream.url).host,
+        : `Transcribing ${Math.round(audio.durationSeconds)}s of audio in ` +
+            `${chunks.length} chunks`,
+      new URL(audio.url).host,
     )
 
     // Reported the moment the plan exists, not when the first chunk lands. The
@@ -147,18 +279,22 @@ async function run(request: TranscribeRequest): Promise<void> {
       done: 0,
       total: chunks.length,
       cues: seeded,
-      covered: coverageExcept(chunks, track.duration),
+      covered: coverageExcept(chunks, audio.durationSeconds),
     })
 
-    const response = await fetch(track.stream.url, { credentials: 'omit', signal })
-    if (!response.ok) {
-      return done([], { error: `Could not fetch the audio: ${response.status}` })
+    note('info', `Fetching the audio ${audio.via === 'page' ? 'through the page' : 'directly'}`)
+    const supply =
+      audio.via === 'page'
+        ? await askPageForAudio(videoId, audio.url, signal)
+        : await fetchAudioDirectly(audio.url, signal)
+    if (!supply.bytes) {
+      return done([], { error: supply.error ?? 'Could not fetch the audio.' })
     }
 
-    const bytes = await response.arrayBuffer()
+    const bytes = supply.bytes
     note('info', `Decoding ${(bytes.byteLength / 1e6).toFixed(1)}MB of audio`)
 
-    const samples = await decodeToMono(bytes)
+    const samples = await samplesFrom(bytes)
     note('info', `Decoded ${Math.round(samples.length / ASR_SAMPLE_RATE)}s at ${ASR_SAMPLE_RATE}Hz`)
 
     // Keyed by chunk so the merge stays correct however the chunks are ordered.
@@ -205,11 +341,11 @@ async function run(request: TranscribeRequest): Promise<void> {
       if (signal.aborted) return
       todo.delete(chunk)
 
-      const audio = encodeWav(sliceSeconds(samples, chunk.audioStart, chunk.audioEnd))
+      const wav = encodeWav(sliceSeconds(samples, chunk.audioStart, chunk.audioEnd))
       const heard = await transcribeWithRetry({
         baseUrl: request.baseUrl,
         model: request.model,
-        audio,
+        audio: wav,
         // Timings come back relative to the chunk; this puts them back on the track.
         offset: chunk.audioStart,
         label: `${Math.round(chunk.start)}s–${Math.round(chunk.end)}s`,
@@ -234,7 +370,7 @@ async function run(request: TranscribeRequest): Promise<void> {
         cues: cuesSoFar(),
         // From what is unfinished rather than from what is done, so the stretch
         // a failed chunk owns goes on reporting itself as missing.
-        covered: coverageExcept(unfinished, track.duration),
+        covered: coverageExcept(unfinished, audio.durationSeconds),
       })
     }
 
@@ -262,6 +398,10 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg.type === 'bb-subsgen:offscreen-playhead') {
     playhead = msg.seconds
+    return
+  }
+  if (msg.type === 'bb-subsgen:offscreen-audio') {
+    awaitingAudio?.(msg)
     return
   }
   playhead = msg.playhead

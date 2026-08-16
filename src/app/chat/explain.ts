@@ -10,8 +10,10 @@
 // pressed and nothing at all until then, and it means this works on every word
 // collected before any of this existed.
 
+import { readAnyTranscript } from '../../background/transcript-cache'
 import { resolveVideo } from '../../bilibili/resolve'
-import { fetchSubtitles, type Cue } from '../../bilibili/subtitles'
+import { fetchSubtitles } from '../../bilibili/subtitles'
+import type { Cue } from '../../media/cue'
 import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
 import { hanWords } from '../../flashcards/capture'
@@ -40,6 +42,15 @@ export function trackFor(videoId: string): Promise<Cue[]> {
   if (existing) return existing
 
   const fetching = (async () => {
+    // A transcript first, because for a transcribed video it is the *only* copy
+    // of the lines — there is no published track to go back to, and asking for
+    // one returns nothing. That was already true of a bangumi episode and is
+    // true of every YouTube video, where transcription is the primary path
+    // rather than the fallback. Without this, Explain on a word collected from
+    // one of those rebuilds its passage from an empty track.
+    const transcribed = await readAnyTranscript(videoId)
+    if (transcribed.length) return transcribed
+
     const info = await resolveVideo(videoId)
     if (!info) return []
     return (await fetchSubtitles({ aid: info.aid, cid: info.cid, videoId: info.videoId })) ?? []

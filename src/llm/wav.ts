@@ -58,6 +58,82 @@ export function encodeWav(samples: Float32Array, sampleRate = ASR_SAMPLE_RATE): 
   return new Blob([buffer], { type: 'audio/wav' })
 }
 
+/** A decoded WAV: the samples, and the rate they were recorded at. */
+export interface DecodedWav {
+  samples: Float32Array
+  sampleRate: number
+  channels: number
+}
+
+const ascii = (view: DataView, at: number) =>
+  String.fromCharCode(view.getUint8(at), view.getUint8(at + 1), view.getUint8(at + 2), view.getUint8(at + 3))
+
+/**
+ * Reads 16-bit PCM out of a WAV container, or null if it isn't one.
+ *
+ * The counterpart to `encodeWav`, and it exists so that audio arriving already
+ * at the ASR rate — from the local helper, which has ffmpeg do the resampling —
+ * skips `decodeAudioData` entirely. That matters for more than tidiness: the
+ * `OfflineAudioContext` path holds the source's own channels and rate briefly
+ * before the downmix, which `offscreen/main.ts` documents as peaking in the high
+ * hundreds of megabytes on a long episode. This path is one flat copy.
+ *
+ * Two things here are written against a real streamed file rather than against
+ * the spec, and both would break a textbook parser:
+ *
+ *   - **The chunks are walked, not assumed.** The canonical layout puts `data`
+ *     at byte 44. ffmpeg writes a `LIST`/`INFO` chunk naming itself first, which
+ *     on a measured file put the audio at byte 78.
+ *   - **The declared sizes are ignored.** Writing WAV to a pipe means ffmpeg
+ *     cannot seek back to fill in the lengths, so it leaves `0xFFFFFFFF` in both
+ *     the RIFF size and the `data` size. Trusting either yields a wildly wrong
+ *     length; what is actually there is the rest of the buffer.
+ */
+export function decodeWav(bytes: ArrayBuffer): DecodedWav | null {
+  if (bytes.byteLength < 44) return null
+  const view = new DataView(bytes)
+  if (ascii(view, 0) !== 'RIFF' || ascii(view, 8) !== 'WAVE') return null
+
+  let format = 0
+  let channels = 0
+  let sampleRate = 0
+  let bitsPerSample = 0
+
+  let at = 12
+  while (at + 8 <= bytes.byteLength) {
+    const id = ascii(view, at)
+    const declared = view.getUint32(at + 4, true)
+    const body = at + 8
+
+    if (id === 'fmt ' && body + 16 <= bytes.byteLength) {
+      format = view.getUint16(body, true)
+      channels = view.getUint16(body + 2, true)
+      sampleRate = view.getUint32(body + 4, true)
+      bitsPerSample = view.getUint16(body + 14, true)
+    } else if (id === 'data') {
+      // Whatever is left, for the streaming reason above.
+      const available = bytes.byteLength - body
+      const length = declared === 0xffffffff || declared > available ? available : declared
+      if (format !== 1 || bitsPerSample !== 16 || channels < 1) return null
+
+      const count = Math.floor(length / 2)
+      const samples = new Float32Array(count)
+      for (let i = 0; i < count; i++) {
+        const sample = view.getInt16(body + i * 2, true)
+        samples[i] = sample < 0 ? sample / 0x8000 : sample / 0x7fff
+      }
+      return { samples, sampleRate, channels }
+    }
+
+    // Chunks are word-aligned: an odd size is followed by a pad byte.
+    at = body + declared + (declared % 2)
+    // A declared size that overflows the buffer means the header is lying or
+    // truncated; walking past the end would loop forever on the arithmetic.
+    if (declared === 0xffffffff || at <= body) return null
+  }
+  return null
+}
+
 /**
  * The shape of an `AudioBuffer`, as much of it as downmixing needs.
  *

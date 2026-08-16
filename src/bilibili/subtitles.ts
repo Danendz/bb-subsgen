@@ -1,3 +1,4 @@
+import type { Cue } from '../media/cue'
 import { isEpisodeId } from './resolve'
 
 export interface SubtitleTrack {
@@ -6,6 +7,14 @@ export interface SubtitleTrack {
   subtitle_url: string
 }
 
+/**
+ * A cue as Bilibili's subtitle files spell it.
+ *
+ * Two variants because the endpoints disagree, and both are in the wild. Kept
+ * here rather than beside `Cue` because it is Bilibili's wire shape and nobody
+ * else's — YouTube's json3 answers in `tStartMs`/`segs[].utf8`, which shares not
+ * one field name with this.
+ */
 export interface RawCue {
   from?: number
   to?: number
@@ -13,12 +22,6 @@ export interface RawCue {
   end_time?: number
   content?: string
   text?: string
-}
-
-export interface Cue {
-  start: number
-  end: number
-  text: string
 }
 
 function scoreTrack(track: SubtitleTrack): number {
@@ -54,38 +57,6 @@ export function normalizeCue(raw: RawCue): Cue | null {
   const text = raw.content ?? raw.text ?? ''
   if (!(end > start) || text.length === 0) return null
   return { start, end, text }
-}
-
-/**
- * The floor a real track clears easily and an advert cannot.
- *
- * Continuous Mandarin speech runs somewhere around 10-25 subtitle lines a
- * minute, so one line a minute is an order of magnitude below anything genuine
- * — the threshold is deliberately nowhere near the boundary, because being
- * wrong in the strict direction throws away a publisher's own text.
- */
-export const MIN_CUES_PER_MINUTE = 1
-
-/**
- * Whether a track is a transcript of the video, or an advert wearing one.
- *
- * Bilibili serves some bangumi episodes a "subtitle track" holding a single cue
- * of promotional text — `↓↓敲重点↓↓…保存头像用微信扫呀` on ep335910, a fifty-minute
- * documentary. It is a valid track by every structural test: right language,
- * real URL, well-formed timings. Only its density gives it away.
- *
- * This matters beyond the eyesore. That one cue is enough to make the video look
- * captioned, which suppresses transcription entirely — so the episode is not
- * merely showing the wrong line, it is showing the wrong line *instead of* the
- * ones ASR would have produced.
- *
- * Unknown duration answers true. Not knowing how long the video is, is not
- * evidence against the track.
- */
-export function looksLikeTranscript(cues: Cue[], durationSeconds: number): boolean {
-  if (cues.length === 0) return false
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return true
-  return cues.length >= (durationSeconds / 60) * MIN_CUES_PER_MINUTE
 }
 
 export interface SubtitleFetchParams {

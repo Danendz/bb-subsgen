@@ -1,9 +1,13 @@
-// Keeps the subtitle card clear of Bilibili's auto-hiding control bar.
+// Keeps the subtitle card clear of the player's auto-hiding control bar.
 //
-// The trigger is Bilibili's own `data-ctrl-hidden` attribute rather than our
-// own hover tracking: it already accounts for the idle auto-hide, for the bar
-// staying up while a settings menu is open, and for fullscreen — none of which
-// a hand-rolled pointer timer gets right.
+// The trigger is the player's own signal that its bar is up — Bilibili's
+// `data-ctrl-hidden` attribute, YouTube's `ytp-autohide` class — rather than our
+// own hover tracking: each already accounts for the idle auto-hide, for the bar
+// staying up while a settings menu is open, and for fullscreen, none of which a
+// hand-rolled pointer timer gets right. Which signal to read is `PlayerChrome`'s
+// business; this module only asks.
+
+import type { PlayerChrome } from './chrome'
 
 /** Just the parts of a DOMRect this module needs, so tests can pass plain objects. */
 export interface RectLike {
@@ -11,24 +15,8 @@ export interface RectLike {
   bottom: number
 }
 
-/** The element carrying the timeline scrubber. `.bpx-player-control-bottom` is
- *  the button row alone and sits ~20px lower, which would leave the card
- *  overlapping the scrubber it is supposed to clear. */
-const CONTROL_SELECTOR = '.bpx-player-control-wrap'
-
 /** Breathing room between the card and the top of the control bar. */
 const GAP = 8
-
-/**
- * Whether the control bar is currently showing.
- *
- * A missing attribute means we're on a player we don't recognize, so we resolve
- * to "don't lift" — degrading to the previous behavior rather than stranding
- * the card mid-screen.
- */
-export function shouldLift(ctrlHidden: string | undefined): boolean {
-  return ctrlHidden === 'false'
-}
 
 /**
  * How far above the container's bottom edge the card must sit to clear the bar.
@@ -151,14 +139,8 @@ export function createGeometryGate({
   }
 }
 
-/** Bilibili's own hover surface. Its `mousemove` handler is what shows the
- *  control bar — `mouseover` and `mouseenter` on it do nothing, and neither
- *  does `mousemove` on the container above it (all verified against the live
- *  player), so this is the one event worth forwarding. */
-const VIDEO_AREA_SELECTOR = '.bpx-player-video-area'
-
-/** Bilibili resets its own idle timer on every move; matching it move-for-move
- *  is wasted work. */
+/** The player resets its own idle timer on every move; matching it
+ *  move-for-move is wasted work. */
 const FORWARD_INTERVAL_MS = 100
 
 /**
@@ -174,6 +156,7 @@ const FORWARD_INTERVAL_MS = 100
 export function forwardHoverToPlayer(
   container: HTMLElement,
   overlayHost: EventTarget,
+  chrome: PlayerChrome,
 ): () => void {
   let lastForwardedAt = 0
 
@@ -183,7 +166,8 @@ export function forwardHoverToPlayer(
     if (move.timeStamp - lastForwardedAt < FORWARD_INTERVAL_MS) return
     lastForwardedAt = move.timeStamp
 
-    const area = container.querySelector(VIDEO_AREA_SELECTOR) ?? container.querySelector('video')
+    const area =
+      container.querySelector(chrome.videoAreaSelector) ?? container.querySelector('video')
     // Dispatched outside our shadow host, so this cannot re-enter this handler.
     area?.dispatchEvent(
       new MouseEvent('mousemove', {
@@ -211,6 +195,7 @@ export function watchControls(
   container: HTMLElement,
   video: HTMLElement,
   overlayHost: EventTarget,
+  chrome: PlayerChrome,
   onChange: (geometry: PlayerGeometry) => void,
 ): () => void {
   const gate = createGeometryGate({
@@ -220,20 +205,20 @@ export function watchControls(
       const containerRect = container.getBoundingClientRect()
       const floor = floorFor(containerRect, video.getBoundingClientRect())
 
-      if (!shouldLift(container.dataset.ctrlHidden)) return { floor, lift: 0 }
-      const bar = container.querySelector(CONTROL_SELECTOR)
+      if (!chrome.controlsShowing(container)) return { floor, lift: 0 }
+      const bar = container.querySelector(chrome.controlBarSelector)
       if (!bar) return { floor, lift: 0 }
       return { floor, lift: liftFor(containerRect, bar.getBoundingClientRect(), GAP) }
     },
   })
 
-  // `data-screen` matters as much as `data-ctrl-hidden`: entering fullscreen
-  // changes the container height and drops the danmaku bar, so the overlap
-  // has to be recomputed even though the controls never toggled.
+  // More than the controls-toggle signal: entering fullscreen changes the
+  // container height and drops the danmaku bar, so the overlap has to be
+  // recomputed even though the controls never toggled. See `geometryAttributes`.
   const attributes = new MutationObserver(gate.update)
   attributes.observe(container, {
     attributes: true,
-    attributeFilter: ['data-ctrl-hidden', 'data-screen'],
+    attributeFilter: chrome.geometryAttributes,
   })
 
   const resize = new ResizeObserver(gate.update)

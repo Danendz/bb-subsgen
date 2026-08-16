@@ -102,7 +102,7 @@ function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
       if (tabId === undefined) return
       void startTranscription(tabId, {
         videoId: msg.videoId,
-        cid: msg.cid,
+        audio: msg.audio,
         model: msg.model,
         baseUrl: msg.baseUrl,
         playhead: msg.playhead,

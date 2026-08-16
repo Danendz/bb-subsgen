@@ -20,7 +20,7 @@
 
 import { connectionError, failureBody, normalizeBaseUrl, LlmError } from './client'
 import { newRequestId, noLog, type LlmLogger } from './types'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /** Ready-made base URLs for the two servers most likely to be installed. */
 export const ASR_PRESETS: ReadonlyArray<{ label: string; baseUrl: string }> = [

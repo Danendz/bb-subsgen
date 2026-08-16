@@ -1,3 +1,27 @@
+import type { SubtitleTrack } from './subtitles'
+
+// Bilibili's own page state, so these are Bilibili's field names — `bvid` here
+// is theirs and stays spelled that way. Absent entirely on bangumi.
+//
+// Read from a content script, which is an isolated world: the page's globals are
+// not ours, so in practice this is `undefined` wherever we look at it. Every
+// read of it is a fallback behind a real API call for exactly that reason.
+interface InitialState {
+  videoData?: {
+    aid?: number
+    cid?: number
+    bvid?: string
+    pages?: Array<{ cid: number }>
+    subtitle?: { list?: SubtitleTrack[] }
+  }
+}
+
+declare global {
+  interface Window {
+    __INITIAL_STATE__?: InitialState
+  }
+}
+
 /**
  * What identifies a video to this extension: `BV1xx411c7mD`, or `ep335910` for
  * a bangumi episode.
@@ -184,8 +208,11 @@ export function episodesOf(result: SeasonResult): SeasonEpisode[] {
  * Season URLs resolve to nothing on purpose. `ss…` names a series, and which
  * episode it opens depends on how far you had got; guessing would file captures
  * and cache a transcript under the wrong episode, which is worse than waiting.
- * Bilibili rewrites the URL to the episode shortly after load, and
- * `watchVideoChange` picks that up like any other change.
+ * Bilibili settles the URL on an episode itself, and `watchVideoChange` picks
+ * that up like any other change. Not quickly, though: measured on `ss20117` it
+ * took upwards of twenty seconds, and it arrived as a full reload rather than a
+ * history call, so the wait is a stretch of dead overlay and a warning in the
+ * log that reads worse than it is.
  */
 export async function fetchEpisodeInfo(videoId: VideoId): Promise<ResolvedVideo | null> {
   if (!videoId.startsWith('ep')) {
@@ -246,44 +273,4 @@ export interface ResolveCidOptions {
 
 export function resolveCid(opts: ResolveCidOptions): number {
   return opts.initialStateCid ?? opts.pages?.[opts.pageParam - 1]?.cid ?? opts.fallbackCid
-}
-
-/**
- * Bilibili is an SPA and does not reload between videos. Calls `onChange`
- * whenever the video in the URL changes, so the caller can tear down and
- * rebuild the overlay for the new one.
- *
- * Null is a change like any other. Leaving a video for the homepage used to be
- * silent, on the reasoning that there was no new video to build — but the
- * teardown half of the callback still had to run, and skipping it left the
- * local model translating a video that was no longer on screen.
- */
-export function watchVideoChange(onChange: (videoId: VideoId | null) => void): () => void {
-  let current = parseVideoIdFromUrl(location.href)
-
-  const check = () => {
-    const videoId = parseVideoIdFromUrl(location.href)
-    if (videoId !== current) {
-      current = videoId
-      onChange(videoId)
-    }
-  }
-
-  const originalPushState = history.pushState
-  const originalReplaceState = history.replaceState
-  history.pushState = function (...args) {
-    originalPushState.apply(history, args)
-    check()
-  }
-  history.replaceState = function (...args) {
-    originalReplaceState.apply(history, args)
-    check()
-  }
-  window.addEventListener('popstate', check)
-
-  return () => {
-    history.pushState = originalPushState
-    history.replaceState = originalReplaceState
-    window.removeEventListener('popstate', check)
-  }
 }

@@ -19,6 +19,7 @@ import { findPatterns, type PatternMatch } from '../../lang/grammar/match'
 import type { Pattern } from '../../lang/grammar/patterns'
 import { parseDefinitions } from '../../lang/definitions'
 import { isEpisodeId } from '../../bilibili/resolve'
+import { bareId, isYoutubeId } from '../../youtube/site'
 import { rankEntries } from '../../lang/entries'
 import type { Lexicon } from '../../lang/dict'
 import { lookupDefs } from '../../shared/dict-client'
@@ -66,8 +67,17 @@ function contextUrl(context: Context): string | null {
   }
 }
 
-/** The fallback for rows captured before the URL was stored alongside them. */
+/**
+ * The fallback for rows captured before the URL was stored alongside them.
+ *
+ * Those rows are all Bilibili's — they predate every other site — but the check
+ * is explicit anyway, because `isEpisodeId` asks whether an id starts with `ep`
+ * and `ep1234ABCDE` is a perfectly legal YouTube id. The `yt:` prefix is what
+ * keeps the two apart; this is where forgetting it would send you to a bangumi
+ * page that does not exist.
+ */
 function watchUrlFor(videoId: string): string {
+  if (isYoutubeId(videoId)) return `https://www.youtube.com/watch?v=${bareId(videoId)}`
   return isEpisodeId(videoId)
     ? `https://www.bilibili.com/bangumi/play/${videoId}`
     : `https://www.bilibili.com/video/${videoId}/`

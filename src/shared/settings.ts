@@ -163,6 +163,19 @@ export interface Settings {
   asrBaseUrl: string
   /** Model for transcription — `large-v3-turbo` unless you have swapped it. */
   asrModel: string
+  /**
+   * Where the audio helper is, as a base URL.
+   *
+   * Only YouTube needs it, and it needs it absolutely. YouTube serves media over
+   * SABR — a protobuf POST rather than a fetchable URL — so unlike Bilibili
+   * there is no address the extension can request the audio from. `yt-dlp` knows
+   * how, and a Chrome extension cannot run a binary, so a small local server
+   * stands between them. See `tools/ytdlp-server.ts`.
+   *
+   * Empty means YouTube transcription is off, which is the right default: it
+   * needs something installed, like every other setting in this group.
+   */
+  ytdlpBaseUrl: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -214,6 +227,7 @@ export const DEFAULT_SETTINGS: Settings = {
   asrEnabled: false,
   asrBaseUrl: '',
   asrModel: '',
+  ytdlpBaseUrl: '',
 }
 
 /** Bounds for `studySessionSize`, shared by the picker and the queue. */

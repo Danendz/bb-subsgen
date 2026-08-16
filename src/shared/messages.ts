@@ -1,4 +1,5 @@
-import type { Cue } from '../bilibili/subtitles'
+import type { AudioSource } from '../media/audio-source'
+import type { Cue } from '../media/cue'
 import type { CedictEntry } from '../lang/dict'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { VideoPreamble } from '../llm/batch'
@@ -213,7 +214,15 @@ export type AsrMessage =
   | {
       type: 'bb-subsgen:asr-transcribe'
       videoId: string
-      cid: number
+      /**
+       * Where the audio is, resolved by the content script before asking.
+       *
+       * The sender is the only party that knows what site it is on, so it is the
+       * only one that can answer this. Sending the answer rather than the
+       * question is what keeps the worker and the offscreen document free of
+       * per-site API calls.
+       */
+      audio: AudioSource
       model: string
       baseUrl: string
       /** Seconds; decides which chunk is transcribed first. */

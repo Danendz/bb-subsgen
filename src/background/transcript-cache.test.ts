@@ -3,6 +3,7 @@ import { openLlmDb } from '../llm/db'
 import {
   clearTranscriptsIn,
   evictTranscriptsIn,
+  readAnyTranscriptIn,
   readTranscriptIn,
   transcriptSizeIn,
   writeTranscriptIn,
@@ -104,5 +105,40 @@ describe('eviction', () => {
     expect(await evictTranscriptsIn(db, 2)).toBe(1)
     expect(await readTranscriptIn(db, { ...KEY, videoId: 'ep1' })).toEqual([])
     expect(await readTranscriptIn(db, { ...KEY, videoId: 'ep3' })).toHaveLength(2)
+  })
+})
+
+describe('readAnyTranscriptIn', () => {
+  let db: IDBDatabase
+
+  beforeEach(async () => {
+    db = await openLlmDb(`transcripts-any-${Math.random()}`)
+  })
+
+  test('finds a transcript without being told which model made it', async () => {
+    // What Explain needs: it has a word collected months ago and no idea what
+    // was running at the time. Asking by model would answer "no transcript".
+    await writeTranscriptIn(db, KEY, [cue(0, '新疆很大。'), cue(4.5, '天山在这里。')])
+
+    expect(await readAnyTranscriptIn(db, KEY.videoId)).toEqual([
+      cue(0, '新疆很大。'),
+      cue(4.5, '天山在这里。'),
+    ])
+  })
+
+  test('serves one model’s transcript rather than a blend of two', async () => {
+    // Interleaving two transcriptions of the same audio would produce every line
+    // twice, at slightly different timings.
+    await writeTranscriptIn(db, KEY, [cue(0, 'older model')])
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    await writeTranscriptIn(db, { ...KEY, model: 'belle-whisper-zh' }, [cue(0, 'newer model')])
+
+    const cues = await readAnyTranscriptIn(db, KEY.videoId)
+    expect(cues).toHaveLength(1)
+    expect(cues[0].text).toBe('newer model')
+  })
+
+  test('is empty for a video nothing has transcribed', async () => {
+    expect(await readAnyTranscriptIn(db, 'yt:PC3DmhI-3tU')).toEqual([])
   })
 })

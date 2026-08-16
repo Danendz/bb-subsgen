@@ -23,6 +23,7 @@ import {
 import { isRemote, speak } from '../shared/speak'
 import { hasLlmPermission, requestLlmPermission } from '../shared/llm-permission'
 import { listModels, LlmError, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
+import { normalizeHelperUrl } from '../youtube/site'
 import { ASR_PRESETS } from '../llm/asr'
 import { log } from '../llm/log'
 import { Hint, ModelSelect, Section, Select, Slider, Toggle, useVoices } from './controls'
@@ -296,6 +297,46 @@ export function SpeechSection({ settings, update }: SectionProps) {
   const [models, setModels] = useState<string[]>([])
   const [draft, setDraft] = useState(settings.asrBaseUrl)
   const [status, setStatus] = useState<{ tone: string; message: string } | null>(null)
+  const [helperDraft, setHelperDraft] = useState(settings.ytdlpBaseUrl)
+  const [helperStatus, setHelperStatus] = useState<{ tone: string; message: string } | null>(null)
+
+  /**
+   * Asks the helper whether it is there.
+   *
+   * Its own probe rather than `listModels`: this is not an OpenAI-compatible
+   * server and has no model list — it has one endpoint that returns audio and a
+   * `/health` that says whether yt-dlp is reachable.
+   */
+  const connectHelper = async () => {
+    const baseUrl = normalizeHelperUrl(helperDraft)
+    if (!baseUrl) return
+
+    setHelperDraft(baseUrl)
+    update({ ytdlpBaseUrl: baseUrl })
+
+    if (!(await requestLlmPermission(baseUrl))) {
+      setHelperStatus({
+        tone: 'bad',
+        message: 'Chrome needs permission to reach that address before it can be used.',
+      })
+      return
+    }
+
+    setHelperStatus({ tone: 'busy', message: 'Connecting…' })
+    try {
+      const resp = await fetch(`${baseUrl}/health`)
+      setHelperStatus(
+        resp.ok
+          ? { tone: 'ok', message: 'Connected.' }
+          : { tone: 'bad', message: `The helper answered ${resp.status}.` },
+      )
+    } catch (e) {
+      setHelperStatus({
+        tone: 'bad',
+        message: `Could not reach it: ${e instanceof Error ? e.message : String(e)}`,
+      })
+    }
+  }
 
   const probe = async (baseUrl: string) => {
     setStatus({ tone: 'busy', message: 'Connecting…' })
@@ -422,6 +463,41 @@ export function SpeechSection({ settings, update }: SectionProps) {
           episodes can still be read. It runs once per episode and the result is cached, so a
           rewatch costs nothing. Start a server with <code>tools/asr-server.sh</code> in the
           extension's repository — it is a separate program from the chat model above.
+        </Hint>
+
+        {/* A second address, and unavoidably so. Bilibili hands out a plain URL
+            for a video's audio; YouTube does not hand out one at all, so on that
+            site the audio has to come from a local helper that knows how to ask.
+            Leaving this empty simply means YouTube is not transcribed. */}
+        <label class="row">
+          <span class="grow">YouTube audio helper</span>
+          <input
+            class="url"
+            type="text"
+            placeholder="localhost:8770"
+            value={helperDraft}
+            onInput={(e) => setHelperDraft(e.currentTarget.value)}
+            onBlur={() => {
+              const tidied = normalizeHelperUrl(helperDraft)
+              setHelperDraft(tidied)
+              if (tidied !== settings.ytdlpBaseUrl) update({ ytdlpBaseUrl: tidied })
+            }}
+          />
+        </label>
+
+        <button class="connect" onClick={() => void connectHelper()}>
+          Connect
+        </button>
+        {helperStatus && (
+          <p class={`status status-${helperStatus.tone}`}>{helperStatus.message}</p>
+        )}
+
+        <Hint>
+          Only needed for YouTube. It serves a video's audio to the extension, because YouTube
+          no longer publishes an address the browser can fetch one from. Run it with{' '}
+          <code>npm run ytdlp</code> in the extension's repository, or{' '}
+          <code>npm run services</code> to start it alongside the speech server above. Needs{' '}
+          <code>yt-dlp</code> and <code>ffmpeg</code> installed.
         </Hint>
       </div>
     </Section>

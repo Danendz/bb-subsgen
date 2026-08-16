@@ -7,7 +7,6 @@ import {
   resolveCid,
   resolveDuration,
   resolvePageNumber,
-  watchVideoChange,
 } from './resolve'
 
 describe('parseVideoIdFromUrl', () => {
@@ -115,69 +114,6 @@ describe('resolveCid', () => {
       fallbackCid: 999,
     })
     expect(cid).toBe(999)
-  })
-})
-
-describe('watchVideoChange', () => {
-  const go = (url: string) => history.pushState({}, '', url)
-
-  test('reports the new video on SPA navigation between videos', () => {
-    history.replaceState({}, '', '/video/BV1aaaaaaaaa')
-    const seen: Array<string | null> = []
-    const stop = watchVideoChange((videoId) => seen.push(videoId))
-
-    go('/video/BV1bbbbbbbbb')
-    stop()
-
-    expect(seen).toEqual(['BV1bbbbbbbbb'])
-  })
-
-  /**
-   * Leaving a video is a change too, and the one that matters most: the
-   * translation pass is cancelled from this callback, so a departure that does
-   * not fire leaves the model translating a video nobody is watching.
-   */
-  test('reports leaving a video for a page that has none', () => {
-    history.replaceState({}, '', '/video/BV1aaaaaaaaa')
-    const seen: Array<string | null> = []
-    const stop = watchVideoChange((videoId) => seen.push(videoId))
-
-    go('/')
-    stop()
-
-    expect(seen).toEqual([null])
-  })
-
-  test('does not report a URL change that stays on the same video', () => {
-    history.replaceState({}, '', '/video/BV1aaaaaaaaa')
-    const seen: Array<string | null> = []
-    const stop = watchVideoChange((videoId) => seen.push(videoId))
-
-    go('/video/BV1aaaaaaaaa?t=90')
-    stop()
-
-    expect(seen).toEqual([])
-  })
-
-  test('does not report twice for a page that never had a video', () => {
-    history.replaceState({}, '', '/')
-    const seen: Array<string | null> = []
-    const stop = watchVideoChange((videoId) => seen.push(videoId))
-
-    go('/search')
-    stop()
-
-    expect(seen).toEqual([])
-  })
-
-  test('stops listening once torn down', () => {
-    history.replaceState({}, '', '/video/BV1aaaaaaaaa')
-    const seen: Array<string | null> = []
-    watchVideoChange((videoId) => seen.push(videoId))()
-
-    go('/video/BV1ccccccccc')
-
-    expect(seen).toEqual([])
   })
 })
 

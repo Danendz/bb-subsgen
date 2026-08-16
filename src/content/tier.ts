@@ -4,17 +4,17 @@
 // local model runs behind it and is better, but a full track is tens of minutes
 // of generation. So both exist at once, and this decides what is on screen.
 //
-// Two rules, and the first matters more than it sounds.
+// One rule: the buffer gate. Prefer the model's output only once enough of the
+// track ahead of the playhead has it. Line-by-line preference would alternate
+// between two translators with different registers, which reads worse than
+// either one alone.
 //
-// Freeze-on-display: once a line has shown a translation, that translation is
-// what it shows for as long as it is up. Without this, a batch landing while
-// you are halfway through reading a line silently rewrites it under you — which
-// is a worse experience than never upgrading the line at all.
-//
-// The buffer gate: prefer the model's output only once enough of the track
-// ahead of the playhead has it. Line-by-line preference would alternate between
-// two translators with different registers, which reads worse than either one
-// alone.
+// There was a second — freeze-on-display, which held a line to whatever it
+// first showed so that a batch landing mid-read could not rewrite it. It is
+// gone. Kept honestly it would have meant "for as long as the line is up", but
+// what it actually did was pin every line watched before the gate opened to the
+// on-device translation for the whole session, seek back to it or not. The
+// upgrade being visible is worth more than the line holding still.
 
 /**
  * How many cues ahead must be translated before the model's output is used.

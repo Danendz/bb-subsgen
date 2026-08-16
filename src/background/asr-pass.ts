@@ -14,16 +14,20 @@ import { closeOffscreen, ensureOffscreen } from './offscreen'
 import { log } from '../llm/log'
 import {
   OFFSCREEN_TARGET,
+  isAudioNeeded,
   isTranscribeDone,
   isTranscribeProgress,
+  type AudioNeeded,
   type TranscribeDone,
 } from '../offscreen/protocol'
-import type { Cue } from '../bilibili/subtitles'
+import type { AudioSource } from '../media/audio-source'
+import type { Cue } from '../media/cue'
 import type { AsrCuesMessage } from '../shared/messages'
 
 export interface TranscribeStart {
   videoId: string
-  cid: number
+  /** Already located by the content script, which is the half that knows the site. */
+  audio: AudioSource
   model: string
   baseUrl: string
   playhead: number
@@ -33,8 +37,15 @@ interface ActiveRun {
   tabId: number
   videoId: string
   model: string
-  /** Kept so a retry can re-issue the request without the tab's help. */
-  cid: number
+  /**
+   * Kept so `retryTranscription` can re-issue without the tab's help.
+   *
+   * Which the popup's Retry button needs and the overlay's does not: the overlay
+   * re-resolves the audio and starts afresh, because a URL can carry a deadline
+   * and the page is right there to ask for a new one. The popup has no page, so
+   * it replays this — good enough, since a retry follows a failure by seconds.
+   */
+  audio: AudioSource
   baseUrl: string
   /** Chunks finished and chunks planned, for the popup to report. */
   done: number
@@ -193,7 +204,7 @@ export async function startTranscription(tabId: number, request: TranscribeStart
     tabId,
     videoId,
     model,
-    cid: request.cid,
+    audio: request.audio,
     baseUrl: request.baseUrl,
     done: 0,
     total: resume?.failed.length ?? 0,
@@ -234,6 +245,10 @@ export async function startTranscription(tabId: number, request: TranscribeStart
  * Nothing more than an ordinary start: `startTranscription` finds the same
  * leftovers and seeds from them, so there is one path in and not a second one
  * that has to be kept in step with it.
+ *
+ * For the popup, which has no page of its own to ask. The overlay's Retry does
+ * not come through here — it re-resolves the audio and calls the ordinary start,
+ * which is the same path with a fresher URL. See `ActiveRun.audio`.
  */
 export async function retryTranscription(tabId: number): Promise<void> {
   const last = await readLast()
@@ -241,7 +256,7 @@ export async function retryTranscription(tabId: number): Promise<void> {
 
   await startTranscription(tabId, {
     videoId: last.videoId,
-    cid: last.cid,
+    audio: last.audio,
     model: last.model,
     baseUrl: last.baseUrl,
     // Irrelevant on a resume: the stretches to do are given, not planned.
@@ -371,7 +386,26 @@ export function handleOffscreenEvent(msg: unknown): boolean {
     void routeDone(msg)
     return true
   }
+  if (isAudioNeeded(msg)) {
+    void routeAudioNeeded(msg)
+    return true
+  }
   return false
+}
+
+/**
+ * Points the offscreen document's request for audio at the tab that asked.
+ *
+ * The worker is in this exchange only because it is the one place that knows
+ * whose run is active — the same reason `reportAsrPlayhead` exists. The bytes
+ * come back the short way, straight from the content script to the offscreen
+ * document, and never pass through here.
+ */
+async function routeAudioNeeded(msg: AudioNeeded): Promise<void> {
+  const run = await readActive()
+  if (run?.videoId !== msg.videoId) return
+  // A tab that has gone leaves the run waiting, which the next cancel clears.
+  void chrome.tabs.sendMessage(run.tabId, msg).catch(() => {})
 }
 
 async function routeProgress(msg: {

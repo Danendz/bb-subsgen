@@ -19,7 +19,7 @@
 
 import { done, request } from '../shared/idb'
 import { llmDb, STORES } from '../llm/db'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /**
  * How many videos' transcripts are kept.
@@ -57,6 +57,32 @@ export async function readTranscriptIn(
 
   return rows
     .filter((row) => row.model === model)
+    .map((row) => ({ start: row.start, end: row.end, text: row.text }))
+    .sort((a, b) => a.start - b.start)
+}
+
+/**
+ * The cues cached for one video, whichever model produced them.
+ *
+ * For readers that want the *lines* rather than a particular model's opinion of
+ * them — rebuilding the passage around a word, say. Asking by model is right for
+ * the transcription run, which must not be handed another model's work as though
+ * it were its own; it is wrong here, where the caller has a word it collected
+ * months ago and no idea what was running at the time.
+ *
+ * Where two models have both transcribed a video, the most recently written one
+ * wins. Merging them would interleave two transcripts of the same audio.
+ */
+export async function readAnyTranscriptIn(db: IDBDatabase, videoId: string): Promise<Cue[]> {
+  const tx = db.transaction(STORES.transcripts, 'readonly')
+  const rows = (await request(
+    tx.objectStore(STORES.transcripts).index('by-video').getAll(videoId),
+  )) as CachedCue[]
+  if (!rows.length) return []
+
+  const newest = rows.reduce((best, row) => (row.at > best.at ? row : best))
+  return rows
+    .filter((row) => row.model === newest.model)
     .map((row) => ({ start: row.start, end: row.end, text: row.text }))
     .sort((a, b) => a.start - b.start)
 }
@@ -138,6 +164,10 @@ export async function transcriptSizeIn(
 
 export async function readTranscript(key: TranscriptKey): Promise<Cue[]> {
   return readTranscriptIn(await llmDb(), key)
+}
+
+export async function readAnyTranscript(videoId: string): Promise<Cue[]> {
+  return readAnyTranscriptIn(await llmDb(), videoId)
 }
 
 export async function writeTranscript(key: TranscriptKey, cues: Cue[]): Promise<void> {

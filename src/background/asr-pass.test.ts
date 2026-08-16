@@ -22,9 +22,15 @@ vi.mock('./transcript-cache', () => ({
 const TAB = 7
 const OTHER_TAB = 9
 
+const AUDIO = {
+  url: 'https://cdn/lo',
+  durationSeconds: 3000,
+  via: 'page',
+} as const
+
 const request = (over: Partial<Parameters<typeof startTranscription>[1]> = {}) => ({
   videoId: 'ep335910',
-  cid: 37776523806,
+  audio: AUDIO,
   model: 'large-v3-turbo-q8_0',
   baseUrl: 'http://localhost:8080/v1',
   playhead: 0,
@@ -113,7 +119,7 @@ describe('starting a run', () => {
         type: 'bb-subsgen:offscreen-transcribe',
         target: OFFSCREEN_TARGET,
         videoId: 'ep335910',
-        cid: 37776523806,
+        audio: AUDIO,
       }),
     ])
   })
@@ -183,6 +189,57 @@ describe('reportAsrPlayhead', () => {
     await reportAsrPlayhead(TAB, 1920)
 
     expect(onBus).toEqual([])
+  })
+})
+
+describe('routing a request for audio', () => {
+  /**
+   * The offscreen document cannot download Bilibili's audio itself — the CDN
+   * wants a bilibili referrer and an extension page sends none — so it asks the
+   * page to. The worker's only part is knowing which page.
+   */
+  test('asks the tab whose run is active to fetch the stream', async () => {
+    await startTranscription(TAB, request())
+
+    handleOffscreenEvent({
+      type: 'bb-subsgen:offscreen-need-audio',
+      videoId: 'ep335910',
+      url: 'https://cdn/lo',
+    })
+    await settle()
+
+    expect(toTab).toEqual([
+      {
+        tabId: TAB,
+        message: expect.objectContaining({
+          type: 'bb-subsgen:offscreen-need-audio',
+          url: 'https://cdn/lo',
+        }),
+      },
+    ])
+  })
+
+  test('ignores a request for a video that is no longer the active run', async () => {
+    await startTranscription(TAB, request())
+
+    handleOffscreenEvent({
+      type: 'bb-subsgen:offscreen-need-audio',
+      videoId: 'ep999999',
+      url: 'https://cdn/lo',
+    })
+    await settle()
+
+    expect(toTab).toEqual([])
+  })
+
+  test('claims the message, so the worker does not fall through to other handlers', () => {
+    expect(
+      handleOffscreenEvent({
+        type: 'bb-subsgen:offscreen-need-audio',
+        videoId: 'ep335910',
+        url: 'https://cdn/lo',
+      }),
+    ).toBe(true)
   })
 })
 

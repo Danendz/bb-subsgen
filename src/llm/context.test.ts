@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 import { lineWindow, locateLine, windowAround, WINDOW_RADIUS } from './context'
 
 function track(...texts: string[]): Cue[] {

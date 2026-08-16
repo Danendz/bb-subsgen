@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 import { alignCues, holdTail, MAX_HOLD_S } from './timing'
 
 const cue = (start: number, end: number, text = '今天天气非常好啊'): Cue => ({ start, end, text })

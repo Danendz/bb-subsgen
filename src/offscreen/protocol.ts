@@ -4,7 +4,9 @@
 // import the other — the worker must not pull in the document's Web Audio code,
 // and the document must not pull in the worker's database.
 
-import type { Cue } from '../bilibili/subtitles'
+import type { AudioSource } from '../media/audio-source'
+import type { Cue } from '../media/cue'
+import type { AudioSlice } from './audio-transfer'
 
 /**
  * Every message on this channel carries it, because an offscreen document shares
@@ -18,7 +20,15 @@ export interface TranscribeRequest {
   type: 'bb-subsgen:offscreen-transcribe'
   target: typeof OFFSCREEN_TARGET
   videoId: string
-  cid: number
+  /**
+   * The audio, already located by whoever knows the site.
+   *
+   * Resolved rather than described: this used to be Bilibili's `cid`, which the
+   * offscreen document turned into a URL by calling Bilibili's playurl API. That
+   * made a decoder know one site's API, and it is the coupling `AudioSource`
+   * exists to remove.
+   */
+  audio: AudioSource
   baseUrl: string
   model: string
   /** Where playback is, so the chunk being watched is transcribed first. */
@@ -58,7 +68,43 @@ export interface PlayheadRequest {
   seconds: number
 }
 
-export type OffscreenRequest = TranscribeRequest | CancelRequest | PlayheadRequest
+/**
+ * One slice of the audio the offscreen document asked for, fetched by the page.
+ *
+ * Sent by a content script straight to the offscreen document — they share one
+ * message bus — rather than routed back through the worker. The worker's job in
+ * this exchange is to say *which* tab should answer, which it has already done
+ * by the time this is sent; putting twenty-five megabytes through it as well
+ * would be a second copy for no decision.
+ *
+ * Base64, in slices, because Chrome serializes extension messages as JSON and a
+ * `Blob` or `ArrayBuffer` on this bus arrives as `{}`. See the header of
+ * `audio-transfer.ts` for what was tried instead.
+ */
+export interface AudioSupply extends Partial<AudioSlice> {
+  type: 'bb-subsgen:offscreen-audio'
+  target: typeof OFFSCREEN_TARGET
+  /** Whose audio this is, so a late answer for an abandoned run is ignored. */
+  videoId: string
+  /** Absent on success; set when the page could not get the audio at all. */
+  error?: string
+}
+
+export type OffscreenRequest = TranscribeRequest | CancelRequest | PlayheadRequest | AudioSupply
+
+/**
+ * The offscreen document asking the page to download an audio stream for it.
+ *
+ * It cannot do this itself. Bilibili's CDN requires a bilibili referrer and
+ * Chrome sends none from an extension page; see `fetchAudioBytes`, which is the
+ * content script's half of this exchange.
+ */
+export interface AudioNeeded {
+  type: 'bb-subsgen:offscreen-need-audio'
+  videoId: string
+  /** The stream URL, as playurl named it. */
+  url: string
+}
 
 /**
  * One chunk's worth of progress, sent as each lands.
@@ -105,7 +151,7 @@ export interface TranscribeDone {
   error?: string
 }
 
-export type OffscreenEvent = TranscribeProgress | TranscribeDone
+export type OffscreenEvent = TranscribeProgress | TranscribeDone | AudioNeeded
 
 export function isOffscreenRequest(msg: unknown): msg is OffscreenRequest {
   return (
@@ -120,6 +166,15 @@ export function isTranscribeProgress(msg: unknown): msg is TranscribeProgress {
     typeof msg === 'object' &&
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:offscreen-progress'
+  )
+}
+
+export function isAudioNeeded(msg: unknown): msg is AudioNeeded {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:offscreen-need-audio' &&
+    typeof (msg as { url?: unknown }).url === 'string'
   )
 }
 

@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { ASR_SAMPLE_RATE, downmixToMono, encodeWav, sliceSeconds, wavBytesFor } from './wav'
+import {
+  ASR_SAMPLE_RATE,
+  decodeWav,
+  downmixToMono,
+  encodeWav,
+  sliceSeconds,
+  wavBytesFor,
+} from './wav'
 
 async function bytesOf(blob: Blob): Promise<DataView> {
   return new DataView(await blob.arrayBuffer())
@@ -114,5 +121,72 @@ describe('wavBytesFor', () => {
     // A five-minute chunk at the ASR rate — about 9.6MB, which is the number
     // that makes chunking a memory decision as well as a progress one.
     expect(wavBytesFor(300, ASR_SAMPLE_RATE)).toBe(44 + 9_600_000)
+  })
+})
+
+describe('decodeWav', () => {
+  /**
+   * The exact 78-byte header ffmpeg wrote when streaming WAV to a pipe, captured
+   * from a real run of `tools/ytdlp-server.ts`. Two details in here are the whole
+   * reason `decodeWav` is not a four-line function.
+   */
+  const STREAMED_HEADER = new Uint8Array([
+    82, 73, 70, 70, 255, 255, 255, 255, 87, 65, 86, 69, 102, 109, 116, 32, 16, 0, 0, 0, 1, 0, 1, 0,
+    128, 62, 0, 0, 0, 125, 0, 0, 2, 0, 16, 0, 76, 73, 83, 84, 26, 0, 0, 0, 73, 78, 70, 79, 73, 83,
+    70, 84, 14, 0, 0, 0, 76, 97, 118, 102, 54, 50, 46, 49, 50, 46, 49, 48, 50, 0, 100, 97, 116, 97,
+    255, 255, 255, 255,
+  ])
+
+  const streamed = (samples: number[]): ArrayBuffer => {
+    const out = new Uint8Array(STREAMED_HEADER.length + samples.length * 2)
+    out.set(STREAMED_HEADER)
+    const view = new DataView(out.buffer)
+    samples.forEach((value, i) => view.setInt16(STREAMED_HEADER.length + i * 2, value, true))
+    return out.buffer
+  }
+
+  test('reads a real ffmpeg-streamed header, LIST chunk and all', () => {
+    // The canonical layout puts `data` at byte 44. ffmpeg's is at 78, because it
+    // writes a LIST/INFO chunk naming itself first.
+    const decoded = decodeWav(streamed([0, 16384, -16384]))
+    expect(decoded).toMatchObject({ sampleRate: 16000, channels: 1 })
+    expect(decoded?.samples.length).toBe(3)
+  })
+
+  test('ignores the 0xFFFFFFFF placeholder sizes a piped file carries', () => {
+    // ffmpeg cannot seek back to fill in the RIFF and data lengths when writing
+    // to a pipe, so both read as 4294967295. Trusting either gives nonsense.
+    const decoded = decodeWav(streamed([1, 2, 3, 4, 5]))
+    expect(decoded?.samples.length).toBe(5)
+  })
+
+  test('round-trips what encodeWav produces', async () => {
+    const original = Float32Array.from([0, 0.5, -0.5, 0.999, -0.999])
+    const bytes = await encodeWav(original).arrayBuffer()
+    const decoded = decodeWav(bytes)
+
+    expect(decoded?.sampleRate).toBe(ASR_SAMPLE_RATE)
+    expect(decoded?.channels).toBe(1)
+    expect(decoded?.samples.length).toBe(original.length)
+    for (let i = 0; i < original.length; i++) {
+      expect(decoded!.samples[i]).toBeCloseTo(original[i], 4)
+    }
+  })
+
+  test('is null for anything that is not a PCM WAV', () => {
+    // An MP4 begins with an ftyp box, never RIFF — this is what tells the
+    // offscreen document to take the decoding route instead.
+    const mp4 = new Uint8Array([0, 0, 0, 32, 102, 116, 121, 112, 105, 115, 111, 109]).buffer
+    expect(decodeWav(mp4)).toBeNull()
+    expect(decodeWav(new ArrayBuffer(4))).toBeNull()
+    expect(decodeWav(new ArrayBuffer(0))).toBeNull()
+  })
+
+  test('is null for a WAV that is not 16-bit PCM', () => {
+    // Decoding it as 16-bit would produce plausible-looking noise rather than
+    // an error, which is the worst possible failure for a transcript.
+    const bytes = streamed([1, 2, 3])
+    new DataView(bytes).setUint16(20, 3, true) // IEEE float, not PCM
+    expect(decodeWav(bytes)).toBeNull()
   })
 })

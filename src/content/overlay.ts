@@ -286,6 +286,7 @@ function ensureStack(shadowRoot: ShadowRoot): HTMLElement {
     const retry = document.createElement('button')
     retry.className = 'notice-retry'
     retry.type = 'button'
+    // Replaced on every render; see `NoticeView.action`.
     retry.textContent = 'Retry'
     const close = document.createElement('button')
     close.className = 'notice-close'
@@ -434,12 +435,20 @@ export function setProgress(shadowRoot: ShadowRoot, view: ProgressView): void {
 
 export interface NoticeView {
   text: string
-  onRetry: () => void
+  /**
+   * What the button says.
+   *
+   * Two jobs share this widget: reporting a run that stopped, where the button
+   * is `Retry`, and asking whether a video is worth transcribing at all, where
+   * it is `Transcribe`. Same shape, same placement, different sentence.
+   */
+  action: string
+  onAction: () => void
   onDismiss: () => void
 }
 
 /**
- * Reports a run that stopped, with the two things you can do about it.
+ * Says something about transcription, with the two things you can do about it.
  *
  * Null hides it. The handlers are replaced rather than added to on every call,
  * because this is re-rendered on settings changes and on remounts, and
@@ -451,7 +460,9 @@ export function setNotice(shadowRoot: ShadowRoot, view: NoticeView | null): void
   if (!view) return
 
   el.querySelector<HTMLElement>('.notice-text')!.textContent = view.text
-  el.querySelector<HTMLButtonElement>('.notice-retry')!.onclick = view.onRetry
+  const action = el.querySelector<HTMLButtonElement>('.notice-retry')!
+  action.textContent = view.action
+  action.onclick = view.onAction
   el.querySelector<HTMLButtonElement>('.notice-close')!.onclick = view.onDismiss
 }
 

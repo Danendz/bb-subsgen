@@ -8,7 +8,7 @@
 // Pure: fetching belongs to the caller, and everything hard here is the
 // locating.
 
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /**
  * How many lines either side are sent.

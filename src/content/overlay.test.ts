@@ -167,13 +167,14 @@ describe('marking the model’s translations', () => {
   })
 })
 
-describe('the stopped-run notice', () => {
+describe('the transcription notice', () => {
   const noticeEl = (root: ShadowRoot) => root.querySelector<HTMLElement>('.notice')!
   const showing = (root: ShadowRoot) => !noticeEl(root).classList.contains('hidden')
 
   const view = (over: Partial<Parameters<typeof setNotice>[1]> = {}) => ({
     text: '5 minutes could not be transcribed.',
-    onRetry: () => {},
+    action: 'Retry',
+    onAction: () => {},
     onDismiss: () => {},
     ...over,
   })
@@ -207,7 +208,7 @@ describe('the stopped-run notice', () => {
     const { root } = host()
     let retried = 0
     let dismissed = 0
-    setNotice(root, view({ onRetry: () => retried++, onDismiss: () => dismissed++ }))
+    setNotice(root, view({ onAction: () => retried++, onDismiss: () => dismissed++ }))
 
     root.querySelector<HTMLButtonElement>('.notice-retry')!.click()
     root.querySelector<HTMLButtonElement>('.notice-close')!.click()
@@ -220,7 +221,7 @@ describe('the stopped-run notice', () => {
     // addEventListener here would fire one retry per repaint since the failure.
     const { root } = host()
     let retried = 0
-    const again = view({ onRetry: () => retried++ })
+    const again = view({ onAction: () => retried++ })
     setNotice(root, again)
     setNotice(root, again)
     setNotice(root, again)
@@ -228,5 +229,28 @@ describe('the stopped-run notice', () => {
     root.querySelector<HTMLButtonElement>('.notice-retry')!.click()
 
     expect(retried).toBe(1)
+  })
+})
+
+describe('the notice button label', () => {
+  test('says whatever the caller asked it to', () => {
+    // One widget, two jobs: reporting a stopped run, and asking whether a video
+    // is worth transcribing. A hardcoded `Retry` could only ever do the first.
+    const root = document.createElement('div').attachShadow({ mode: 'open' })
+    setNotice(root, {
+      text: 'This does not look like a Chinese video.',
+      action: 'Transcribe',
+      onAction: () => {},
+      onDismiss: () => {},
+    })
+    expect(root.querySelector('.notice-retry')!.textContent).toBe('Transcribe')
+
+    setNotice(root, {
+      text: 'Could not reach the speech server.',
+      action: 'Retry',
+      onAction: () => {},
+      onDismiss: () => {},
+    })
+    expect(root.querySelector('.notice-retry')!.textContent).toBe('Retry')
   })
 })

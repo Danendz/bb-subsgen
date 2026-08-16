@@ -10,7 +10,7 @@
 // is most of a sentence's worth of them, each vanishing the instant the speaker
 // draws breath, which reads as flicker rather than as subtitles.
 
-import type { Cue } from '../bilibili/subtitles'
+import type { Cue } from '../media/cue'
 
 /**
  * The longest a line may outstay its own end, waiting for the next.
