@@ -165,6 +165,27 @@ export function watchAsrTab(port: chrome.runtime.Port): void {
   port.onDisconnect.addListener(() => void cancelTranscription(tabId))
 }
 
+/**
+ * Passes a seek on to the run, so it re-orders what is left around it.
+ *
+ * Routed through here rather than sent to the offscreen document directly —
+ * which a content script could do, since they share one message bus — because
+ * this is the only place that knows whose run is active. Without the check, a
+ * seek in one tab would re-order another tab's transcription.
+ */
+export async function reportAsrPlayhead(tabId: number, seconds: number): Promise<void> {
+  const running = await readActive()
+  if (running?.tabId !== tabId) return
+
+  void chrome.runtime
+    .sendMessage({
+      type: 'bb-subsgen:offscreen-playhead',
+      target: OFFSCREEN_TARGET,
+      seconds,
+    })
+    .catch(() => {})
+}
+
 /** Ends the current run. Called on video change, on teardown and before a new one. */
 export async function cancelTranscription(tabId?: number): Promise<void> {
   const running = await readActive()
@@ -205,6 +226,7 @@ async function routeProgress(msg: {
   cues: Cue[]
   done: number
   total: number
+  covered: Array<[number, number]>
 }): Promise<void> {
   const run = await readActive()
   // A run that has been superseded may still have a chunk in flight.
@@ -214,6 +236,7 @@ async function routeProgress(msg: {
     cues: msg.cues,
     done: msg.done,
     total: msg.total,
+    covered: msg.covered,
     complete: false,
   })
 }

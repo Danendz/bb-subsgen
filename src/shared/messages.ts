@@ -199,8 +199,19 @@ export type AsrMessage =
       playhead: number
     }
   | { type: 'bb-subsgen:asr-cancel' }
+  /**
+   * Playback jumped, so what is left should be re-ordered around it.
+   *
+   * The sibling of `llm-playhead`, in seconds rather than in cue indices,
+   * because during transcription there are barely any cues to index.
+   */
+  | { type: 'bb-subsgen:asr-playhead'; seconds: number }
 
-const ASR_TYPES = new Set<string>(['bb-subsgen:asr-transcribe', 'bb-subsgen:asr-cancel'])
+const ASR_TYPES = new Set<string>([
+  'bb-subsgen:asr-transcribe',
+  'bb-subsgen:asr-cancel',
+  'bb-subsgen:asr-playhead',
+])
 
 export function isAsrMessage(msg: unknown): msg is AsrMessage {
   return (
@@ -226,6 +237,14 @@ export interface AsrCuesMessage {
   /** Chunks finished, and expected. What the progress pill counts. */
   done: number
   total: number
+  /**
+   * The stretches of track transcribed so far, as `[start, end]` in seconds.
+   *
+   * What decides whether the pill is showing: the run is only worth reporting
+   * while the part being watched is not in one of these. Absent once `complete`,
+   * because a run that has ended has no progress left to hide or show.
+   */
+  covered?: Array<[number, number]>
   /** Whether anything more is coming. A cached transcript arrives complete. */
   complete: boolean
   /** Set when the run ended early; `cues` then holds whatever was finished. */
@@ -241,12 +260,19 @@ export function isAsrCuesMessage(msg: unknown): msg is AsrCuesMessage {
   )
 }
 
-/** What the worker sends back as each batch lands. */
+/**
+ * What the worker sends back as each batch lands.
+ *
+ * Lines are addressed by cue start, not by index. Index is positional, and on a
+ * transcribed video the cue list grows underneath the pass as chunks land — so
+ * a batch answered against one numbering would be painted onto another. Start is
+ * the identity `llm-cache` and `Context` already use.
+ */
 export interface LlmTranslationsMessage {
   type: 'bb-subsgen:llm-translations'
   videoId: string
   lang: TranslationLang
-  lines: Array<{ index: number; text: string }>
+  lines: Array<{ start: number; text: string }>
 }
 
 export function isLlmTranslationsMessage(msg: unknown): msg is LlmTranslationsMessage {

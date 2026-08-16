@@ -22,6 +22,18 @@ import type { Cue } from '../bilibili/subtitles'
 export const CHUNK_SPAN_S = 300
 
 /**
+ * Seconds in the one short chunk, split at the playhead.
+ *
+ * Nothing can be read until a chunk finishes, so the first one to finish decides
+ * how long the overlay stays blank. Most of that wait is the fetch and the
+ * decode — `decodeAudioData` needs a complete container, so there is no prefix
+ * of the bytes that decodes to a prefix of the audio — but this takes the rest
+ * of it off, and it is split at the playhead rather than at zero so that joining
+ * an episode partway gets the same treatment as starting it.
+ */
+export const LEAD_SPAN_S = 60
+
+/**
  * Seconds of extra audio sent either side of that.
  *
  * Enough to carry a sentence across the join. Whisper decodes in 30-second
@@ -43,6 +55,46 @@ export interface Chunk {
 export interface PlanOptions {
   span?: number
   pad?: number
+  lead?: number
+  /** Where playback is, so the short chunk is split around it. */
+  playhead?: number
+}
+
+/**
+ * Where one chunk ends and the next begins, in order, from 0 to `duration`.
+ *
+ * Built as points rather than as ranges because every rule here is about a
+ * boundary: the regular grid puts one every `span`, the playhead adds two, and
+ * the sliver rule removes the ones that would leave a piece too short to be
+ * worth a request of its own. Expressed as ranges, those three would each need
+ * their own special case and would have to agree about the others.
+ */
+function boundaries(duration: number, span: number, pad: number, lead: number, playhead: number): number[] {
+  const points = new Set<number>([0])
+  for (let at = span; at < duration; at += span) points.add(at)
+
+  // The short chunk, split at the playhead rather than at zero. Both ends are
+  // boundaries: the audio before the playhead still belongs to someone, in case
+  // you seek back into it.
+  const at = Math.max(0, playhead)
+  if (at < duration) points.add(at)
+  if (at + lead < duration) points.add(at + lead)
+
+  const sorted = [...points].sort((a, b) => a - b)
+
+  // A boundary too close to the one before it, or to the end, would leave a
+  // piece shorter than the padding either side of it — a request asking about
+  // audio its neighbour has already heard. Dropping the boundary is what merges
+  // that piece into whichever chunk is adjacent, so no stretch of the track ends
+  // up unowned and no cue is left without a chunk to belong to.
+  const kept = [0]
+  for (const point of sorted.slice(1)) {
+    if (point - kept[kept.length - 1] <= pad) continue
+    if (duration - point <= pad) continue
+    kept.push(point)
+  }
+  kept.push(duration)
+  return kept
 }
 
 /**
@@ -51,29 +103,22 @@ export interface PlanOptions {
  * A duration of zero yields nothing rather than one empty chunk: the playurl API
  * reports a length of zero for a video it would not serve, and asking a model to
  * transcribe no audio is a request that can only fail.
+ *
+ * Chunks are contiguous and cover the track exactly once. The overlap between
+ * them is `audioStart`/`audioEnd` only — acoustic padding, not ownership.
  */
-export function planChunks(duration: number, { span = CHUNK_SPAN_S, pad = CHUNK_PAD_S }: PlanOptions = {}): Chunk[] {
+export function planChunks(
+  duration: number,
+  { span = CHUNK_SPAN_S, pad = CHUNK_PAD_S, lead = LEAD_SPAN_S, playhead = 0 }: PlanOptions = {},
+): Chunk[] {
   if (!(duration > 0)) return []
 
+  const points = boundaries(duration, span, pad, lead, playhead)
   const chunks: Chunk[] = []
-  for (let start = 0, index = 0; start < duration; start += span, index++) {
-    const end = Math.min(start + span, duration)
-
-    // A last sliver, absorbed into the chunk before rather than given a request
-    // of its own. A duration of 3000.6s otherwise plans an eleventh chunk owning
-    // 0.6 of a second and sends five seconds of audio to ask what is in it —
-    // audio the previous chunk already heard as padding. Absorbed rather than
-    // dropped, because a cue starting inside that sliver still has to belong to
-    // someone, and its owner has already listened to it.
-    const previous = chunks[chunks.length - 1]
-    if (previous && end - start <= pad) {
-      previous.end = end
-      previous.audioEnd = Math.min(duration, end + pad)
-      break
-    }
-
+  for (let at = 0; at < points.length - 1; at++) {
+    const [start, end] = [points[at], points[at + 1]]
     chunks.push({
-      index,
+      index: at,
       start,
       end,
       audioStart: Math.max(0, start - pad),
@@ -95,26 +140,39 @@ export function ownedCues(cues: Cue[], chunk: Chunk): Cue[] {
 }
 
 /**
- * The chunks to do next: the one containing the playhead first, then onwards,
- * then wrapping to the start.
+ * The chunk to transcribe next: the one at or after the playhead, wrapping.
  *
- * The same rule `pickBatch` applies to translation batches, and for the same
- * reason — seeking re-orders what is left without any machinery for it, because
- * this is re-read rather than computed once.
+ * `pickBatch`'s rule (llm/batch.ts) at chunk granularity, and it earns its keep
+ * the same way — asked again before every chunk rather than computed once for
+ * the run, so seeking re-orders what is left with no machinery for it. Null when
+ * nothing is left.
  */
-export function orderFromPlayhead(chunks: Chunk[], playhead: number): Chunk[] {
-  const at = chunks.findIndex((chunk) => playhead >= chunk.start && playhead < chunk.end)
-  if (at <= 0) return chunks
-  return [...chunks.slice(at), ...chunks.slice(0, at)]
+export function nextChunk(remaining: Iterable<Chunk>, playhead: number): Chunk | null {
+  let ahead: Chunk | null = null
+  let lowest: Chunk | null = null
+
+  for (const chunk of remaining) {
+    if (!lowest || chunk.start < lowest.start) lowest = chunk
+    // Contains the playhead, or lies entirely after it.
+    if (chunk.end > playhead && (!ahead || chunk.start < ahead.start)) ahead = chunk
+  }
+
+  return ahead ?? lowest
 }
 
 /**
- * Cues from every chunk done so far, in track order.
+ * Cues from every chunk done so far, in track order and one per start.
  *
  * Sorted rather than appended because chunks are transcribed playhead-first and
- * therefore arrive out of order — and everything downstream, from
- * `watchPlayback` to `planBatches`, indexes cues by position in this array.
+ * therefore arrive out of order.
+ *
+ * The deduplication is what makes `start` usable as a cue's identity, which
+ * everything downstream now depends on: the overlay keys its translation caches
+ * by it so that a chunk landing in the middle of the track cannot renumber the
+ * lines around it. Two chunks cannot collide — `ownedCues` partitions by start —
+ * so this only guards against one chunk reporting two segments at one timestamp.
  */
 export function mergeCues(chunks: Iterable<Cue[]>): Cue[] {
-  return [...chunks].flat().sort((a, b) => a.start - b.start)
+  const sorted = [...chunks].flat().sort((a, b) => a.start - b.start)
+  return sorted.filter((cue, at) => at === 0 || cue.start !== sorted[at - 1].start)
 }

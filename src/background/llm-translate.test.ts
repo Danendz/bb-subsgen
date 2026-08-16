@@ -32,7 +32,7 @@ interface Sent {
 }
 
 let sent: Sent[]
-let posted: Array<{ index: number; text: string }>
+let posted: Array<{ start: number; text: string }>
 /** Ids the fake model will refuse to return, by how many times it has been asked. */
 let skip: (ids: number[], call: number) => number[]
 
@@ -71,7 +71,7 @@ beforeEach(() => {
 
   globalThis.chrome = {
     tabs: {
-      sendMessage: async (_tabId: number, msg: { lines: Array<{ index: number; text: string }> }) => {
+      sendMessage: async (_tabId: number, msg: { lines: Array<{ start: number; text: string }> }) => {
         posted.push(...msg.lines)
       },
     },
@@ -100,15 +100,62 @@ afterEach(() => {
   cancelPass()
 })
 
+describe('a duplicate request', () => {
+  /** Holds the model's reply open, so a pass can be caught mid-batch. */
+  function hangingFetch() {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      await held
+      return original(url, init)
+    }) as typeof fetch
+    return release
+  }
+
+  test('leaves a pass for the same track alone', async () => {
+    // Bilibili replaces the <video> element during DASH and DRM setup, which
+    // remounts the overlay and re-sends this. Starting over would abandon the
+    // batch in flight for nothing.
+    const release = hangingFetch()
+    const first = startPass(request())
+    await Promise.resolve()
+
+    await startPass(request())
+    release()
+    await first
+
+    expect(sent.filter((s) => s.ids[0] === 0)).toHaveLength(1)
+  })
+
+  test('restarts when the track has grown', async () => {
+    // A transcribed video: chunks land and the cue list gets longer. The same
+    // video with more lines in it is more work to do, not the same work again.
+    const release = hangingFetch()
+    const first = startPass(request({ cues: cues(2) }))
+    await Promise.resolve()
+
+    release()
+    await startPass(request({ cues: cues(4) }))
+    await first.catch(() => {})
+
+    expect(posted.map((line) => line.start)).toContain(6)
+  })
+})
+
 describe('startPass', () => {
   test('translates the whole track and reports it back', async () => {
     await startPass(request())
 
+    // Addressed by cue start, not by position: the content script's copy of the
+    // track can grow underneath a running pass.
     expect(posted).toEqual([
-      { index: 0, text: 'line 0' },
-      { index: 1, text: 'line 1' },
-      { index: 2, text: 'line 2' },
-      { index: 3, text: 'line 3' },
+      { start: 0, text: 'line 0' },
+      { start: 2, text: 'line 1' },
+      { start: 4, text: 'line 2' },
+      { start: 6, text: 'line 3' },
     ])
   })
 
@@ -128,8 +175,8 @@ describe('startPass', () => {
     await startPass(request({ cues: cues(2) }))
 
     expect(posted).toEqual([
-      { index: 0, text: 'cached 0' },
-      { index: 1, text: 'cached 1' },
+      { start: 0, text: 'cached 0' },
+      { start: 2, text: 'cached 1' },
     ])
     expect(sent).toHaveLength(0)
   })
@@ -158,7 +205,7 @@ describe('startPass', () => {
 
       expect(sent).toHaveLength(2)
       expect(sent[1].ids).toEqual([1])
-      expect(posted.map((l) => l.index).sort()).toEqual([0, 1, 2])
+      expect(posted.map((l) => l.start).sort((a, b) => a - b)).toEqual([0, 2, 4])
     })
 
     // Twice asked, twice ignored: the on-device translation is already on
@@ -170,7 +217,7 @@ describe('startPass', () => {
       await startPass(request({ cues: cues(3) }))
 
       expect(sent).toHaveLength(2)
-      expect(posted.map((l) => l.index)).toEqual([0, 2])
+      expect(posted.map((l) => l.start)).toEqual([0, 4])
     })
 
     test('a batch that comes back empty does not stop the pass', async () => {

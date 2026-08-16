@@ -49,11 +49,18 @@ export interface PassRequest {
   cues: PassCue[]
 }
 
-/** What the content script is told, as each batch lands. */
+/**
+ * What the content script is told, as each batch lands.
+ *
+ * Addressed by cue start rather than by index. The pass numbers its own copy of
+ * the track, and on a transcribed video the content script's copy grows
+ * underneath it as chunks land — so an index answered against one numbering
+ * would be painted onto another. Start is what the cache is keyed by anyway.
+ */
 export interface PassResult {
   videoId: string
   lang: TranslationLang
-  lines: Array<{ index: number; text: string }>
+  lines: Array<{ start: number; text: string }>
 }
 
 interface Pass {
@@ -263,6 +270,26 @@ async function translateWithRetry(
  * is instant and costs nothing.
  */
 export async function startPass(request: PassRequest): Promise<void> {
+  // The same pass, asked for twice. Bilibili replaces the `<video>` element
+  // during DASH and DRM setup, which remounts the overlay and re-sends this;
+  // starting over would abandon the batch in flight and re-read the cache for
+  // no gain. A duplicate request is a caller that mounted twice, not a caller
+  // that wants this thrown away.
+  //
+  // The cue count is part of the comparison because a transcript grows as chunks
+  // land: the same video with more lines in it is more work to do, not the same
+  // work again.
+  if (
+    active &&
+    active.request.tabId === request.tabId &&
+    active.request.videoId === request.videoId &&
+    active.request.lang === request.lang &&
+    active.request.model === request.model &&
+    active.request.cues.length === request.cues.length
+  ) {
+    return
+  }
+
   cancelPass()
 
   const pass: Pass = {
@@ -289,7 +316,7 @@ export async function startPass(request: PassRequest): Promise<void> {
     const index = startToIndex.get(start)
     if (index === undefined) continue
     done.set(index, text)
-    fromCache.push({ index, text })
+    fromCache.push({ start, text })
   }
   pass.translated = done.size
   if (fromCache.length) send(request.tabId, { ...key, lines: fromCache })
@@ -347,16 +374,13 @@ export async function startPass(request: PassRequest): Promise<void> {
     const lines: PassResult['lines'] = []
     for (const [index, text] of accepted) {
       done.set(index, text)
-      lines.push({ index, text })
+      lines.push({ start: request.cues[index].start, text })
     }
     // `done` rather than a running total: a retry can re-answer a line already
     // accepted, and counting the batch would drift past the real figure.
     pass.translated = done.size
 
-    await writeLines(
-      key,
-      lines.map((line) => ({ start: request.cues[line.index].start, text: line.text })),
-    )
+    await writeLines(key, lines)
     send(request.tabId, { ...key, lines })
   }
 

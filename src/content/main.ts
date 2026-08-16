@@ -13,7 +13,7 @@ import { attachHover } from './hover'
 import { withUserActivation } from './activation'
 import { runTranslationPass } from './translations'
 import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './controls'
-import { isWaiting, progressView, type ProgressState } from './progress'
+import { isWaiting, progressView, type ProgressState, type Span } from './progress'
 import { parseVideoIdFromUrl, resolveVideo, watchVideoChange } from '../bilibili/resolve'
 import {
   fetchSubtitles,
@@ -33,7 +33,12 @@ import {
 } from '../shared/flashcards-client'
 import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
-import { createTranslator, isTranslatorSupported, translatorAvailability } from '../lang/translate'
+import {
+  createTranslator,
+  isTranslatorSupported,
+  translatorAvailability,
+  type TranslatorLike,
+} from '../lang/translate'
 import {
   loadSettings,
   onSettingsChanged,
@@ -47,6 +52,7 @@ import {
   type AsrCuesMessage,
   type AsrMessage,
   type LlmMessage,
+  type LlmTranslationsMessage,
   type Status,
 } from '../shared/messages'
 import { openExplainDrawer } from './explain-drawer'
@@ -124,6 +130,39 @@ function labelFor(lang: TranslationLang): string {
   return TRANSLATION_LANGS.find((l) => l.code === lang)?.label ?? lang
 }
 
+/**
+ * One translator per language, for the life of the page.
+ *
+ * Memoised because the pass is restarted every time a transcript grows — it
+ * translates a snapshot, so new lines need a new run — and creating a translator
+ * is the expensive half: it waits on a user gesture and, the first time, on a
+ * language pack download. The promise rather than the translator is stored, so
+ * two restarts arriving together share one creation instead of racing.
+ *
+ * Deliberately not cleared between videos. A translator is per language; the
+ * video it was first wanted for has nothing to do with it.
+ */
+const translators = new Map<TranslationLang, Promise<TranslatorLike>>()
+
+function translatorFor(
+  lang: TranslationLang,
+  onDownload: (fraction: number) => void,
+): Promise<TranslatorLike> {
+  const existing = translators.get(lang)
+  if (existing) return existing
+
+  // Needs a user gesture on the page; resolves on the first click or keypress.
+  // No abort signal: waiting for a gesture belongs to the page, not to whichever
+  // pass happened to ask first, and cancelling it on every restart would mean a
+  // transcript that keeps growing keeps throwing away the wait.
+  const created = withUserActivation(() => createTranslator(lang, onDownload))
+  translators.set(lang, created)
+  // A failure must not be remembered as the answer — the usual cause is a page
+  // that has not been clicked yet, and the next attempt may well succeed.
+  created.catch(() => translators.delete(lang))
+  return created
+}
+
 interface TranslateTrackDeps {
   lang: TranslationLang
   texts: string[]
@@ -158,13 +197,13 @@ async function translateTrack({
     )
     return
   }
-  console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
+  if (!translators.has(lang)) {
+    console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
+  }
 
-  let translator
+  let translator: TranslatorLike
   try {
-    // Needs a user gesture on the page; resolves on the first click or keypress.
-    // The first run for a language also downloads its pack.
-    translator = await withUserActivation(() => createTranslator(lang, onDownload), { signal })
+    translator = await translatorFor(lang, onDownload)
   } catch (e) {
     if (!signal.aborted) console.warn('[bb-subsgen] could not create translator', e)
     return
@@ -184,15 +223,30 @@ async function main() {
   const [words, initialSettings] = await Promise.all([loadWords(), loadSettings()])
   let settings = initialSettings
   let stopMount: (() => void) | null = null
-  /** The transcript subscription, which belongs to the video rather than the overlay. */
+  /**
+   * Subscriptions that belong to the video rather than to the overlay.
+   *
+   * Held out here because a remount tears the overlay down and builds a new one,
+   * and a chunk or a batch landing in that gap must not be lost.
+   */
   let stopAsr: (() => void) | null = null
+  let stopLlmResults: (() => void) | null = null
   let rerenderCurrentCue: (() => void) | null = null
   let startTranslation: (() => void) | null = null
   let startLlmTranslation: (() => void) | null = null
   let translationAbort: AbortController | null = null
-  // Per target language, each inner map keyed by cue index — which is also what
-  // v2 word alignment will attach to. Keeping a map per language means switching
-  // back to one already translated renders instantly instead of re-running the pass.
+  /**
+   * Per target language, each inner map keyed by the cue's **start**.
+   *
+   * Not by its index in the array, which is where these all began. A transcript
+   * arrives in pieces and playhead-first, so a chunk landing early in the track
+   * shifts every index after it — and an index-keyed translation would then be
+   * painted under a different line than the one it was written for. Start is the
+   * identity `llm-cache` and `Context` already use, for the same reason.
+   *
+   * Keeping a map per language means switching back to one already translated
+   * renders instantly instead of re-running the pass.
+   */
   const translations = new Map<TranslationLang, Map<number, string>>()
   /**
    * The local model's translations, alongside Chrome's rather than instead.
@@ -313,11 +367,27 @@ async function main() {
     asrPort = null
   }
 
-  const stopTranslation = () => {
+  /**
+   * Ends the on-device pass only.
+   *
+   * Its own function because the on-device pass is restarted every time a
+   * transcript grows — it works from a snapshot of the cue list, so new lines
+   * need a new run — and the model pass, which is minutes of generation, must
+   * not be torn down every time a chunk lands.
+   */
+  const stopNmt = () => {
     translationAbort?.abort()
     translationAbort = null
+  }
+
+  const stopLlm = () => {
     releasePassPort()
     tellWorker({ type: 'bb-subsgen:llm-cancel' })
+  }
+
+  const stopTranslation = () => {
+    stopNmt()
+    stopLlm()
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -327,7 +397,7 @@ async function main() {
 
   /** Subscribes to batches from the worker, and returns the unsubscribe. */
   const onLlmTranslations = (
-    handle: (msg: { videoId: string; lang: TranslationLang; lines: Array<{ index: number; text: string }> }) => void,
+    handle: (msg: LlmTranslationsMessage) => void,
   ): (() => void) => {
     const listener = (msg: unknown) => {
       if (isLlmTranslationsMessage(msg)) handle(msg)
@@ -350,6 +420,7 @@ async function main() {
     stopMount = null
     rerenderCurrentCue = null
     startTranslation = null
+    startLlmTranslation = null
     stopTranslation()
     // Deliberately not part of `stopTranslation`, which also runs when the target
     // language changes. A transcript is the Chinese itself, so it survives that;
@@ -358,6 +429,8 @@ async function main() {
     releaseAsrPort()
     stopAsr?.()
     stopAsr = null
+    stopLlmResults?.()
+    stopLlmResults = null
     translations.clear()
     llmTranslations.clear()
     shown.clear()
@@ -374,12 +447,12 @@ async function main() {
     const { videoId, cid, duration, video: videoInfo } = loaded
 
     /**
-     * Mutated in place when a transcript lands, never reassigned.
+     * Mutated in place as chunks land, never reassigned.
      *
      * The mount below closes over this array, and so does `watchPlayback`, which
-     * re-reads it on every frame. Filling it is therefore all it takes to bring
-     * a transcribed video to life — no remount, and no second code path for
-     * cues that arrived late.
+     * re-reads it on every frame. Refilling it is therefore all it takes to put
+     * new lines on screen — no remount, and no second code path for cues that
+     * arrived late.
      */
     const cues = loaded.cues
 
@@ -402,9 +475,7 @@ async function main() {
           ? 'too sparse to be this video’s dialogue; transcribing instead'
           : 'too sparse to be this video’s dialogue, but speech to text is off, so keeping it'
 
-    console.log(
-      `[bb-subsgen] ${cues.length} cues over ${Math.round(duration)}s — ${verdict}`,
-    )
+    console.log(`[bb-subsgen] ${cues.length} cues over ${Math.round(duration)}s — ${verdict}`)
 
     // Emptied rather than ignored: everything downstream reads this array, and
     // leaving the advert in it would put the advert on screen.
@@ -417,19 +488,86 @@ async function main() {
     }
     status = 'active'
 
-    /**
-     * Progress, and the overlay's way of painting it — deliberately out here.
-     *
-     * `mount` re-runs its callback whenever Bilibili replaces the `<video>`
-     * element, which on bangumi it does during DRM and DASH setup. Everything
-     * inside is therefore per-overlay and may happen several times; a
-     * transcription is per-video and must happen exactly once. Anything the run
-     * needs has to outlive the mount, or a remount restarts it.
-     */
-    let progress: ProgressState = transcribing
-      ? { phase: 'transcribe', done: 0, total: 0 }
-      : { phase: 'idle' }
+    // ── Video scope ────────────────────────────────────────────────────────
+    //
+    // `mount` re-runs its callback whenever Bilibili replaces the `<video>`
+    // element, which on bangumi it does during DASH and DRM setup. Everything
+    // inside it is therefore per-overlay and may happen several times. A
+    // transcription and a translation pass are per-video and must happen once,
+    // so they live out here and the mount only publishes the hooks that paint
+    // them. Getting this wrong is what previously left both passes dead for the
+    // rest of a video whenever the player swapped its element.
+
+    /** Chunk progress while a transcription is running; null when none is. */
+    let transcribeState: { done: number; total: number; covered: Span[] } | null = transcribing
+      ? { done: 0, total: 0, covered: [] }
+      : null
+    /** The translation phases. Transcription is held separately, above. */
+    let progress: ProgressState = { phase: 'idle' }
+
+    // Published by the mount, and reassigned by every remount.
     let repaintProgress: (() => void) | null = null
+    let paintTranslation: ((start: number) => void) | null = null
+    let refreshCues: (() => void) | null = null
+    let currentIndex: () => number = () => -1
+
+    // Blank cues are never translated, so they'd otherwise make the pass look
+    // permanently unfinished. Counted on demand rather than once, because a
+    // transcript keeps arriving and keeps changing the answer.
+    const translatable = () => cues.filter((cue) => cue.text.trim()).length
+
+    /**
+     * The translation a line shows, and the moment it stops being able to change.
+     *
+     * Freezing happens here rather than at the point results arrive because this
+     * is where a line is actually put on screen — and "has been read" is the only
+     * thing that makes a rewrite unacceptable. A line still ahead of the playhead
+     * may be upgraded freely; the one you are looking at may not.
+     */
+    const translationFor = (index: number): Shown => {
+      const start = index < 0 ? undefined : cues[index]?.start
+      if (start === undefined) return { text: '', source: null }
+      const lang = settings.translationLang
+
+      const settled = shownFor(lang).get(start)
+      if (settled !== undefined) return settled
+
+      const result = preferred({
+        nmt: cacheFor(lang).get(start),
+        llm: llmCacheFor(lang).get(start),
+        latched: latched.has(lang),
+      })
+      // The mark freezes with the text: a line that showed the on-device
+      // translation stays undotted even once the model's arrives, so the dot
+      // never appears under a line you are part way through reading.
+      if (result.text && index === currentIndex()) shownFor(lang).set(start, result)
+      return result
+    }
+
+    /** Opens the gate once the model is far enough ahead to stay ahead. */
+    const updateLatch = (lang: TranslationLang) => {
+      if (latched.has(lang)) return
+      const llm = llmCacheFor(lang)
+      const from = Math.max(currentIndex(), 0)
+      const buffered = bufferedAhead(
+        from,
+        cues.length,
+        (index) => llm.has(cues[index].start),
+        (index) => Boolean(cues[index].text.trim()),
+      )
+      const opened = latch(false, buffered)
+      if (opened) latched.add(lang)
+
+      // Diagnostic, on the page console rather than the model log, which the
+      // worker owns. This is the one place that can answer "the model has
+      // translated the line I am watching, so why am I still reading the
+      // on-device version" — the gap between `have` and the threshold is the
+      // whole answer, and it is invisible from anywhere else.
+      console.debug(
+        `[bb-subsgen] llm buffer: ${buffered}/${BUFFER_CUES} contiguous cues ahead of ${from}` +
+          `, ${llm.size} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
+      )
+    }
 
     stopMount = mount(({ shadowRoot, video, container }) => {
       let lastIndex = -1
@@ -454,21 +592,25 @@ async function main() {
        * Deliberately `forCard` and not `translationFor`: the card takes the best
        * translation that exists, not the one that was on screen. See tier.ts.
        */
-      const contextFor = (index: number): Context => ({
-        text: cues[index].text,
-        translation: forCard({
-          nmt: cacheFor(settings.translationLang).get(index),
-          llm: llmCacheFor(settings.translationLang).get(index),
-        }),
-        videoId,
-        start: cues[index].start,
-        url: location.href,
-        title: document.title,
-        // Every cue on a transcribed video came from the transcript: `transcribing`
-        // is only ever true when the track was empty, so there is no mixture.
-        source: transcribing ? 'asr' : 'cc',
-        at: Date.now(),
-      })
+      const contextFor = (index: number): Context => {
+        const { start, text } = cues[index]
+        return {
+          text,
+          translation: forCard({
+            nmt: cacheFor(settings.translationLang).get(start),
+            llm: llmCacheFor(settings.translationLang).get(start),
+          }),
+          videoId,
+          start,
+          url: location.href,
+          title: document.title,
+          // Every cue on a transcribed video came from the transcript:
+          // `transcribing` is only ever true when the track was empty, so there
+          // is no mixture.
+          source: transcribing ? 'asr' : 'cc',
+          at: Date.now(),
+        }
+      }
 
       const stopHover = attachHover({
         shadowRoot,
@@ -522,70 +664,36 @@ async function main() {
           })
         },
       })
-      // Blank cues are never translated, so they'd otherwise make the pass look
-      // permanently unfinished. Counted on demand rather than once, because a
-      // transcript arrives after this point and changes the answer.
-      const translatable = () => cues.filter((cue) => cue.text.trim()).length
 
+      /**
+       * Which of the two runs the pill is reporting.
+       *
+       * Transcription takes precedence while one is live, because until it
+       * reaches the stretch you are watching there is no line there to translate.
+       */
       const renderProgress = () => {
         const cache = cacheFor(settings.translationLang)
+        const state: ProgressState = transcribeState
+          ? { phase: 'transcribe', ...transcribeState }
+          : progress
         setProgress(
           shadowRoot,
-          progressView(progress, isWaiting(lastIndex, (index) => cache.has(index))),
+          progressView(state, {
+            // `?.` because this runs on a frame callback while the cue list is
+            // being replaced under it; a stale index must not throw here, of all
+            // places, and the next frame corrects it.
+            waiting: isWaiting(lastIndex, (index) => cache.has(cues[index]?.start ?? -1)),
+            playhead: video.currentTime,
+          }),
         )
       }
       // So a run already under way can paint into whichever overlay is current.
       repaintProgress = renderProgress
-
-      /**
-       * The translation a line shows, and the moment it stops being able to change.
-       *
-       * Freezing happens here rather than at the point results arrive because
-       * this is where a line is actually put on screen — and "has been read" is
-       * the only thing that makes a rewrite unacceptable. A line still ahead of
-       * the playhead may be upgraded freely; the one you are looking at may not.
-       */
-      const translationFor = (index: number): Shown => {
-        if (index < 0) return { text: '', source: null }
-        const lang = settings.translationLang
-
-        const settled = shownFor(lang).get(index)
-        if (settled !== undefined) return settled
-
-        const result = preferred({
-          nmt: cacheFor(lang).get(index),
-          llm: llmCacheFor(lang).get(index),
-          latched: latched.has(lang),
-        })
-        // The mark freezes with the text: a line that showed the on-device
-        // translation stays undotted even once the model's arrives, so the dot
-        // never appears under a line you are part way through reading.
-        if (result.text && index === lastIndex) shownFor(lang).set(index, result)
-        return result
-      }
-
-      /** Opens the gate once the model is far enough ahead to stay ahead. */
-      const updateLatch = (lang: TranslationLang) => {
-        if (latched.has(lang)) return
-        const llm = llmCacheFor(lang)
-        const buffered = bufferedAhead(
-          Math.max(lastIndex, 0),
-          cues.length,
-          (index) => llm.has(index),
-          (index) => Boolean(cues[index].text.trim()),
-        )
-        const opened = latch(false, buffered)
-        if (opened) latched.add(lang)
-
-        // Diagnostic, on the page console rather than the model log, which the
-        // worker owns. This is the one place that can answer "the model has
-        // translated the line I am watching, so why am I still reading the
-        // on-device version" — the gap between `have` and the threshold is the
-        // whole answer, and it is invisible from anywhere else.
-        console.debug(
-          `[bb-subsgen] llm buffer: ${buffered}/${BUFFER_CUES} contiguous cues ahead of ${lastIndex}` +
-            `, ${llm.size} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
-        )
+      currentIndex = () => lastIndex
+      paintTranslation = (start) => {
+        if (lastIndex < 0 || cues[lastIndex]?.start !== start) return
+        const { text, source } = translationFor(lastIndex)
+        setTranslation(shadowRoot, text, source)
       }
 
       const cueView = (): CueView => {
@@ -610,6 +718,14 @@ async function main() {
       }
 
       /**
+       * The structures this line is built out of, as pattern ids.
+       *
+       * Derived from the tokens already segmented for rendering, so finding them
+       * costs nothing beyond the match itself.
+       */
+      const patternsInLine = () => findPatterns(currentTokens).map((match) => match.pattern.id)
+
+      /**
        * Counts a line as seen, and keeps it if it still has something to teach.
        *
        * One rule for every level: a line qualifies when it contains a word you
@@ -623,15 +739,6 @@ async function main() {
        * on words nothing was teaching — they pool too, and the same rationing
        * covers both.
        */
-      /**
-       * The structures this line is built out of, as pattern ids.
-       *
-       * Derived from the tokens already segmented for rendering, so finding them
-       * costs nothing beyond the match itself.
-       */
-      const patternsInLine = () =>
-        findPatterns(currentTokens).map((match) => match.pattern.id)
-
       const onCueShown = () => {
         engagedMs = 0
         captured = false
@@ -694,9 +801,7 @@ async function main() {
         // Only the translation phases are the translation's to clear.
         // Transcription is producing the Chinese itself, and goes on being worth
         // reporting whether or not a translation is wanted underneath it.
-        if (!settings.showTranslation && progress.phase !== 'transcribe') {
-          progress = { phase: 'idle' }
-        }
+        if (!settings.showTranslation) progress = { phase: 'idle' }
         render()
         applyGeometry()
         renderProgress()
@@ -705,7 +810,7 @@ async function main() {
       // Fires only when the active cue actually changes, which is why capture
       // hangs off it rather than off render() — render also runs on every
       // settings change, and would count the same line again each time.
-      const stopSync = watchPlayback(video, cues, (index) => {
+      const watch = watchPlayback(video, cues, (index) => {
         lastIndex = index
         render()
         renderProgress()
@@ -715,6 +820,30 @@ async function main() {
         if (index >= 0) tellWorker({ type: 'bb-subsgen:llm-playhead', index })
       })
 
+      // Re-read the cue list on demand, for when it changed rather than the
+      // time did. Chunks land while the video is paused as often as not, and no
+      // frame callback fires then.
+      refreshCues = () => {
+        watch.refresh()
+        renderProgress()
+      }
+
+      /**
+       * A jump, which two separate things need to hear about.
+       *
+       * The pill, because whether it shows depends on where you are and not only
+       * on what has been done; and the transcription, because the chunk you have
+       * jumped to is now the one worth doing next.
+       */
+      const onSeeked = () => {
+        watch.refresh()
+        renderProgress()
+        if (transcribeState) {
+          tellWorker({ type: 'bb-subsgen:asr-playhead', seconds: video.currentTime })
+        }
+      }
+      video.addEventListener('seeked', onSeeked)
+
       // Painted here rather than left to the first frame callback. On a
       // transcribed video there are no cues yet, so the only thing that would
       // ever have triggered this is playback itself — and a paused video, which
@@ -722,121 +851,133 @@ async function main() {
       // at all while several minutes of work go on unannounced.
       renderProgress()
 
-      startTranslation = () => {
-        if (!settings.showTranslation || translationAbort) return
-        // Captured, not re-read: a result arriving after the user switches
-        // language belongs to the language the pass was started for.
-        const lang = settings.translationLang
-        const cache = cacheFor(lang)
-        const controller = new AbortController()
-        translationAbort = controller
-
-        progress = { phase: 'pass', done: cache.size, total: translatable() }
-        renderProgress()
-
-        void translateTrack({
-          lang,
-          // Blanking already-translated cues makes the pass skip them, so
-          // toggling the setting off and back on — or switching language and
-          // back — doesn't redo finished work.
-          texts: cues.map((cue, index) => (cache.has(index) ? '' : cue.text)),
-          currentIndex: () => lastIndex,
-          onDownload: (fraction) => {
-            progress = { phase: 'download', label: labelFor(lang), fraction }
-            renderProgress()
-          },
-          onReady: () => {
-            progress = { phase: 'pass', done: cache.size, total: translatable() }
-            renderProgress()
-          },
-          onResult: (index, translated) => {
-            cache.set(index, translated)
-            if (lang !== settings.translationLang) return // superseded mid-flight
-            // Through the tier rather than straight to the overlay: this line
-            // may already have settled on the model's translation, and the
-            // on-device one arriving late must not displace it.
-            if (index === lastIndex) {
-              const { text, source } = translationFor(index)
-              setTranslation(shadowRoot, text, source)
-            }
-            progress = { phase: 'pass', done: cache.size, total: translatable() }
-            renderProgress()
-          },
-          signal: controller.signal,
-        })
-      }
-      // Both passes key their caches by cue index, so neither may start on a
-      // video whose cues have not arrived yet. The transcript handler below
-      // starts them once the list is final.
-      if (!transcribing) startTranslation()
-
-      /**
-       * Hands the track to the worker, which owns the model and the cache.
-       *
-       * Segmented here because this is where the lexicon already is — the
-       * worker would otherwise have to parse a 4.5MB dictionary of its own,
-       * every time Chrome decided it had been idle long enough to discard.
-       */
-      startLlmTranslation = () => {
-        if (!settings.showTranslation) return
-        if (!settings.llmEnabled || !settings.llmTranslationEnabled) return
-        if (!settings.llmBaseUrl || !settings.llmTranslationModel) return
-
-        holdPassPort()
-        tellWorker({
-          type: 'bb-subsgen:llm-translate-track',
-          videoId,
-          lang: settings.translationLang,
-          model: settings.llmTranslationModel,
-          baseUrl: settings.llmBaseUrl,
-          video: { title: videoInfo.title, description: videoInfo.description },
-          cues: cues.map((cue) => ({
-            start: cue.start,
-            text: cue.text,
-            words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
-          })),
-        })
-      }
-      if (!transcribing) startLlmTranslation()
-
-      const stopLlmResults = onLlmTranslations((msg) => {
-        if (msg.videoId !== videoId) return // a previous video's pass, still landing
-        const cache = llmCacheFor(msg.lang)
-        for (const line of msg.lines) cache.set(line.index, line.text)
-
-        if (msg.lang !== settings.translationLang) return
-        updateLatch(msg.lang)
-        // Only ever the line on screen, and only if it has not settled yet:
-        // everything else this batch touched is still ahead of the playhead.
-        if (msg.lines.some((line) => line.index === lastIndex)) {
-          const { text, source } = translationFor(lastIndex)
-          setTranslation(shadowRoot, text, source)
-        }
-      })
-
       return () => {
         // First, so the last few lines of the session are posted before the
         // listeners that would have flushed them are gone.
         buffer.stop()
         stopHover()
-        stopSync()
+        watch.stop()
         stopControls()
         stopForward()
-        stopLlmResults()
+        video.removeEventListener('seeked', onSeeked)
       }
     })
 
-    if (!transcribing) return
+    startTranslation = () => {
+      if (!settings.showTranslation) return
+      // Restarted rather than guarded against restarting. The pass works from a
+      // snapshot of the cue list, so a transcript that has grown needs a new
+      // one; lines already translated are blanked below, so nothing is redone
+      // and the translator itself is memoised across the restart.
+      stopNmt()
+
+      // Captured, not re-read: a result arriving after the user switches
+      // language belongs to the language the pass was started for.
+      const lang = settings.translationLang
+      const cache = cacheFor(lang)
+      // Captured alongside the texts, for the same reason. `onResult` reports a
+      // position in the array it was handed, and by the time it does, the live
+      // array may have had a chunk spliced into it.
+      const starts = cues.map((cue) => cue.start)
+      const controller = new AbortController()
+      translationAbort = controller
+
+      progress = { phase: 'pass', done: cache.size, total: translatable() }
+      repaintProgress?.()
+
+      void translateTrack({
+        lang,
+        // Blanking already-translated cues makes the pass skip them, so toggling
+        // the setting off and back on — or a chunk landing — doesn't redo
+        // finished work.
+        texts: cues.map((cue) => (cache.has(cue.start) ? '' : cue.text)),
+        currentIndex: () => currentIndex(),
+        onDownload: (fraction) => {
+          progress = { phase: 'download', label: labelFor(lang), fraction }
+          repaintProgress?.()
+        },
+        onReady: () => {
+          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          repaintProgress?.()
+        },
+        onResult: (index, translated) => {
+          cache.set(starts[index], translated)
+          if (lang !== settings.translationLang) return // superseded mid-flight
+          // Through the tier rather than straight to the overlay: this line may
+          // already have settled on the model's translation, and the on-device
+          // one arriving late must not displace it.
+          paintTranslation?.(starts[index])
+          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          repaintProgress?.()
+        },
+        signal: controller.signal,
+      })
+    }
 
     /**
-     * Fills the cue list once the transcript is finished, and only then.
+     * Hands the track to the worker, which owns the model and the cache.
      *
-     * Partial results are deliberately not shown. Chunks are transcribed
-     * playhead-first, so they finish out of order, and splicing an early one
-     * into the middle would renumber every line after it — underneath the
-     * index-keyed caches in the overlay, which have no way to notice. Waiting
-     * costs a couple of minutes on the first viewing of an episode and nothing
-     * on any viewing after it, because the worker caches what comes back.
+     * Segmented here because this is where the lexicon already is — the worker
+     * would otherwise have to parse a 4.5MB dictionary of its own, every time
+     * Chrome decided it had been idle long enough to discard.
+     */
+    startLlmTranslation = () => {
+      if (!settings.showTranslation) return
+      if (!settings.llmEnabled || !settings.llmTranslationEnabled) return
+      if (!settings.llmBaseUrl || !settings.llmTranslationModel) return
+      // Nothing to translate yet — which on a transcribed video is every call
+      // until the transcript is finished.
+      if (!cues.length) return
+
+      holdPassPort()
+      tellWorker({
+        type: 'bb-subsgen:llm-translate-track',
+        videoId,
+        lang: settings.translationLang,
+        model: settings.llmTranslationModel,
+        baseUrl: settings.llmBaseUrl,
+        video: { title: videoInfo.title, description: videoInfo.description },
+        cues: cues.map((cue) => ({
+          start: cue.start,
+          text: cue.text,
+          words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
+        })),
+      })
+    }
+
+    // Out here rather than inside the mount, so a remount cannot drop a batch
+    // that lands between the old overlay going and the new one arriving.
+    stopLlmResults = onLlmTranslations((msg) => {
+      if (msg.videoId !== videoId) return // a previous video's pass, still landing
+      const cache = llmCacheFor(msg.lang)
+      for (const line of msg.lines) cache.set(line.start, line.text)
+
+      if (msg.lang !== settings.translationLang) return
+      updateLatch(msg.lang)
+      // Only ever the line on screen, and only if it has not settled yet:
+      // everything else this batch touched is still ahead of the playhead.
+      const at = currentIndex()
+      const start = at >= 0 ? cues[at]?.start : undefined
+      if (start !== undefined && msg.lines.some((line) => line.start === start)) {
+        paintTranslation?.(start)
+      }
+    })
+
+    if (!transcribing) {
+      startTranslation()
+      startLlmTranslation()
+      return
+    }
+
+    /**
+     * Puts each chunk on screen as it lands.
+     *
+     * The whole list every time rather than the newest piece: chunks are
+     * transcribed playhead-first and so finish out of order, and re-sorting a
+     * complete list at this end is both cheaper and harder to get wrong than
+     * splicing fragments into the right places. Cue identity is the start time
+     * everywhere in here precisely so that a chunk arriving early in the track
+     * can renumber the array without disturbing what has already been shown.
      *
      * Subscribed out here rather than inside the mount so a remount cannot drop
      * a chunk that lands between the old overlay going and the new one arriving.
@@ -844,24 +985,31 @@ async function main() {
     stopAsr = onAsrCues((msg) => {
       if (msg.videoId !== videoId) return // a previous video's run, still landing
 
-      progress = { phase: 'transcribe', done: msg.done, total: msg.total }
-      if (!msg.complete) {
+      cues.length = 0
+      cues.push(...msg.cues)
+
+      if (msg.complete) {
+        // Whether it worked or not, the worker no longer needs holding open.
+        releaseAsrPort()
+        if (msg.error) console.warn('[bb-subsgen] transcription:', msg.error)
+        transcribeState = null
+        console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
+      } else {
+        transcribeState = { done: msg.done, total: msg.total, covered: msg.covered ?? [] }
         console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
-        repaintProgress?.()
-        return
       }
 
-      // Whether it worked or not, the worker no longer needs holding open.
-      releaseAsrPort()
-      if (msg.error) console.warn('[bb-subsgen] transcription:', msg.error)
-      cues.push(...msg.cues)
-      progress = { phase: 'idle' }
-      console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
+      refreshCues?.()
 
-      // `watchPlayback` re-reads the array on every frame, so the line under the
-      // playhead appears by itself. The passes have to be told.
+      // Restarted on every chunk. It is a local model rather than the one behind
+      // the speech server, so it costs nothing the transcription is waiting on,
+      // and it is what makes a line readable the moment it appears.
       startTranslation?.()
-      startLlmTranslation?.()
+      // The model pass waits for the whole track. There is one GPU behind all of
+      // this and the speech server is on it until the last chunk lands; a pass
+      // racing it would finish later than the two run in order. It also gets
+      // batch seams that are actually adjacent, which a growing track does not.
+      if (msg.complete) startLlmTranslation?.()
       repaintProgress?.()
     })
 
@@ -891,6 +1039,7 @@ async function main() {
       playhead: document.querySelector('video')?.currentTime ?? 0,
     })
   }
+
 
   watchVideoChange(loadCurrentVideo)
   onSettingsChanged((next) => {

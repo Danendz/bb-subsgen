@@ -15,7 +15,7 @@
 import { fetchAudioTrack } from '../bilibili/audio'
 import type { Cue } from '../bilibili/subtitles'
 import { transcribe } from '../llm/asr'
-import { mergeCues, orderFromPlayhead, ownedCues, planChunks } from '../llm/chunks'
+import { mergeCues, nextChunk, ownedCues, planChunks, type Chunk } from '../llm/chunks'
 import { log } from '../llm/log'
 import { ASR_SAMPLE_RATE, downmixToMono, encodeWav, sliceSeconds } from '../llm/wav'
 import {
@@ -26,6 +26,14 @@ import {
 
 /** One run at a time: there is one GPU behind this, as there is behind the pass. */
 let running: AbortController | null = null
+
+/**
+ * Where playback is, re-read before every chunk rather than fixed at the start.
+ *
+ * Module scope because a seek arrives as its own message, minutes after the
+ * request that began the run.
+ */
+let playhead = 0
 
 function send(event: OffscreenEvent): void {
   // The worker may have been torn down between chunks; that is not an error, and
@@ -78,7 +86,7 @@ async function run(request: TranscribeRequest): Promise<void> {
     const track = await fetchAudioTrack({ videoId, cid: request.cid, signal })
     if (!track) return done([], 'No audio stream for this video.')
 
-    const chunks = planChunks(track.duration)
+    const chunks = planChunks(track.duration, { playhead })
     if (!chunks.length) return done([], 'This video reports no duration.')
 
     note(
@@ -98,6 +106,7 @@ async function run(request: TranscribeRequest): Promise<void> {
       done: 0,
       total: chunks.length,
       cues: [],
+      covered: [],
     })
 
     const response = await fetch(track.stream.url, { credentials: 'omit', signal })
@@ -111,9 +120,18 @@ async function run(request: TranscribeRequest): Promise<void> {
 
     // Keyed by chunk so the merge stays correct however the chunks are ordered.
     const byChunk = new Map<number, Cue[]>()
+    const spans = new Map<number, [number, number]>()
+    const remaining = new Set<Chunk>(chunks)
 
-    for (const chunk of orderFromPlayhead(chunks, request.playhead)) {
+    // `nextChunk` rather than a fixed order, asked again every time round: a
+    // seek arrives as a message minutes into the run, and re-reading the
+    // playhead here is the whole of what makes it re-order the work. The chunk
+    // already in flight is never abandoned for it — hanging up mid-encode is
+    // what the speech server reports as a client disconnect, and it would throw
+    // away a chunk that is nearly done.
+    for (let chunk = nextChunk(remaining, playhead); chunk; chunk = nextChunk(remaining, playhead)) {
       if (signal.aborted) return
+      remaining.delete(chunk)
 
       const audio = encodeWav(sliceSeconds(samples, chunk.audioStart, chunk.audioEnd))
       const heard = await transcribe({
@@ -128,6 +146,10 @@ async function run(request: TranscribeRequest): Promise<void> {
 
       // The padding either side is what the model heard, not what it may report.
       byChunk.set(chunk.index, ownedCues(heard, chunk))
+      // What the chunk owned, not what it found: a stretch with no speech in it
+      // is covered by having been listened to, and the overlay needs to know
+      // that or it goes on reporting a chunk that is finished.
+      spans.set(chunk.index, [chunk.start, chunk.end])
 
       send({
         type: 'bb-subsgen:offscreen-progress',
@@ -135,6 +157,7 @@ async function run(request: TranscribeRequest): Promise<void> {
         done: byChunk.size,
         total: chunks.length,
         cues: mergeCues(byChunk.values()),
+        covered: [...spans.values()],
       })
     }
 
@@ -157,5 +180,10 @@ chrome.runtime.onMessage.addListener((msg) => {
     running = null
     return
   }
+  if (msg.type === 'bb-subsgen:offscreen-playhead') {
+    playhead = msg.seconds
+    return
+  }
+  playhead = msg.playhead
   void run(msg)
 })

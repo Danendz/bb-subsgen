@@ -30,7 +30,19 @@ export interface CancelRequest {
   target: typeof OFFSCREEN_TARGET
 }
 
-export type OffscreenRequest = TranscribeRequest | CancelRequest
+/**
+ * Where playback moved to, so the run can re-order what is left.
+ *
+ * Sent on a seek and on nothing else. Ordinary playback needs no updates,
+ * because chunks already advance in the direction you are watching.
+ */
+export interface PlayheadRequest {
+  type: 'bb-subsgen:offscreen-playhead'
+  target: typeof OFFSCREEN_TARGET
+  seconds: number
+}
+
+export type OffscreenRequest = TranscribeRequest | CancelRequest | PlayheadRequest
 
 /**
  * One chunk's worth of progress, sent as each lands.
@@ -47,6 +59,15 @@ export interface TranscribeProgress {
   done: number
   total: number
   cues: Cue[]
+  /**
+   * The stretches of track transcribed so far, as `[start, end]` in seconds.
+   *
+   * Sent because the cues cannot answer the question the overlay asks of them —
+   * "has the part I am watching been done yet" — and the chunk plan can. A chunk
+   * over a silent stretch is transcribed perfectly and produces no cues at all,
+   * which is indistinguishable from a chunk that has not run.
+   */
+  covered: Array<[number, number]>
 }
 
 /** Sent once, when there is nothing more coming. */

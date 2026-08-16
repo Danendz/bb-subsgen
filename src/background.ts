@@ -14,6 +14,7 @@ import {
 import {
   cancelTranscription,
   handleOffscreenEvent,
+  reportAsrPlayhead,
   startTranscription,
   watchAsrTab,
 } from './background/asr-pass'
@@ -105,6 +106,9 @@ function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
       return
     case 'bb-subsgen:asr-cancel':
       void cancelTranscription(tabId)
+      return
+    case 'bb-subsgen:asr-playhead':
+      if (tabId !== undefined) void reportAsrPlayhead(tabId, msg.seconds)
       return
   }
 }

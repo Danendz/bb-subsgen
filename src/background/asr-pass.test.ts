@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { cancelTranscription, handleOffscreenEvent, startTranscription, watchAsrTab } from './asr-pass'
+import {
+  cancelTranscription,
+  handleOffscreenEvent,
+  reportAsrPlayhead,
+  startTranscription,
+  watchAsrTab,
+} from './asr-pass'
 import { OFFSCREEN_TARGET } from '../offscreen/protocol'
 
 const TAB = 7
@@ -136,6 +142,39 @@ describe('a duplicate request', () => {
   })
 })
 
+describe('reportAsrPlayhead', () => {
+  test('passes a seek on to the run', async () => {
+    await startTranscription(TAB, request())
+    onBus = []
+
+    await reportAsrPlayhead(TAB, 1920)
+
+    expect(onBus).toEqual([
+      expect.objectContaining({
+        type: 'bb-subsgen:offscreen-playhead',
+        target: OFFSCREEN_TARGET,
+        seconds: 1920,
+      }),
+    ])
+  })
+
+  test('ignores a seek from a tab whose run is not the one going', async () => {
+    // Otherwise scrubbing one video re-orders another video's transcription.
+    await startTranscription(TAB, request())
+    onBus = []
+
+    await reportAsrPlayhead(OTHER_TAB, 1920)
+
+    expect(onBus).toEqual([])
+  })
+
+  test('ignores a seek when nothing is being transcribed', async () => {
+    await reportAsrPlayhead(TAB, 1920)
+
+    expect(onBus).toEqual([])
+  })
+})
+
 describe('routing what the offscreen document reports', () => {
   test('forwards progress to the tab that asked', async () => {
     await startTranscription(TAB, request())
@@ -146,6 +185,7 @@ describe('routing what the offscreen document reports', () => {
       done: 0,
       total: 11,
       cues: [],
+      covered: [],
     })
     await settle()
 
@@ -162,6 +202,24 @@ describe('routing what the offscreen document reports', () => {
     ])
   })
 
+  test('passes the stretches transcribed so far through to the tab', async () => {
+    // What decides whether the overlay's bar is showing. The cues cannot answer
+    // it: a chunk over silence is transcribed correctly and produces none.
+    await startTranscription(TAB, request())
+
+    handleOffscreenEvent({
+      type: 'bb-subsgen:offscreen-progress',
+      videoId: 'ep335910',
+      done: 2,
+      total: 11,
+      cues: [],
+      covered: [[0, 60], [1800, 2100]],
+    })
+    await settle()
+
+    expect(toTab[0].message).toMatchObject({ covered: [[0, 60], [1800, 2100]] })
+  })
+
   test('drops a superseded run’s chunk, still landing', async () => {
     await startTranscription(TAB, request())
 
@@ -171,6 +229,7 @@ describe('routing what the offscreen document reports', () => {
       done: 1,
       total: 11,
       cues: [],
+      covered: [],
     })
     await settle()
 
@@ -197,6 +256,7 @@ describe('routing what the offscreen document reports', () => {
       done: 3,
       total: 11,
       cues: [],
+      covered: [],
     })
     await settle()
 
@@ -218,6 +278,7 @@ describe('routing what the offscreen document reports', () => {
         done: 1,
         total: 2,
         cues: [],
+        covered: [],
       }),
     ).toBe(true)
     expect(handleOffscreenEvent({ type: 'bb-subsgen:llm-translations' })).toBe(false)
@@ -241,6 +302,7 @@ describe('watchAsrTab', () => {
       done: 1,
       total: 11,
       cues: [],
+      covered: [],
     })
     await settle()
     expect(toTab).toEqual([])
@@ -263,6 +325,7 @@ describe('watchAsrTab', () => {
       done: 1,
       total: 11,
       cues: [],
+      covered: [],
     })
     await settle()
     expect(toTab).toHaveLength(1)
