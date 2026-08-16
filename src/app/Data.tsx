@@ -20,6 +20,7 @@ import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../
 import { WordListHelp } from './WordListHelp'
 import { LlmLog } from './LlmLog'
 import { cacheSize, clearCache } from '../background/llm-cache'
+import { clearTranscripts, transcriptSize } from '../background/transcript-cache'
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10)
@@ -218,6 +219,60 @@ function TranslationCache() {
   )
 }
 
+/**
+ * The transcripts the speech model has produced, and a way to be rid of them.
+ *
+ * Beside the translation cache rather than inside it, because they are not the
+ * same kind of thing to lose. A translation that goes costs you the model's
+ * wording and leaves Chrome's on-device version on screen; a transcript that
+ * goes leaves a bangumi episode with no subtitles at all until it has been
+ * listened to again, which is two or three minutes of fans.
+ *
+ * Worth offering anyway. These are the largest rows this extension writes — a
+ * transcript is every line of a fifty-minute episode — and a model swapped for a
+ * Mandarin-tuned one makes every one of them the old model's mistakes, kept
+ * under a key nothing will ask for again.
+ */
+function Transcripts() {
+  const [size, setSize] = useState<{ videos: number; lines: number } | null>(null)
+
+  const refresh = () => void transcriptSize().then(setSize, () => setSize(null))
+  useEffect(refresh, [])
+
+  const wipe = async () => {
+    if (
+      !confirm(
+        'Delete every transcript? Videos with no subtitle track of their own will have ' +
+          'to be transcribed again before they show any lines.',
+      )
+    ) {
+      return
+    }
+    await clearTranscripts()
+    refresh()
+  }
+
+  return (
+    <div class="panel">
+      <div class="row">
+        <div class="grow">
+          <strong>Transcripts</strong>
+          <div class="muted small">
+            {size?.lines
+              ? `${size.lines.toLocaleString()} lines across ${size.videos} video${size.videos === 1 ? '' : 's'}. ` +
+                'Kept so an episode is listened to once ever, rather than once per viewing.'
+              : 'Nothing transcribed yet. Lines the speech model hears in videos with no subtitle ' +
+                'track are kept here, so watching one again costs nothing.'}
+          </div>
+        </div>
+        <button disabled={!size?.lines} onClick={() => void wipe()}>
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface Pending {
   incoming: Backup
   local: Backup
@@ -377,6 +432,7 @@ export function Data() {
       </div>
 
       <TranslationCache />
+      <Transcripts />
       <LlmLog />
     </>
   )
