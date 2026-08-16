@@ -3,6 +3,7 @@ import type { CedictEntry } from '../lang/dict'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { VideoPreamble } from '../llm/batch'
 import type { PassCue, PassStatus } from '../background/llm-translate'
+import type { TranscriptStatus } from '../background/asr-pass'
 import type { TranslationLang } from './settings'
 
 export type Status = 'loading' | 'no-track' | 'active'
@@ -50,6 +51,26 @@ export function isGetPassStatusMessage(msg: unknown): msg is GetPassStatusMessag
     typeof msg === 'object' &&
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:llm-pass-status' &&
+    typeof (msg as { tabId?: unknown }).tabId === 'number'
+  )
+}
+
+/** The same question about the transcription. See `transcriptStatus`. */
+export interface GetTranscriptStatusMessage {
+  type: 'bb-subsgen:asr-status'
+  tabId: number
+}
+
+export interface TranscriptStatusResponse {
+  /** Null when this tab has no run and nothing left over from one. */
+  status: TranscriptStatus | null
+}
+
+export function isGetTranscriptStatusMessage(msg: unknown): msg is GetTranscriptStatusMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:asr-status' &&
     typeof (msg as { tabId?: unknown }).tabId === 'number'
   )
 }
@@ -206,11 +227,19 @@ export type AsrMessage =
    * because during transcription there are barely any cues to index.
    */
   | { type: 'bb-subsgen:asr-playhead'; seconds: number }
+  /**
+   * Ask again for whatever a run could not transcribe.
+   *
+   * `tabId` because this comes from the popup as well as from the overlay, and
+   * the popup has no tab of its own; the worker falls back to the sender's.
+   */
+  | { type: 'bb-subsgen:asr-retry'; tabId?: number }
 
 const ASR_TYPES = new Set<string>([
   'bb-subsgen:asr-transcribe',
   'bb-subsgen:asr-cancel',
   'bb-subsgen:asr-playhead',
+  'bb-subsgen:asr-retry',
 ])
 
 export function isAsrMessage(msg: unknown): msg is AsrMessage {

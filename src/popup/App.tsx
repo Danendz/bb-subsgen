@@ -22,12 +22,15 @@ import { hostLabel } from '../settings/sites'
 import { useSettings } from '../settings/useSettings'
 import type {
   GetPassStatusMessage,
+  GetTranscriptStatusMessage,
   PassStatusResponse,
   Status,
   StatusResponse,
+  TranscriptStatusResponse,
 } from '../shared/messages'
 import type { PassStatus } from '../background/llm-translate'
-import { passProgressView } from '../llm/progress'
+import type { TranscriptStatus } from '../background/asr-pass'
+import { passProgressView, transcriptProgressView } from '../llm/progress'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
@@ -148,20 +151,127 @@ function PassProgress({ tabId }: { tabId: number | undefined }) {
   )
 }
 
+/**
+ * Whether a remembered run is about the video the tab is actually on.
+ *
+ * A stopped run is kept per tab so it can still be retried after a reload, which
+ * means it outlives navigating to the next episode — and reporting the previous
+ * one's failure here would be misleading.
+ *
+ * A season URL is let through rather than hidden on a guess: `/bangumi/play/ss…`
+ * names a season, and the episode it settles on is decided by an API call this
+ * has no part in, so the two ids cannot be compared.
+ */
+function isCurrentVideo(status: TranscriptStatus, videoId: string | null): boolean {
+  if (!videoId) return false
+  if (videoId.startsWith('ss')) return true
+  return status.videoId === videoId
+}
+
+async function fetchTranscriptStatus(tabId: number | undefined): Promise<TranscriptStatus | null> {
+  if (!tabId) return null
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: 'bb-subsgen:asr-status',
+      tabId,
+    } satisfies GetTranscriptStatusMessage)) as TranscriptStatusResponse | undefined
+    return response?.status ?? null
+  } catch {
+    return null // the worker was asleep, which is itself "nothing running"
+  }
+}
+
+/**
+ * The speech model's progress through this video, and what to do if it stopped.
+ *
+ * Polled on the same interval as `PassProgress`, and for the same reason. It
+ * earns its place beside the overlay's own bar by covering what the overlay
+ * cannot: the notice dismissed, the tab in the background, the video fullscreen.
+ */
+function AsrProgress({
+  tabId,
+  videoId,
+}: {
+  tabId: number | undefined
+  videoId: string | null
+}) {
+  const [status, setStatus] = useState<TranscriptStatus | null>(null)
+  const [retrying, setRetrying] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    const tick = () => {
+      void fetchTranscriptStatus(tabId).then((next) => {
+        if (!live) return
+        setStatus(next)
+        // Cleared once the worker agrees something is going again, rather than
+        // on the click: the run takes a moment to start, and a button that
+        // re-enables before then invites a second retry that cancels the first.
+        if (next?.running) setRetrying(false)
+      })
+    }
+    tick()
+    const timer = setInterval(tick, PASS_POLL_MS)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [tabId])
+
+  if (!status || !isCurrentVideo(status, videoId)) return null
+
+  const view = transcriptProgressView(status)
+  return (
+    <div class={`pass-progress asr-progress${view.stopped ? ' stopped' : ''}`}>
+      <div class="pass-progress-head">
+        <span class="pass-progress-model" title={status.model}>
+          {view.label}
+        </span>
+        <span class="pass-progress-count">{view.count}</span>
+      </div>
+      <div
+        class="pass-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={status.total}
+        aria-valuenow={status.done}
+        aria-label={view.label}
+      >
+        <div class="pass-progress-fill" style={{ width: `${view.fraction * 100}%` }} />
+      </div>
+      {view.detail && <p class="asr-progress-error">{view.detail}</p>}
+      {view.stopped && (
+        <button
+          class="asr-retry"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true)
+            void chrome.runtime.sendMessage({ type: 'bb-subsgen:asr-retry', tabId })
+          }}
+        >
+          {retrying ? 'Retrying…' : 'Retry the missing parts'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function App() {
   const { settings, loaded, update } = useSettings()
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
+  const [videoId, setVideoId] = useState<string | null>(null)
 
   useEffect(() => {
     currentTab().then((t) => {
       setTab(t)
       fetchTabStatus(t?.id).then(setTabStatus)
 
-      const videoId = parseVideoIdFromUrl(t?.url ?? '')
-      if (videoId) {
-        coverageFor(videoId).then(setCoverage, (e: unknown) =>
+      const id = parseVideoIdFromUrl(t?.url ?? '')
+      setVideoId(id)
+      if (id) {
+        coverageFor(id).then(setCoverage, (e: unknown) =>
           console.warn('[bb-subsgen] coverage failed', e),
         )
       }
@@ -246,6 +356,7 @@ export function App() {
 
       <Section title="Bilibili subtitles">
         <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
+        <AsrProgress tabId={tab?.id} videoId={videoId} />
         <PassProgress tabId={tab?.id} />
         <SubtitlesSection settings={settings} update={update} />
       </Section>

@@ -3,10 +3,21 @@ import {
   cancelTranscription,
   handleOffscreenEvent,
   reportAsrPlayhead,
+  retryTranscription,
   startTranscription,
+  transcriptStatus,
   watchAsrTab,
 } from './asr-pass'
 import { OFFSCREEN_TARGET } from '../offscreen/protocol'
+
+// This file is about routing and about what survives a worker restart. The
+// cache has its own tests, and leaving it real made one test's finished
+// transcript answer the next test's request.
+vi.mock('./transcript-cache', () => ({
+  readTranscript: vi.fn(() => Promise.resolve([])),
+  writeTranscript: vi.fn(() => Promise.resolve()),
+  evictTranscripts: vi.fn(() => Promise.resolve(0)),
+}))
 
 const TAB = 7
 const OTHER_TAB = 9
@@ -339,5 +350,130 @@ describe('watchAsrTab', () => {
       watchAsrTab(port)
       disconnect()
     }).not.toThrow()
+  })
+})
+
+/** A run that ended with one stretch missing, as the offscreen document reports it. */
+async function stopWithGap() {
+  await startTranscription(TAB, request())
+  handleOffscreenEvent({
+    type: 'bb-subsgen:offscreen-done',
+    videoId: 'ep335910',
+    cues: [{ start: 1, end: 3, text: '中国' }],
+    done: 9,
+    total: 10,
+    failed: [[1800, 2100]],
+    error: 'Could not reach the model server.',
+  })
+  await settle()
+  toTab = []
+  onBus = []
+}
+
+/** The instruction the offscreen document was last given. */
+const transcribeRequest = () =>
+  onBus.find((msg) => msg.type === 'bb-subsgen:offscreen-transcribe')
+
+describe('picking up where a run gave up', () => {
+  test('seeds the next start with what the last run managed', async () => {
+    // The point of the whole arrangement: a retry redoes one stretch, not the
+    // fetch, the decode and nine chunks that were already right.
+    await stopWithGap()
+
+    await startTranscription(TAB, request())
+
+    expect(onBus).toContainEqual(
+      expect.objectContaining({
+        type: 'bb-subsgen:offscreen-transcribe',
+        seed: [{ start: 1, end: 3, text: '中国' }],
+        only: [[1800, 2100]],
+      }),
+    )
+  })
+
+  test('a page reload resumes it too, not only the Retry button', async () => {
+    // One path in, so reloading after a failure does not throw away work the
+    // extension is still holding.
+    await stopWithGap()
+
+    await retryTranscription(TAB)
+
+    expect(onBus).toContainEqual(expect.objectContaining({ only: [[1800, 2100]] }))
+  })
+
+  test('does not seed a different video', async () => {
+    await stopWithGap()
+
+    await startTranscription(TAB, request({ videoId: 'ep335911' }))
+
+    expect(transcribeRequest()).toMatchObject({ videoId: 'ep335911' })
+    expect(transcribeRequest()).not.toHaveProperty('seed')
+    expect(transcribeRequest()).not.toHaveProperty('only')
+  })
+
+  test('does not seed a different model', async () => {
+    // A different model is a different transcript; its lines are not this one's.
+    await stopWithGap()
+
+    await startTranscription(TAB, request({ model: 'belle-whisper-zh' }))
+
+    expect(transcribeRequest()).not.toHaveProperty('seed')
+  })
+
+  test('forgets the gap once a run finishes cleanly', async () => {
+    await stopWithGap()
+    await startTranscription(TAB, request())
+    handleOffscreenEvent({
+      type: 'bb-subsgen:offscreen-done',
+      videoId: 'ep335910',
+      cues: [{ start: 1, end: 3, text: '中国' }],
+      done: 1,
+      total: 1,
+      failed: [],
+    })
+    await settle()
+
+    expect(await transcriptStatus(TAB)).toBeNull()
+  })
+
+  test('ignores a retry asked for by a tab that has nothing pending', async () => {
+    await stopWithGap()
+
+    await retryTranscription(OTHER_TAB)
+
+    expect(onBus).toEqual([])
+  })
+})
+
+describe('transcriptStatus', () => {
+  test('reports a run in progress', async () => {
+    await startTranscription(TAB, request())
+    handleOffscreenEvent({
+      type: 'bb-subsgen:offscreen-progress',
+      videoId: 'ep335910',
+      done: 3,
+      total: 10,
+      cues: [],
+      covered: [[0, 900]],
+    })
+    await settle()
+
+    expect(await transcriptStatus(TAB)).toMatchObject({ done: 3, total: 10, running: true })
+  })
+
+  test('reports what a stopped run left behind', async () => {
+    await stopWithGap()
+
+    expect(await transcriptStatus(TAB)).toMatchObject({
+      done: 9,
+      total: 10,
+      failed: 1,
+      running: false,
+      error: 'Could not reach the model server.',
+    })
+  })
+
+  test('has nothing to say about a tab with no run', async () => {
+    expect(await transcriptStatus(OTHER_TAB)).toBeNull()
   })
 })

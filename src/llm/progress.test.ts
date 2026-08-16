@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { modelLabel, passProgressView } from './progress'
+import { modelLabel, passProgressView, transcriptProgressView } from './progress'
 
 describe('modelLabel', () => {
   test('drops the publisher namespace runners prefix ids with', () => {
@@ -49,5 +49,60 @@ describe('passProgressView', () => {
   // A retry can re-answer an accepted line; the bar must not overrun its track.
   test('never reports more than a full bar', () => {
     expect(passProgressView({ ...base, translated: 900, total: 840 }).fraction).toBe(1)
+  })
+})
+
+describe('transcriptProgressView', () => {
+  const running = { model: 'large-v3-turbo-q8_0', done: 3, total: 10, failed: 0, running: true }
+
+  test('counts chunks while a run is going', () => {
+    const view = transcriptProgressView(running)
+    expect(view).toMatchObject({
+      label: 'Transcribing with large-v3-turbo-q8_0',
+      count: '3 / 10 chunks',
+      stopped: false,
+    })
+    expect(view.fraction).toBeCloseTo(0.3)
+  })
+
+  test('says so before the chunk plan comes back', () => {
+    // The plan takes as long as the fetch and the decode, and "0 / 0" reads as
+    // a run that has nothing to do.
+    expect(transcriptProgressView({ ...running, done: 0, total: 0 })).toMatchObject({
+      count: 'starting…',
+      fraction: 0,
+    })
+  })
+
+  test('reports how much of the episode has no lines when it stopped', () => {
+    // Stretches, not chunks: what matters is how much you cannot read, not how
+    // the work happened to be divided.
+    const view = transcriptProgressView({
+      ...running,
+      done: 9,
+      failed: 1,
+      running: false,
+      error: 'Could not reach the model server at http://localhost:8080/v1.',
+    })
+    expect(view).toMatchObject({
+      label: 'Transcription stopped',
+      count: '1 stretch missing',
+      stopped: true,
+      detail: 'Could not reach the model server at http://localhost:8080/v1.',
+    })
+  })
+
+  test('pluralises the stretches', () => {
+    expect(
+      transcriptProgressView({ ...running, done: 7, failed: 3, running: false }).count,
+    ).toBe('3 stretches missing')
+  })
+
+  test('covers a run that never produced anything', () => {
+    // The decoder failing, or no audio stream: nothing was divided up, so there
+    // are no stretches to count.
+    expect(
+      transcriptProgressView({ ...running, done: 0, total: 0, failed: 0, running: false }),
+    ).toMatchObject({ count: 'nothing was transcribed', fraction: 0 })
   })
 })

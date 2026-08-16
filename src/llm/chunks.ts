@@ -129,6 +129,52 @@ export function planChunks(
 }
 
 /**
+ * One chunk covering an arbitrary stretch, for work picked up rather than planned.
+ *
+ * A resumed run is handed the stretches a previous one could not transcribe, and
+ * must not re-derive them from `planChunks` — the plan depends on where playback
+ * was when it was made, so the second run would cut the track differently and
+ * the gaps would name the wrong audio.
+ */
+export function chunkFor(
+  [start, end]: [number, number],
+  index: number,
+  duration: number,
+  pad = CHUNK_PAD_S,
+): Chunk {
+  return {
+    index,
+    start,
+    end,
+    audioStart: Math.max(0, start - pad),
+    audioEnd: Math.min(duration, end + pad),
+  }
+}
+
+/**
+ * The stretches of the track **not** left to do, given what still is.
+ *
+ * Phrased as the complement rather than accumulated as chunks finish, because it
+ * then reads the same for a fresh run and for one resuming with most of the
+ * track already in hand — in both cases what is covered is simply everything
+ * outside the work outstanding. Adjacent stretches merge on the way out, so ten
+ * finished chunks report as one span rather than ten.
+ */
+export function coverageExcept(pending: Iterable<Chunk>, duration: number): Array<[number, number]> {
+  const holes = [...pending].sort((a, b) => a.start - b.start)
+  const covered: Array<[number, number]> = []
+
+  let cursor = 0
+  for (const hole of holes) {
+    if (hole.start > cursor) covered.push([cursor, hole.start])
+    cursor = Math.max(cursor, hole.end)
+  }
+  if (duration > cursor) covered.push([cursor, duration])
+
+  return covered
+}
+
+/**
  * The cues a chunk is entitled to keep.
  *
  * Ownership is decided by where a cue *starts*, so a line running across the

@@ -29,6 +29,115 @@ export const ASR_PRESETS: ReadonlyArray<{ label: string; baseUrl: string }> = [
 ]
 
 /**
+ * How long to wait before each retry of a chunk, in milliseconds.
+ *
+ * Its length is how many attempts a chunk gets, less the first. Spaced rather
+ * than immediate because the failure worth retrying is a server that has gone
+ * away — restarted, still loading its model, briefly out of memory — and asking
+ * again in the same millisecond only reproduces it.
+ */
+export const ASR_BACKOFF_MS: readonly number[] = [2000, 8000]
+
+/**
+ * Whether asking again could plausibly give a different answer.
+ *
+ * The distinction is worth drawing because a chunk is a minute of work and a
+ * fifty-minute episode is ten of them: retrying a permanent failure three times
+ * per chunk turns one wrong address into thirty doomed requests and several
+ * minutes before anything is said about it.
+ *
+ * A refusal carrying no status is a connection that could not be made at all,
+ * which is exactly the transient case. A 5xx is the server failing rather than
+ * declining. Everything else — a 4xx, and in particular the 404 meaning no
+ * transcription endpoint lives at this address — is a settled answer that will
+ * be identical for every remaining chunk.
+ */
+export function isRetryable(error: unknown): boolean {
+  if (!(error instanceof LlmError)) return false
+  if (error.status === undefined) return true
+  return error.status >= 500 || error.status === 408 || error.status === 429
+}
+
+/** Waits, unless the run is cancelled first. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
+  })
+}
+
+export interface RetryingOptions extends TranscribeOptions {
+  /** Names the stretch in the log lines. */
+  label?: string
+  /** Injectable so a test does not actually wait eight seconds. */
+  wait?: (ms: number, signal?: AbortSignal) => Promise<void>
+}
+
+export interface Attempted {
+  /** Null when it never answered, or when the run was cancelled. */
+  cues: Cue[] | null
+  /** The last thing the server said, for reporting what went wrong. */
+  error?: string
+}
+
+/**
+ * One piece of audio, asked for until it answers or the attempts run out.
+ *
+ * A piece that never answers is *reported*, not thrown: the caller transcribes a
+ * whole episode a chunk at a time, and one bad chunk must not cost the other
+ * forty-five minutes. That is the rule `startPass` follows for a failed batch.
+ *
+ * A failure that will be identical for every remaining chunk is thrown instead,
+ * which ends the caller's run. That distinction is the point — without it, one
+ * wrong address becomes thirty doomed requests and a minute of backoff before
+ * anything is said about it.
+ */
+export async function transcribeWithRetry(opts: RetryingOptions): Promise<Attempted> {
+  const { label = 'this stretch', wait = pause, ...rest } = opts
+  const log = opts.log ?? noLog
+
+  for (let at = 0; ; at++) {
+    try {
+      return { cues: await transcribe(rest) }
+    } catch (e) {
+      if (rest.signal?.aborted) return { cues: null }
+      if (!isRetryable(e)) throw e
+
+      const error = e instanceof Error ? e.message : String(e)
+      const delay = ASR_BACKOFF_MS[at]
+      if (delay === undefined) {
+        log({
+          level: 'error',
+          kind: 'transcribe',
+          requestId: label,
+          model: rest.model,
+          message: `Giving up on ${label} after ${ASR_BACKOFF_MS.length + 1} attempts`,
+          detail: error,
+        })
+        return { cues: null, error }
+      }
+
+      log({
+        level: 'warn',
+        kind: 'transcribe',
+        requestId: label,
+        model: rest.model,
+        message: `${label} failed; retrying in ${delay / 1000}s`,
+        detail: error,
+      })
+      await wait(delay, rest.signal)
+    }
+  }
+}
+
+/**
  * The formats asked for, in order of preference.
  *
  * `verbose_json` is the one that carries per-segment timings as numbers, and is

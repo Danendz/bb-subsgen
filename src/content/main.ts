@@ -4,6 +4,7 @@ import {
   clearCue,
   setTranslation,
   setGeometry,
+  setNotice,
   setProgress,
   translationWithheld,
   type CueView,
@@ -498,6 +499,25 @@ async function main() {
     // them. Getting this wrong is what previously left both passes dead for the
     // rest of a video whenever the player swapped its element.
 
+    /**
+     * What to say about a run that stopped, and whether it has been dismissed.
+     *
+     * Dismissal is per video rather than per overlay: a remount must not bring
+     * back a box you have already closed, and a later run that fails is a new
+     * thing to say.
+     */
+    let stopped: string | null = null
+    let dismissed = false
+    /**
+     * The last coverage a run reported, kept for the next one to start from.
+     *
+     * A retry re-fetches and re-decodes before it can say anything, and without
+     * this the bar would blanket a video that already has forty-five minutes of
+     * subtitles for the half-minute that takes. What the failed run last sent is
+     * exactly right: it is the complement of the stretches still missing.
+     */
+    let covered: Span[] = []
+
     /** Chunk progress while a transcription is running; null when none is. */
     let transcribeState: { done: number; total: number; covered: Span[] } | null = transcribing
       ? { done: 0, total: 0, covered: [] }
@@ -687,8 +707,33 @@ async function main() {
           }),
         )
       }
+      const renderNotice = () =>
+        setNotice(
+          shadowRoot,
+          stopped && !dismissed
+            ? {
+                text: stopped,
+                onRetry: () => {
+                  stopped = null
+                  transcribeState = { done: 0, total: 0, covered }
+                  renderNotice()
+                  renderProgress()
+                  holdAsrPort()
+                  tellWorker({ type: 'bb-subsgen:asr-retry' })
+                },
+                onDismiss: () => {
+                  dismissed = true
+                  renderNotice()
+                },
+              }
+            : null,
+        )
+
       // So a run already under way can paint into whichever overlay is current.
-      repaintProgress = renderProgress
+      repaintProgress = () => {
+        renderProgress()
+        renderNotice()
+      }
       currentIndex = () => lastIndex
       paintTranslation = (start) => {
         if (lastIndex < 0 || cues[lastIndex]?.start !== start) return
@@ -805,6 +850,7 @@ async function main() {
         render()
         applyGeometry()
         renderProgress()
+        renderNotice()
       }
 
       // Fires only when the active cue actually changes, which is why capture
@@ -850,6 +896,7 @@ async function main() {
       // is exactly where someone waiting for subtitles leaves it, shows nothing
       // at all while several minutes of work go on unannounced.
       renderProgress()
+      renderNotice()
 
       return () => {
         // First, so the last few lines of the session are posted before the
@@ -991,11 +1038,17 @@ async function main() {
       if (msg.complete) {
         // Whether it worked or not, the worker no longer needs holding open.
         releaseAsrPort()
-        if (msg.error) console.warn('[bb-subsgen] transcription:', msg.error)
         transcribeState = null
+        if (msg.error) {
+          console.warn('[bb-subsgen] transcription:', msg.error)
+          // A new failure is worth showing even if the last one was dismissed.
+          stopped = msg.error
+          dismissed = false
+        }
         console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
       } else {
-        transcribeState = { done: msg.done, total: msg.total, covered: msg.covered ?? [] }
+        covered = msg.covered ?? covered
+        transcribeState = { done: msg.done, total: msg.total, covered }
         console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
       }
 

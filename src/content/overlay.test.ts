@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import { renderCue, setTranslation, translationWithheld, type CueView } from './overlay'
+import { renderCue, setNotice, setTranslation, translationWithheld, type CueView } from './overlay'
 import type { Token } from '../lang/segment'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
 
@@ -164,5 +164,69 @@ describe('marking the model’s translations', () => {
     const el = translationEl(root)
     expect(el.classList.contains('withheld')).toBe(true)
     expect(el.classList.contains('ai')).toBe(true)
+  })
+})
+
+describe('the stopped-run notice', () => {
+  const noticeEl = (root: ShadowRoot) => root.querySelector<HTMLElement>('.notice')!
+  const showing = (root: ShadowRoot) => !noticeEl(root).classList.contains('hidden')
+
+  const view = (over: Partial<Parameters<typeof setNotice>[1]> = {}) => ({
+    text: '5 minutes could not be transcribed.',
+    onRetry: () => {},
+    onDismiss: () => {},
+    ...over,
+  })
+
+  test('says what happened, and hides again for null', () => {
+    const { root } = host()
+
+    setNotice(root, view())
+    expect(showing(root)).toBe(true)
+    expect(root.querySelector('.notice-text')!.textContent).toBe(
+      '5 minutes could not be transcribed.',
+    )
+
+    setNotice(root, null)
+    expect(showing(root)).toBe(false)
+  })
+
+  test('sits below the line, not above it', () => {
+    // The progress pill goes above the card because it is about what is coming.
+    // This is about something that has already stopped, and must not push the
+    // sentence being read around.
+    const { root } = host()
+    setNotice(root, view())
+
+    const classes = [...root.querySelector('.stack')!.children].map((el) => el.className)
+    expect(classes.indexOf('line')).toBeLessThan(classes.indexOf('notice'))
+    expect(classes.indexOf('progress hidden')).toBeLessThan(classes.indexOf('line'))
+  })
+
+  test('retries and dismisses', () => {
+    const { root } = host()
+    let retried = 0
+    let dismissed = 0
+    setNotice(root, view({ onRetry: () => retried++, onDismiss: () => dismissed++ }))
+
+    root.querySelector<HTMLButtonElement>('.notice-retry')!.click()
+    root.querySelector<HTMLButtonElement>('.notice-close')!.click()
+
+    expect([retried, dismissed]).toEqual([1, 1])
+  })
+
+  test('does not stack a handler per repaint', () => {
+    // It is re-rendered on every settings change and every remount, so
+    // addEventListener here would fire one retry per repaint since the failure.
+    const { root } = host()
+    let retried = 0
+    const again = view({ onRetry: () => retried++ })
+    setNotice(root, again)
+    setNotice(root, again)
+    setNotice(root, again)
+
+    root.querySelector<HTMLButtonElement>('.notice-retry')!.click()
+
+    expect(retried).toBe(1)
   })
 })

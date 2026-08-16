@@ -23,6 +23,22 @@ export interface TranscribeRequest {
   model: string
   /** Where playback is, so the chunk being watched is transcribed first. */
   playhead: number
+  /**
+   * Lines a previous run produced, to be kept rather than asked for again.
+   *
+   * Set together with `only`, and only then: a run given a seed is picking up
+   * where one that failed left off.
+   */
+  seed?: Cue[]
+  /**
+   * The stretches to transcribe, as `[start, end]` in seconds — the gaps a
+   * previous run could not fill.
+   *
+   * Stretches rather than chunk indices, because the plan a chunk index refers
+   * to depends on where playback was when it was made. A second run would cut
+   * the track differently and the same index would name different audio.
+   */
+  only?: Array<[number, number]>
 }
 
 export interface CancelRequest {
@@ -75,7 +91,17 @@ export interface TranscribeDone {
   type: 'bb-subsgen:offscreen-done'
   videoId: string
   cues: Cue[]
-  /** Absent on success; set when the run ended early. */
+  /** Chunks transcribed, and chunks the run set out to do. */
+  done: number
+  total: number
+  /**
+   * The stretches that could not be transcribed, as `[start, end]` in seconds.
+   *
+   * Empty on a clean run, and what a retry is handed as its `only`. Kept as
+   * stretches for the reason given on `TranscribeRequest.only`.
+   */
+  failed: Array<[number, number]>
+  /** Absent on success; set when something went wrong, whole or partial. */
   error?: string
 }
 

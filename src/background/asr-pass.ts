@@ -12,7 +12,12 @@
 import { evictTranscripts, readTranscript, writeTranscript } from './transcript-cache'
 import { closeOffscreen, ensureOffscreen } from './offscreen'
 import { log } from '../llm/log'
-import { OFFSCREEN_TARGET, isTranscribeDone, isTranscribeProgress } from '../offscreen/protocol'
+import {
+  OFFSCREEN_TARGET,
+  isTranscribeDone,
+  isTranscribeProgress,
+  type TranscribeDone,
+} from '../offscreen/protocol'
 import type { Cue } from '../bilibili/subtitles'
 import type { AsrCuesMessage } from '../shared/messages'
 
@@ -28,6 +33,32 @@ interface ActiveRun {
   tabId: number
   videoId: string
   model: string
+  /** Kept so a retry can re-issue the request without the tab's help. */
+  cid: number
+  baseUrl: string
+  /** Chunks finished and chunks planned, for the popup to report. */
+  done: number
+  total: number
+}
+
+/**
+ * What a run that ended with gaps left behind.
+ *
+ * Its whole purpose is that a retry redoes only what failed. Everything needed
+ * to re-issue the request is here, because by the time somebody presses Retry
+ * the page may have been reloaded and the worker restarted twice over.
+ *
+ * Session storage, like the active run, and for a stronger reason: this is the
+ * only copy. Nothing partial is written to IndexedDB — `writeTranscriptIn`
+ * refuses it, because a half-written transcript is indistinguishable from a
+ * whole one once it is in the store and would silently serve an episode whose
+ * subtitles stop in the middle.
+ */
+interface LastRun extends ActiveRun {
+  cues: Cue[]
+  /** Stretches that could not be transcribed. Never empty — see `writeLast`. */
+  failed: Array<[number, number]>
+  error: string
 }
 
 /**
@@ -50,6 +81,7 @@ interface ActiveRun {
  * exactly the lifetime a run in progress should have.
  */
 const ACTIVE_KEY = 'asr:active'
+const LAST_KEY = 'asr:last'
 
 async function readActive(): Promise<ActiveRun | null> {
   const stored = await chrome.storage.session.get(ACTIVE_KEY)
@@ -59,6 +91,24 @@ async function readActive(): Promise<ActiveRun | null> {
 async function writeActive(run: ActiveRun | null): Promise<void> {
   if (run) await chrome.storage.session.set({ [ACTIVE_KEY]: run })
   else await chrome.storage.session.remove(ACTIVE_KEY)
+}
+
+async function readLast(): Promise<LastRun | null> {
+  const stored = await chrome.storage.session.get(LAST_KEY)
+  return (stored[LAST_KEY] as LastRun | undefined) ?? null
+}
+
+/**
+ * Kept only while there is something to retry; a clean run clears it.
+ *
+ * Keyed on the error rather than on `failed`, so that a run which fell over
+ * before it had any chunks to fail — no audio stream, no decoder — is still
+ * something the Retry button can act on. It just has nothing to resume from, so
+ * `startTranscription` starts it over.
+ */
+async function writeLast(run: LastRun | null): Promise<void> {
+  if (run?.error) await chrome.storage.session.set({ [LAST_KEY]: run })
+  else await chrome.storage.session.remove(LAST_KEY)
 }
 
 function send(tabId: number, message: Omit<AsrCuesMessage, 'type'>): void {
@@ -108,26 +158,55 @@ export async function startTranscription(tabId: number, request: TranscribeStart
       model,
       message: `${cached.length} lines from cache — nothing to transcribe`,
     })
+    await writeLast(null)
     send(tabId, { videoId, cues: cached, done: 1, total: 1, complete: true })
     return
   }
 
+  /**
+   * Where a previous run gave up, if it was this video and this model.
+   *
+   * Checked on every start rather than only on an explicit retry, so that
+   * pressing Retry, reloading the page and coming back to the tab are one path
+   * rather than three. A reload after a failure resuming instead of starting
+   * over is the point: the work is still held, and throwing it away because the
+   * page was refreshed would be gratuitous.
+   */
+  const last = await readLast()
+  const resume =
+    last && last.videoId === videoId && last.model === model && last.failed.length ? last : null
+  if (resume) {
+    log({
+      level: 'info',
+      kind: 'transcribe',
+      requestId: videoId,
+      model,
+      message:
+        `Resuming: ${resume.cues.length} lines already in hand, ` +
+        `${resume.failed.length} stretch${resume.failed.length === 1 ? '' : 'es'} to redo`,
+    })
+  }
+
   // Whatever was running was for a video nobody is watching any more.
   await cancelTranscription()
-  await writeActive({ tabId, videoId, model })
+  const run: ActiveRun = {
+    tabId,
+    videoId,
+    model,
+    cid: request.cid,
+    baseUrl: request.baseUrl,
+    done: 0,
+    total: resume?.failed.length ?? 0,
+  }
+  await writeActive(run)
 
   try {
     await ensureOffscreen()
   } catch (e) {
+    const error = 'Could not start the audio decoder.'
     await writeActive(null)
-    send(tabId, {
-      videoId,
-      cues: [],
-      done: 0,
-      total: 0,
-      complete: true,
-      error: 'Could not start the audio decoder.',
-    })
+    await writeLast({ ...run, cues: [], failed: [], error })
+    send(tabId, { videoId, cues: [], done: 0, total: 0, complete: true, error })
     log({
       level: 'error',
       kind: 'transcribe',
@@ -144,8 +223,82 @@ export async function startTranscription(tabId: number, request: TranscribeStart
       type: 'bb-subsgen:offscreen-transcribe',
       target: OFFSCREEN_TARGET,
       ...request,
+      ...(resume ? { seed: resume.cues, only: resume.failed } : {}),
     })
     .catch(() => {})
+}
+
+/**
+ * Asks again for the stretches a run could not transcribe.
+ *
+ * Nothing more than an ordinary start: `startTranscription` finds the same
+ * leftovers and seeds from them, so there is one path in and not a second one
+ * that has to be kept in step with it.
+ */
+export async function retryTranscription(tabId: number): Promise<void> {
+  const last = await readLast()
+  if (!last || last.tabId !== tabId) return
+
+  await startTranscription(tabId, {
+    videoId: last.videoId,
+    cid: last.cid,
+    model: last.model,
+    baseUrl: last.baseUrl,
+    // Irrelevant on a resume: the stretches to do are given, not planned.
+    playhead: 0,
+  })
+}
+
+/** What the popup and the overlay report about this tab's transcription. */
+export interface TranscriptStatus {
+  videoId: string
+  model: string
+  /** Chunks finished, and chunks this run set out to do. */
+  done: number
+  total: number
+  /** Stretches that could not be transcribed. Zero while a run is going. */
+  failed: number
+  /** Why it stopped, when it did. */
+  error?: string
+  running: boolean
+}
+
+/**
+ * How this tab's transcription is doing, or null if it has nothing to say.
+ *
+ * A query rather than a broadcast, for the reason `passStatus` gives: the popup
+ * is short-lived and a run is not, so one opened halfway through has to fill in
+ * straight away. Unlike `passStatus` this has to be awaited, because the run
+ * lives in session storage rather than in a variable — a worker that has been
+ * shut down and restarted still answers correctly, which is the whole point.
+ */
+export async function transcriptStatus(tabId: number): Promise<TranscriptStatus | null> {
+  const running = await readActive()
+  if (running?.tabId === tabId) {
+    return {
+      videoId: running.videoId,
+      model: running.model,
+      done: running.done,
+      total: running.total,
+      failed: 0,
+      running: true,
+    }
+  }
+
+  const last = await readLast()
+  if (last?.tabId === tabId) {
+    return {
+      videoId: last.videoId,
+      model: last.model,
+      done: last.done,
+      total: last.total,
+      failed: last.failed.length,
+      error: last.error,
+      running: false,
+    }
+  }
+
+  return null
 }
 
 /**
@@ -231,6 +384,9 @@ async function routeProgress(msg: {
   const run = await readActive()
   // A run that has been superseded may still have a chunk in flight.
   if (run?.videoId !== msg.videoId) return
+  // Recorded so the popup can report a run this worker did not itself start —
+  // it may well have been shut down and restarted since it did.
+  await writeActive({ ...run, done: msg.done, total: msg.total })
   send(run.tabId, {
     videoId: msg.videoId,
     cues: msg.cues,
@@ -241,18 +397,16 @@ async function routeProgress(msg: {
   })
 }
 
-async function routeDone(msg: {
-  videoId: string
-  cues: Cue[]
-  error?: string
-}): Promise<void> {
+async function routeDone(msg: TranscribeDone): Promise<void> {
   const run = await readActive()
   if (run?.videoId !== msg.videoId) return
   await writeActive(null)
-  await finish(run, msg.cues, msg.error)
+  await finish({ ...run, done: msg.done, total: msg.total }, msg)
 }
 
-async function finish(run: ActiveRun, cues: Cue[], error?: string): Promise<void> {
+async function finish(run: ActiveRun, msg: TranscribeDone): Promise<void> {
+  const { cues, failed, error } = msg
+
   // Only a complete run is stored. A half-written transcript is indistinguishable
   // from a whole one once it is in the cache, and serving one would give an
   // episode whose subtitles stop in the middle with no way to notice.
@@ -261,11 +415,16 @@ async function finish(run: ActiveRun, cues: Cue[], error?: string): Promise<void
     await evictTranscripts()
   }
 
+  // What a retry works from. Kept in session storage rather than dropped,
+  // because the alternative to redoing one failed stretch is redoing the fetch,
+  // the decode and every chunk that was already correct.
+  await writeLast({ ...run, cues, failed, error: error ?? '' })
+
   send(run.tabId, {
     videoId: run.videoId,
     cues,
-    done: 1,
-    total: 1,
+    done: run.done,
+    total: run.total,
     complete: true,
     ...(error ? { error } : {}),
   })

@@ -100,6 +100,60 @@ const STYLE = `
   transition: width 200ms ease;
 }
 
+/* Sits below the card rather than above it, where the progress pill is: this
+   reports something that has already stopped, so it must not push the line you
+   are reading around, and it must not be mistaken for progress.
+
+   The only part of the overlay that takes pointer events. The host is
+   pointer-events: none so that hovering the video reaches the player's own
+   controls; the two buttons here opt back in individually rather than the box
+   doing it wholesale, which would put a dead rectangle over the video. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 100%);
+  padding: 7px 8px 7px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 138, 128, 0.28);
+  background: rgba(38, 22, 22, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f0c9c4;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+}
+.notice.hidden { display: none; }
+
+.notice-text { flex: 1; }
+
+.notice-retry,
+.notice-close {
+  pointer-events: auto;
+  cursor: pointer;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+}
+.notice-retry { padding: 4px 10px; }
+.notice-close {
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  background: none;
+  font-size: 14px;
+  line-height: 1;
+}
+.notice-retry:hover,
+.notice-close:hover { background: rgba(255, 255, 255, 0.18); }
+
 .translation {
   /* Anchors the .ai dot. */
   position: relative;
@@ -223,7 +277,24 @@ function ensureStack(shadowRoot: ShadowRoot): HTMLElement {
     const line = document.createElement('div')
     line.className = 'line'
 
-    stack.append(progress, line)
+    // Below the line, unlike the progress pill above it: this reports something
+    // that has stopped, and must not shift the sentence being read.
+    const notice = document.createElement('div')
+    notice.className = 'notice hidden'
+    const noticeText = document.createElement('span')
+    noticeText.className = 'notice-text'
+    const retry = document.createElement('button')
+    retry.className = 'notice-retry'
+    retry.type = 'button'
+    retry.textContent = 'Retry'
+    const close = document.createElement('button')
+    close.className = 'notice-close'
+    close.type = 'button'
+    close.textContent = '✕'
+    close.title = 'Dismiss'
+    notice.append(noticeText, retry, close)
+
+    stack.append(progress, line, notice)
     shadowRoot.appendChild(stack)
   }
   return stack
@@ -359,6 +430,29 @@ export function setProgress(shadowRoot: ShadowRoot, view: ProgressView): void {
     'width',
     `${Math.round(view.fraction * 100)}%`,
   )
+}
+
+export interface NoticeView {
+  text: string
+  onRetry: () => void
+  onDismiss: () => void
+}
+
+/**
+ * Reports a run that stopped, with the two things you can do about it.
+ *
+ * Null hides it. The handlers are replaced rather than added to on every call,
+ * because this is re-rendered on settings changes and on remounts, and
+ * `addEventListener` would accumulate a retry per repaint.
+ */
+export function setNotice(shadowRoot: ShadowRoot, view: NoticeView | null): void {
+  const el = ensureStack(shadowRoot).querySelector<HTMLElement>('.notice')!
+  el.classList.toggle('hidden', !view)
+  if (!view) return
+
+  el.querySelector<HTMLElement>('.notice-text')!.textContent = view.text
+  el.querySelector<HTMLButtonElement>('.notice-retry')!.onclick = view.onRetry
+  el.querySelector<HTMLButtonElement>('.notice-close')!.onclick = view.onDismiss
 }
 
 export function clearCue(shadowRoot: ShadowRoot): void {

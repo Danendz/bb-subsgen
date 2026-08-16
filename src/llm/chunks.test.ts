@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest'
-import { mergeCues, nextChunk, ownedCues, planChunks, type Chunk } from './chunks'
+import {
+  chunkFor,
+  coverageExcept,
+  mergeCues,
+  nextChunk,
+  ownedCues,
+  planChunks,
+  type Chunk,
+} from './chunks'
 
 /** The regular grid, with the lead chunk switched off. */
 const grid = { span: 300, pad: 5, lead: 0 }
@@ -191,6 +199,61 @@ describe('nextChunk', () => {
 
   test('is null when nothing is left', () => {
     expect(nextChunk([], 0)).toBeNull()
+  })
+})
+
+describe('coverageExcept', () => {
+  const plan = planChunks(3000, grid)
+
+  test('reports nothing covered before anything has been done', () => {
+    expect(coverageExcept(plan, 3000)).toEqual([])
+  })
+
+  test('reports the whole track once nothing is left', () => {
+    expect(coverageExcept([], 3000)).toEqual([[0, 3000]])
+  })
+
+  test('merges finished chunks into one span rather than ten', () => {
+    // Ten chunks done from the top; the overlay has one stretch to check
+    // against, not ten.
+    const pending = plan.filter((chunk) => chunk.index >= 3)
+    expect(coverageExcept(pending, 3000)).toEqual([[0, 900]])
+  })
+
+  test('leaves a hole where a chunk in the middle is still outstanding', () => {
+    // The seek case: you jumped to 30:00, so the chunks around it went first.
+    const pending = plan.filter((chunk) => chunk.index !== 0 && chunk.index !== 6)
+    expect(coverageExcept(pending, 3000)).toEqual([
+      [0, 300],
+      [1800, 2100],
+    ])
+  })
+
+  test('describes a resumed run from its gaps alone', () => {
+    // A retry is handed only the stretches that failed, so everything else is
+    // covered by the transcript it was seeded with.
+    const gaps = [chunkFor([1800, 2100], 0, 3000)]
+    expect(coverageExcept(gaps, 3000)).toEqual([
+      [0, 1800],
+      [2100, 3000],
+    ])
+  })
+})
+
+describe('chunkFor', () => {
+  test('pads a stretch the same way a planned chunk is padded', () => {
+    expect(chunkFor([1800, 2100], 0, 3000, 5)).toEqual({
+      index: 0,
+      start: 1800,
+      end: 2100,
+      audioStart: 1795,
+      audioEnd: 2105,
+    })
+  })
+
+  test('never asks for audio outside the track', () => {
+    expect(chunkFor([0, 60], 0, 3000, 5).audioStart).toBe(0)
+    expect(chunkFor([2950, 3000], 0, 3000, 5).audioEnd).toBe(3000)
   })
 })
 

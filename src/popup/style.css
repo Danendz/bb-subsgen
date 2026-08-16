@@ -177,3 +177,33 @@ select.model { max-width: 165px; }
      stepping once a second. */
   transition: width 1s linear;
 }
+
+/* The transcription's own progress, sharing the pass's shape so the two read as
+   one column rather than two designs. What differs is the stopped state, which
+   the pass has no equivalent of: a pass that fails leaves the on-device
+   translation on screen, while a transcription that fails leaves no subtitles
+   at all, so it has to be said and it has to be actionable. */
+.asr-progress.stopped {
+  background: #3a2626;
+  color: #f0c9c4;
+}
+.asr-progress-error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e0b0aa;
+}
+.asr-retry {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid #5a4040;
+  background: #4a3030;
+  color: #f0c9c4;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.asr-retry:hover { background: #5a3838; }
+.asr-retry:disabled { opacity: 0.6; cursor: default; }

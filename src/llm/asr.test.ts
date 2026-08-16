@@ -1,5 +1,14 @@
 import { describe, expect, test, vi } from 'vitest'
-import { parseTimestamp, parseTranscription, shiftBy, transcribe } from './asr'
+import {
+  ASR_BACKOFF_MS,
+  isRetryable,
+  parseTimestamp,
+  parseTranscription,
+  shiftBy,
+  transcribe,
+  transcribeWithRetry,
+} from './asr'
+import { connectionError, LlmError } from './client'
 
 describe('parseTranscription', () => {
   test('reads segments out of verbose_json', () => {
@@ -262,5 +271,140 @@ describe('transcribe', () => {
     }) as unknown as typeof fetch
 
     await expect(transcribe({ ...options, fetchImpl })).rejects.toThrow(/Could not reach/)
+  })
+})
+
+describe('isRetryable', () => {
+  test('retries a server that could not be reached', () => {
+    // The common one, and the one worth waiting for: whisper restarted, or is
+    // still loading its model.
+    expect(isRetryable(connectionError('http://localhost:8080/v1', new Error('refused')))).toBe(true)
+  })
+
+  test('retries the server failing rather than declining', () => {
+    expect(isRetryable(new LlmError('boom', { status: 500 }))).toBe(true)
+    expect(isRetryable(new LlmError('busy', { status: 429 }))).toBe(true)
+    expect(isRetryable(new LlmError('slow', { status: 408 }))).toBe(true)
+  })
+
+  test('gives up at once on an address that serves no transcription', () => {
+    // Otherwise one wrong URL becomes thirty doomed requests across ten chunks
+    // before anything is reported.
+    expect(isRetryable(new LlmError('no endpoint', { status: 404 }))).toBe(false)
+  })
+
+  test('gives up at once on a request the server refused', () => {
+    // An unloaded model, or audio it will not accept. Asking again is the same
+    // question.
+    expect(isRetryable(new LlmError('bad request', { status: 400 }))).toBe(false)
+  })
+
+  test('does not retry something that was never the server’s answer', () => {
+    // A bug here would otherwise be run three times and reported as a timeout.
+    expect(isRetryable(new TypeError('cues is not iterable'))).toBe(false)
+  })
+})
+
+describe('transcribeWithRetry', () => {
+  const segments = (text: string) =>
+    JSON.stringify({ segments: [{ start: 0, end: 2, text }] })
+
+  /** A server that fails the first `failures` times, then answers. */
+  function server(failures: number, status?: number) {
+    let calls = 0
+    const fetchImpl = vi.fn(async () => {
+      if (calls++ < failures) {
+        if (status === undefined) throw new TypeError('Failed to fetch')
+        return new Response('nope', { status })
+      }
+      return new Response(segments('新疆很大。'), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    return { fetchImpl: fetchImpl as unknown as typeof fetch, calls: () => calls }
+  }
+
+  /** Never actually waits; the backoff is seconds long by design. */
+  const wait = vi.fn<(ms: number, signal?: AbortSignal) => Promise<void>>(() =>
+    Promise.resolve(),
+  )
+
+  const attempt = (fetchImpl: typeof fetch) =>
+    transcribeWithRetry({
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'large-v3-turbo',
+      audio: new Blob(['x']),
+      fetchImpl,
+      wait,
+    })
+
+  test('answers on the first attempt when the server is up', async () => {
+    const { fetchImpl, calls } = server(0)
+
+    const result = await attempt(fetchImpl)
+
+    expect(result.cues).toEqual([{ start: 0, end: 2, text: '新疆很大。' }])
+    expect(calls()).toBe(1)
+  })
+
+  test('rides out a server that comes back', async () => {
+    // The common failure: whisper restarted, or is still loading its model.
+    const { fetchImpl, calls } = server(2)
+
+    const result = await attempt(fetchImpl)
+
+    expect(result.cues).toHaveLength(1)
+    expect(calls()).toBe(3)
+  })
+
+  test('gives up after the backoff runs out, and says why', async () => {
+    const { fetchImpl, calls } = server(Infinity)
+
+    const result = await attempt(fetchImpl)
+
+    // Reported rather than thrown: one bad chunk must not cost the rest of
+    // the episode.
+    expect(result.cues).toBeNull()
+    expect(result.error).toMatch(/Could not reach/)
+    expect(calls()).toBe(ASR_BACKOFF_MS.length + 1)
+  })
+
+  test('waits between attempts rather than hammering', async () => {
+    wait.mockClear()
+    const { fetchImpl } = server(Infinity)
+
+    await attempt(fetchImpl)
+
+    expect(wait.mock.calls.map((call) => call[0])).toEqual([...ASR_BACKOFF_MS])
+  })
+
+  test('throws at once on a failure every chunk would share', async () => {
+    // A wrong address answers the same way for all ten chunks. Retrying it is
+    // thirty doomed requests and a minute of backoff before anything is said.
+    const { fetchImpl, calls } = server(Infinity, 404)
+
+    await expect(attempt(fetchImpl)).rejects.toThrow()
+    // Both endpoints tried once each by `transcribe` itself, and no retry.
+    expect(calls()).toBe(2)
+  })
+
+  test('stops quietly when the run was cancelled', async () => {
+    const controller = new AbortController()
+    const fetchImpl = (async () => {
+      controller.abort()
+      throw new DOMException('Aborted', 'AbortError')
+    }) as unknown as typeof fetch
+
+    const result = await transcribeWithRetry({
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'large-v3-turbo',
+      audio: new Blob(['x']),
+      signal: controller.signal,
+      fetchImpl,
+      wait,
+    })
+
+    expect(result).toEqual({ cues: null })
   })
 })

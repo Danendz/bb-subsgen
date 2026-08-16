@@ -3,6 +3,7 @@ import {
   isAsrMessage,
   isFlashcardsMessage,
   isGetPassStatusMessage,
+  isGetTranscriptStatusMessage,
   isLlmMessage,
   isLookupDefsMessage,
   type AsrMessage,
@@ -10,12 +11,15 @@ import {
   type LlmMessage,
   type LookupDefsResponse,
   type PassStatusResponse,
+  type TranscriptStatusResponse,
 } from './shared/messages'
 import {
   cancelTranscription,
   handleOffscreenEvent,
   reportAsrPlayhead,
+  retryTranscription,
   startTranscription,
+  transcriptStatus,
   watchAsrTab,
 } from './background/asr-pass'
 import {
@@ -110,6 +114,17 @@ function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
     case 'bb-subsgen:asr-playhead':
       if (tabId !== undefined) void reportAsrPlayhead(tabId, msg.seconds)
       return
+    case 'bb-subsgen:asr-retry': {
+      // From the popup, which carries the tab explicitly because it has none of
+      // its own, or from the overlay, which does.
+      const target = msg.tabId ?? tabId
+      if (target !== undefined) {
+        void retryTranscription(target).catch((e: unknown) =>
+          console.warn('[bb-subsgen] retry failed', e),
+        )
+      }
+      return
+    }
   }
 }
 
@@ -122,6 +137,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Synchronous: the pass keeps its own counters, so there is nothing to await.
     sendResponse({ status: passStatus(msg.tabId) } satisfies PassStatusResponse)
     return
+  }
+
+  if (isGetTranscriptStatusMessage(msg)) {
+    // Asynchronous, unlike the pass above: a transcription's state lives in
+    // session storage so that it survives this worker being shut down as idle
+    // mid-run, which is exactly when somebody opens the popup to ask about it.
+    transcriptStatus(msg.tabId).then(
+      (status) => sendResponse({ status } satisfies TranscriptStatusResponse),
+      (e) => {
+        console.warn('[bb-subsgen] transcript status failed', e)
+        sendResponse({ status: null } satisfies TranscriptStatusResponse)
+      },
+    )
+    // Keeps the message channel open for the async response above.
+    return true
   }
 
   if (isLookupDefsMessage(msg)) {

@@ -39,3 +39,57 @@ export function passProgressView({ model, translated, total }: PassProgress): Pa
     fraction,
   }
 }
+
+export interface TranscriptProgress {
+  model: string
+  done: number
+  total: number
+  failed: number
+  error?: string
+  running: boolean
+}
+
+export interface TranscriptProgressView extends PassProgressView {
+  /** Whether the run ended with stretches missing, and can be asked again. */
+  stopped: boolean
+  /** The reason, when there is one worth reading. */
+  detail?: string
+}
+
+/**
+ * The same shape as the pass, plus the state the pass has no equivalent of.
+ *
+ * A translation pass that fails leaves Chrome's on-device translation on screen;
+ * a transcription that fails leaves no subtitles at all. So this one has to be
+ * able to say it stopped, and how much of the episode has no lines.
+ */
+export function transcriptProgressView({
+  model,
+  done,
+  total,
+  failed,
+  error,
+  running,
+}: TranscriptProgress): TranscriptProgressView {
+  const fraction = total > 0 ? Math.min(1, done / total) : 0
+  if (running) {
+    return {
+      label: `Transcribing with ${modelLabel(model)}`,
+      count: total ? `${done} / ${total} chunks` : 'starting…',
+      fraction,
+      stopped: false,
+    }
+  }
+
+  return {
+    label: 'Transcription stopped',
+    // Stretches rather than chunks, because what matters to the reader is how
+    // much of the episode has no subtitles, not how the work was divided up.
+    count: failed
+      ? `${failed} stretch${failed === 1 ? '' : 'es'} missing`
+      : 'nothing was transcribed',
+    fraction,
+    stopped: true,
+    ...(error ? { detail: error } : {}),
+  }
+}
