@@ -196,6 +196,27 @@ export const BATCH_SCHEMA: JsonSchemaFormat = {
 
 const LANGUAGE_NAME: Record<TranslationLang, string> = { en: 'English', ru: 'Russian' }
 
+/**
+ * Rules that only some target languages need.
+ *
+ * Chinese marks no gender on verbs or adjectives and Russian marks it
+ * everywhere, so a Russian translation has to decide something the source never
+ * said. A small model decides it twice in one sentence and contradicts itself —
+ * the reported case was 你愿意做我的老公吗 as "Ты согласна быть моим мужем?",
+ * feminine on the adjective and male on the noun, in six words.
+ *
+ * Kept out of the shared rules rather than added to them: English marks none of
+ * this, and the four rules above are already as many as a small quantized model
+ * reliably holds. A language that does not need this should not pay prefill for
+ * it on every batch of every video.
+ */
+const LANGUAGE_RULES: Partial<Record<TranslationLang, string[]>> = {
+  ru: [
+    'Russian marks gender on past-tense verbs, short adjectives and participles. Work out from the line and the ones around it who is speaking and who is being spoken to — 老公, 老婆, 姐姐, 哥哥, 先生, 小姐, 儿子, 女儿 settle it — and keep every ending in a sentence agreeing with that one decision.',
+    'When nothing in the passage settles it, prefer wording that does not force a choice over guessing at one.',
+  ],
+}
+
 export interface VideoPreamble {
   title: string
   description?: string
@@ -221,6 +242,7 @@ export function batchSystem({ lang, video }: BatchPrompt): string {
     'Never merge two lines into one entry, never split one line into two, and never leave a line out — even when a line is only a fragment, a name, or a filler word.',
     'Translate what the line says, in natural spoken register. Do not explain, annotate, or add anything that is not in the Chinese.',
     'Use the surrounding lines to resolve dropped pronouns and topics. They are context; only the numbered lines are to be translated.',
+    ...(LANGUAGE_RULES[lang] ?? []),
   ]
 
   if (video?.title) {
@@ -262,6 +284,12 @@ export function batchUser({ lines, lang, glossary, seam }: BatchPrompt): string 
     [
       `Translate these ${lines.length} lines into ${LANGUAGE_NAME[lang]}.`,
       `Return exactly ${lines.length} entries, each with its translation in the "text" field.`,
+      // Said twice, for the same reason the language is: this is the last thing
+      // read before the lines themselves, and a small model follows what is
+      // nearest the tokens it is about to generate.
+      ...(LANGUAGE_RULES[lang]
+        ? ['Match every gender ending to who is speaking and who is being spoken to.']
+        : []),
       ...lines.map((line) => `${line.id}\t${line.zh}`),
     ].join('\n'),
   )

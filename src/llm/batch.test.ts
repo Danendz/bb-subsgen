@@ -204,6 +204,26 @@ describe('the prompts', () => {
     expect(system).toContain('never leave a line out')
   })
 
+  // Russian has to commit to a gender on every past-tense verb and short
+  // adjective; Chinese states one nowhere and English asks for none. Only the
+  // target that needs the rule should carry it.
+  test('carry the gender-agreement rule for Russian and not for English', () => {
+    const russian = batchSystem({ ...base, lang: 'ru' })
+
+    expect(russian).toContain('Russian marks gender')
+    expect(russian).toContain('老公')
+    expect(batchSystem(base)).not.toContain('marks gender')
+  })
+
+  test('tell Russian to hedge rather than guess when nothing settles the gender', () => {
+    expect(batchSystem({ ...base, lang: 'ru' })).toContain('does not force a choice')
+  })
+
+  test('repeat the agreement rule beside the lines, for Russian only', () => {
+    expect(batchUser({ ...base, lang: 'ru' })).toContain('gender ending')
+    expect(batchUser(base)).not.toContain('gender ending')
+  })
+
   test('carry the video subject when it is known', () => {
     const system = batchSystem({ ...base, video: { title: '家常菜', description: '做饭' } })
 
