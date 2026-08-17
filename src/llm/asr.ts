@@ -313,7 +313,8 @@ export async function transcribe(opts: TranscribeOptions): Promise<Cue[]> {
     const cues = parseTranscription(body)
 
     if (cues) {
-      const shifted = shiftBy(cues, opts.offset ?? 0)
+      const offset = opts.offset ?? 0
+      const shifted = shiftBy(cues, offset)
       log({
         level: 'info',
         kind: 'transcribe',
@@ -321,7 +322,11 @@ export async function transcribe(opts: TranscribeOptions): Promise<Cue[]> {
         model: opts.model,
         durationMs: Date.now() - started,
         message: `${shifted.length} line${shifted.length === 1 ? '' : 's'} from ${format}`,
-        detail: shifted.map((cue) => cue.text).join('\n'),
+        // With the timings, not just the words. A line that sits on screen over
+        // the wrong dialogue is a fault in where it claims to be, and the text
+        // alone cannot show it — nor tell a line that claimed a minute of the
+        // track from a run of them all claiming the same words.
+        detail: describeSegments(body, offset) ?? shifted.map(describeCue).join('\n'),
       })
       return shifted
     }
@@ -346,19 +351,90 @@ export function shiftBy(cues: Cue[], offset: number): Cue[] {
 }
 
 /**
+ * How many times over a line may be said back to back and still be speech.
+ *
+ * Two, because two is dialogue: one episode of 家有儿女 has 我有一点走不动的 twice
+ * in a row and 你从美国都回来一百八十天了 twice in a row, both of them real.
+ */
+export const MOST_REPEATS = 2
+
+/**
+ * And how long such a run may last, which is the half that matters.
+ *
+ * Count alone cannot tell a loop from speech — 不不不 is three lines and is
+ * someone talking. What separates them is that nobody keeps it up: a genuine
+ * repetition is short and quick, and this is long enough to hold the ones that
+ * are. Note that the two rules together need no separate check on how long the
+ * *line* is, which was the other way of drawing this: three copies of a
+ * nine-character sentence inside five seconds would be over five characters a
+ * second, faster than Mandarin is spoken, so a line long enough to loop on is
+ * one this catches anyway.
+ */
+export const LONGEST_REPEAT_S = 5
+
+/**
+ * A line Whisper got stuck on, reduced to the one that started it.
+ *
+ * Whisper repeats itself over music, and since `f6ac4aa` the default path has no
+ * voice-activity detection to hide the music from it — the alignment `--dtw`
+ * bought could not be mapped back through the VAD table, so the two cannot both
+ * be on. What comes back over a theme tune is the last real line before it, over
+ * and over: six copies of 我们是一个重组家庭 across twelve seconds, each with its
+ * own timestamps, sitting on screen over the dialogue that follows.
+ *
+ * Nothing else in the pipeline can see it. `mergeCues` deduplicates on `start`,
+ * which is a cue's identity everywhere downstream, and every repeat has a
+ * different one. Neither can the server: whisper.cpp discards a window only when
+ * it is both sure of the silence and unsure of the words (src/whisper.cpp:7622),
+ * and this fails the second half — measured over the real thing, the loop's
+ * `avg_logprob` ran -0.11 to -0.42 against -0.00 to -0.61 for genuine dialogue
+ * in the same episode, and `no_speech_prob` was 0.00 for every segment of both.
+ * The repetition is the only signal there is, so it is the one used.
+ *
+ * The line that started the run is kept rather than the whole run dropped: a
+ * loop sometimes latches onto something real, and losing the echoes costs less
+ * than losing the line.
+ */
+export function collapseLoops(
+  cues: Cue[],
+  repeats = MOST_REPEATS,
+  longest = LONGEST_REPEAT_S,
+): Cue[] {
+  const kept: Cue[] = []
+
+  for (let at = 0; at < cues.length; ) {
+    let past = at + 1
+    while (past < cues.length && cues[past].text === cues[at].text) past++
+
+    const looped = past - at > repeats && cues[past - 1].end - cues[at].start > longest
+    kept.push(...(looped ? [cues[at]] : cues.slice(at, past)))
+    at = past
+  }
+
+  return kept
+}
+
+/**
  * Cues from whatever the server sent back, or null if it carried no timings.
  *
  * Null and empty mean different things and the caller acts on the difference:
  * empty is a silent chunk, null is a server whose reply cannot be used at all.
+ *
+ * The loop check sits here rather than in either parser because a server that
+ * cannot answer `verbose_json` gets stuck on a line just the same, and rather
+ * than on the display side because this is not presentation: a transcript cache
+ * has no business storing twelve seconds of a line nobody said.
  */
 export function parseTranscription(body: string): Cue[] | null {
   const trimmed = body.trim()
   if (!trimmed) return null
 
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return parseVerboseJson(trimmed)
-  }
-  return parseTimedText(trimmed)
+  const cues =
+    trimmed.startsWith('{') || trimmed.startsWith('[')
+      ? parseVerboseJson(trimmed)
+      : parseTimedText(trimmed)
+
+  return cues && collapseLoops(cues)
 }
 
 interface VerboseWord {
@@ -371,6 +447,19 @@ interface VerboseSegment {
   end?: unknown
   text?: unknown
   words?: unknown
+  /**
+   * How sure the model was that the window held no speech at all, and how sure
+   * it was of the words it wrote down anyway.
+   *
+   * Both are in every whisper.cpp reply and neither is read into a cue. They are
+   * logged because they are the only thing that distinguishes a bad
+   * transcription from a stretch with nothing to transcribe: whisper.cpp
+   * discards a window only when it is *both* sure of the silence and unsure of
+   * the words (src/whisper.cpp:7622), and a confident invention over a music bed
+   * fails the second half of that test and is handed to us as dialogue.
+   */
+  no_speech_prob?: unknown
+  avg_logprob?: unknown
 }
 
 /**
@@ -436,6 +525,62 @@ function parseVerboseJson(body: string): Cue[] | null {
   // everything downstream — `findActiveCueIndex`'s binary search, `mergeCues`,
   // the chunk merge — takes sorted cues as given.
   return cues.sort((a, b) => a.start - b.start)
+}
+
+/** Seconds, to the hundredth, right-aligned so a column of them reads as one. */
+function stamp(seconds: number): string {
+  return seconds.toFixed(2).padStart(8)
+}
+
+/** One cue as a line of log: what it says, and where it claims to say it. */
+function describeCue(cue: Cue): string {
+  return `${stamp(cue.start)} →${stamp(cue.end)}   ${cue.text}`
+}
+
+/**
+ * The reply as one line per segment, in track time.
+ *
+ * The cues alone cannot answer the question a stale caption asks. One line
+ * claiming a minute of the track and forty lines each claiming the same words
+ * look identical on screen and are different faults, and neither shape says why
+ * it happened — which is what `no_speech_prob` and `avg_logprob` are for. So
+ * this reports the segment as it arrived, next to the start the alignment moved
+ * it to, rather than only the cue that came out.
+ *
+ * Track times rather than chunk-relative ones, because the reason to read this
+ * is to hold it against what was on screen at the time. Null for a reply with no
+ * segments in it, which the caller then describes by its cues instead.
+ */
+export function describeSegments(body: string, offset = 0): string | null {
+  let payload: { segments?: unknown }
+  try {
+    payload = JSON.parse(body) as { segments?: unknown }
+  } catch {
+    return null
+  }
+  if (!Array.isArray(payload.segments)) return null
+
+  return (payload.segments as VerboseSegment[])
+    .map((segment) => {
+      const aligned = alignedStart(segment)
+      const parts = [
+        `${stamp(Number(segment.start) + offset)} →${stamp(Number(segment.end) + offset)}`,
+        // Only when there is one, so a reply without alignment is not a column
+        // of dashes, and only the number — the arrow above already said seconds.
+        aligned === null ? '        ' : `↦${stamp(aligned + offset)}`,
+        `ns ${number(segment.no_speech_prob)}`,
+        `lp ${number(segment.avg_logprob)}`,
+        String(segment.text ?? '').trim(),
+      ]
+      return parts.join(' ')
+    })
+    .join('\n')
+}
+
+/** A number the server may not have sent, as a fixed-width field. */
+function number(value: unknown): string {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed.toFixed(2).padStart(5) : '    ?'
 }
 
 /**

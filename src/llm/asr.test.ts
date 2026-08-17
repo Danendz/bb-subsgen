@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import {
   ASR_BACKOFF_MS,
+  describeSegments,
   isRetryable,
   parseTimestamp,
   parseTranscription,
@@ -163,6 +164,133 @@ describe('parseTranscription, aligned', () => {
     )
     expect(cues?.map((c) => c.text)).toEqual(['第一句', '第二句'])
     expect(cues?.map((c) => c.start)).toEqual([5, 8])
+  })
+})
+
+describe('parseTranscription, looping', () => {
+  /** Segments as whisper.cpp tiles them: each one starting where the last ended. */
+  const tiled = (texts: string[], each: number, from = 100) =>
+    JSON.stringify({
+      segments: texts.map((text, at) => ({
+        start: from + at * each,
+        end: from + (at + 1) * each,
+        text,
+      })),
+    })
+
+  const repeated = (text: string, times: number) => Array.from({ length: times }, () => text)
+
+  test('collapses a run long enough to be Whisper looping over music', () => {
+    // The observed fault, replayed from the log that found it: six copies of one
+    // nine-character line over the tail of 家有儿女's theme song, tiled two
+    // seconds apart, each aligned to its own place in the music. Nearly twelve
+    // seconds of one caption sitting over the dialogue that follows it.
+    const aligned = [11610, 11776, 11928, 12194, 12594, 12668]
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: aligned.map((t_dtw, at) => ({
+          start: 116 + at * 2,
+          end: 118 + at * 2,
+          text: '我们是一个重组家庭',
+          words: [{ word: '我', t_dtw }],
+        })),
+      }),
+    )
+
+    expect(cues).toEqual([{ start: 116.1, end: 118, text: '我们是一个重组家庭' }])
+  })
+
+  test('keeps a line someone genuinely said twice', () => {
+    // Both of these are real, from the same episode, and neither is a loop.
+    expect(parseTranscription(tiled(repeated('我有一点走不动的', 2), 1, 167))).toHaveLength(2)
+    expect(parseTranscription(tiled(repeated('你从美国都回来一百八十天了', 2), 2, 301))).toHaveLength(2)
+  })
+
+  test('keeps a short line repeated three times in a hurry', () => {
+    // 不不不 is speech, and the run length alone cannot tell it from a loop.
+    // What can is that nobody keeps it up: three seconds, against twelve.
+    expect(parseTranscription(tiled(repeated('不', 3), 1))).toHaveLength(3)
+  })
+
+  test('collapses three repeats when they are drawn out past speaking pace', () => {
+    // Where the duration gate earns its keep rather than only forgiving: three
+    // is enough when the run is too slow and too long to be someone talking.
+    expect(parseTranscription(tiled(repeated('我们是一个重组家庭', 3), 2.5))).toHaveLength(1)
+  })
+
+  test('leaves a line repeated later in the track alone', () => {
+    // Only a run is a loop. The same words an episode apart are just the words.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 100, end: 102, text: '对不对' },
+          { start: 102, end: 104, text: '你说呢' },
+          { start: 104, end: 106, text: '对不对' },
+        ],
+      }),
+    )
+    expect(cues).toHaveLength(3)
+  })
+
+  test('reads a run out of SRT too', () => {
+    // A whisper.cpp server that cannot answer verbose_json loops just the same.
+    const srt = repeated('我们是一个重组家庭', 6)
+      .map((text, at) =>
+        [
+          String(at + 1),
+          `00:00:${String(10 + at * 2).padStart(2, '0')},000 --> 00:00:${String(12 + at * 2).padStart(2, '0')},000`,
+          text,
+          '',
+        ].join('\n'),
+      )
+      .join('')
+
+    expect(parseTranscription(srt)).toHaveLength(1)
+  })
+})
+
+describe('describeSegments', () => {
+  test('reports each segment in track time, with the start the alignment gave it', () => {
+    // The offset is the point of the function as much as the fields are: the
+    // reason to read this is to hold a line against what was on screen at the
+    // time, and the reply counts from the start of a chunk nobody watched.
+    const report = describeSegments(
+      JSON.stringify({
+        segments: [
+          {
+            start: 28.4,
+            end: 44.0,
+            text: '天山在这里。',
+            no_speech_prob: 0.93,
+            avg_logprob: -0.41,
+            words: [{ word: '天', t_dtw: 3878 }],
+          },
+        ],
+      }),
+      600,
+    )
+
+    expect(report).toContain('628.40')
+    expect(report).toContain('644.00')
+    expect(report).toContain('638.78')
+    expect(report).toContain('ns  0.93')
+    expect(report).toContain('lp -0.41')
+    expect(report).toContain('天山在这里。')
+  })
+
+  test('says so rather than inventing a number the server did not send', () => {
+    // speaches and the rest send neither field, and a plausible-looking 0.00
+    // there would read as "certainly speech" — the opposite of "not measured".
+    const report = describeSegments(JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }))
+    expect(report).toContain('ns     ?')
+    expect(report).toContain('lp     ?')
+  })
+
+  test('returns null for a reply with no segments to describe', () => {
+    // The caller falls back to describing the cues, which is all an SRT reply
+    // can offer.
+    expect(describeSegments(JSON.stringify({ text: '新疆很大。' }))).toBeNull()
+    expect(describeSegments('1\n00:00:01,000 --> 00:00:02,000\n新疆很大。\n')).toBeNull()
   })
 })
 
