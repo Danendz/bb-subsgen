@@ -1,0 +1,608 @@
+import { describe, expect, test, vi } from 'vitest'
+import {
+  ASR_BACKOFF_MS,
+  describeSegments,
+  isRetryable,
+  parseTimestamp,
+  parseTranscription,
+  shiftBy,
+  transcribe,
+  transcribeWithRetry,
+} from './asr'
+import { connectionError, LlmError } from './client'
+
+describe('parseTranscription', () => {
+  test('reads segments out of verbose_json', () => {
+    const cues = parseTranscription(
+      JSON.stringify({
+        text: '新疆很大。天山在这里。',
+        segments: [
+          { id: 0, start: 1.2, end: 3.4, text: '新疆很大。' },
+          { id: 1, start: 3.4, end: 6.0, text: '天山在这里。' },
+        ],
+      }),
+    )
+    expect(cues).toEqual([
+      { start: 1.2, end: 3.4, text: '新疆很大。' },
+      { start: 3.4, end: 6.0, text: '天山在这里。' },
+    ])
+  })
+
+  test('returns null for a reply that carries only the text', () => {
+    // The plain `json` format: the whole transcription, every timing discarded.
+    // Unusable against a video, and distinct from a chunk that was silent.
+    expect(parseTranscription(JSON.stringify({ text: '新疆很大。' }))).toBeNull()
+  })
+
+  test('returns an empty list for a silent chunk, not null', () => {
+    // The difference decides whether the caller retries in another format or
+    // accepts the answer. Silence is an answer.
+    expect(parseTranscription(JSON.stringify({ text: '', segments: [] }))).toEqual([])
+  })
+
+  test('returns null for a body that is not JSON and has no timings', () => {
+    expect(parseTranscription('Internal Server Error')).toBeNull()
+    expect(parseTranscription('')).toBeNull()
+  })
+
+  test('reads SRT', () => {
+    const cues = parseTranscription(
+      ['1', '00:00:01,200 --> 00:00:03,400', '新疆很大。', '', '2', '00:00:03,400 --> 00:00:06,000', '天山在这里。', ''].join('\n'),
+    )
+    expect(cues).toEqual([
+      { start: 1.2, end: 3.4, text: '新疆很大。' },
+      { start: 3.4, end: 6.0, text: '天山在这里。' },
+    ])
+  })
+
+  test('reads WebVTT, which differs only in the separator and a header', () => {
+    const cues = parseTranscription(
+      ['WEBVTT', '', '00:00:01.200 --> 00:00:03.400', '新疆很大。', ''].join('\n'),
+    )
+    expect(cues).toEqual([{ start: 1.2, end: 3.4, text: '新疆很大。' }])
+  })
+
+  test('joins a cue wrapped over several lines without a separator', () => {
+    // Right for Chinese specifically: a space inserted at the wrap would be
+    // segmented as a word boundary that is not there.
+    const cues = parseTranscription(
+      ['1', '00:00:01,000 --> 00:00:04,000', '新疆很大，', '天山在这里。', ''].join('\n'),
+    )
+    expect(cues?.[0].text).toBe('新疆很大，天山在这里。')
+  })
+
+  test('drops blank segments, which Whisper emits over silence', () => {
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 0, end: 2, text: '   ' },
+          { start: 2, end: 4, text: '新疆很大。' },
+        ],
+      }),
+    )
+    expect(cues).toEqual([{ start: 2, end: 4, text: '新疆很大。' }])
+  })
+
+  test('drops a cue whose end does not follow its start', () => {
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 5, end: 5, text: '零长度' },
+          { start: 9, end: 4, text: '倒过来' },
+          { start: 2, end: 4, text: '新疆很大。' },
+        ],
+      }),
+    )
+    expect(cues).toEqual([{ start: 2, end: 4, text: '新疆很大。' }])
+  })
+})
+
+describe('parseTranscription, aligned', () => {
+  /** Centiseconds on the wire, as whisper.cpp counts them. */
+  const word = (t_dtw: number) => ({ word: '新', t_dtw })
+
+  test('takes the start from the alignment, not from the segment', () => {
+    // The whole point, and the size of the gap is the point of the size: a
+    // Whisper segment starts where the previous one ended, so a line after ten
+    // seconds of silence claims all ten of them.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 28.4, end: 44.0, text: '天山在这里。', words: [word(3878), word(4100)] },
+        ],
+      }),
+    )
+    expect(cues).toEqual([{ start: 38.78, end: 44, text: '天山在这里。' }])
+  })
+
+  test('falls back to the segment when nothing was aligned', () => {
+    // `-1` is what whisper.cpp puts there when it was not asked to align, and a
+    // server that is not whisper.cpp has no words at all. Both read as before.
+    const unaligned = JSON.stringify({
+      segments: [{ start: 1.2, end: 3.4, text: '新疆很大。', words: [word(-1), word(-1)] }],
+    })
+    const wordless = JSON.stringify({
+      segments: [{ start: 1.2, end: 3.4, text: '新疆很大。' }],
+    })
+
+    expect(parseTranscription(unaligned)).toEqual([{ start: 1.2, end: 3.4, text: '新疆很大。' }])
+    expect(parseTranscription(wordless)).toEqual([{ start: 1.2, end: 3.4, text: '新疆很大。' }])
+  })
+
+  test('skips an unaligned token at the head of a line', () => {
+    // Losing the line's alignment because its first token has none would throw
+    // away the answer over a detail of how the tokens fell.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [{ start: 10, end: 25, text: '天山在这里。', words: [word(-1), word(2000)] }],
+      }),
+    )
+    expect(cues?.[0].start).toBe(20)
+  })
+
+  test('keeps a line whose end the alignment has overtaken', () => {
+    // Ordinary for a line in the middle of a split segment: its end is the next
+    // line's guessed start, which the alignment has just moved past.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [{ start: 10, end: 14, text: '天山在这里。', words: [word(1600)] }],
+      }),
+    )
+    expect(cues).toEqual([{ start: 16, end: 16.6, text: '天山在这里。' }])
+  })
+
+  test('returns cues in track order even when the alignment reorders them', () => {
+    // The tiling is monotonic and the alignment need not be; everything
+    // downstream binary-searches this list.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 0, end: 9, text: '第二句', words: [word(800)] },
+          { start: 9, end: 12, text: '第一句', words: [word(500)] },
+        ],
+      }),
+    )
+    expect(cues?.map((c) => c.text)).toEqual(['第一句', '第二句'])
+    expect(cues?.map((c) => c.start)).toEqual([5, 8])
+  })
+})
+
+describe('parseTranscription, looping', () => {
+  /** Segments as whisper.cpp tiles them: each one starting where the last ended. */
+  const tiled = (texts: string[], each: number, from = 100) =>
+    JSON.stringify({
+      segments: texts.map((text, at) => ({
+        start: from + at * each,
+        end: from + (at + 1) * each,
+        text,
+      })),
+    })
+
+  const repeated = (text: string, times: number) => Array.from({ length: times }, () => text)
+
+  test('collapses a run long enough to be Whisper looping over music', () => {
+    // The observed fault, replayed from the log that found it: six copies of one
+    // nine-character line over the tail of 家有儿女's theme song, tiled two
+    // seconds apart, each aligned to its own place in the music. Nearly twelve
+    // seconds of one caption sitting over the dialogue that follows it.
+    const aligned = [11610, 11776, 11928, 12194, 12594, 12668]
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: aligned.map((t_dtw, at) => ({
+          start: 116 + at * 2,
+          end: 118 + at * 2,
+          text: '我们是一个重组家庭',
+          words: [{ word: '我', t_dtw }],
+        })),
+      }),
+    )
+
+    expect(cues).toEqual([{ start: 116.1, end: 118, text: '我们是一个重组家庭' }])
+  })
+
+  test('keeps a line someone genuinely said twice', () => {
+    // Both of these are real, from the same episode, and neither is a loop.
+    expect(parseTranscription(tiled(repeated('我有一点走不动的', 2), 1, 167))).toHaveLength(2)
+    expect(parseTranscription(tiled(repeated('你从美国都回来一百八十天了', 2), 2, 301))).toHaveLength(2)
+  })
+
+  test('keeps a short line repeated three times in a hurry', () => {
+    // 不不不 is speech, and the run length alone cannot tell it from a loop.
+    // What can is that nobody keeps it up: three seconds, against twelve.
+    expect(parseTranscription(tiled(repeated('不', 3), 1))).toHaveLength(3)
+  })
+
+  test('collapses three repeats when they are drawn out past speaking pace', () => {
+    // Where the duration gate earns its keep rather than only forgiving: three
+    // is enough when the run is too slow and too long to be someone talking.
+    expect(parseTranscription(tiled(repeated('我们是一个重组家庭', 3), 2.5))).toHaveLength(1)
+  })
+
+  test('leaves a line repeated later in the track alone', () => {
+    // Only a run is a loop. The same words an episode apart are just the words.
+    const cues = parseTranscription(
+      JSON.stringify({
+        segments: [
+          { start: 100, end: 102, text: '对不对' },
+          { start: 102, end: 104, text: '你说呢' },
+          { start: 104, end: 106, text: '对不对' },
+        ],
+      }),
+    )
+    expect(cues).toHaveLength(3)
+  })
+
+  test('reads a run out of SRT too', () => {
+    // A whisper.cpp server that cannot answer verbose_json loops just the same.
+    const srt = repeated('我们是一个重组家庭', 6)
+      .map((text, at) =>
+        [
+          String(at + 1),
+          `00:00:${String(10 + at * 2).padStart(2, '0')},000 --> 00:00:${String(12 + at * 2).padStart(2, '0')},000`,
+          text,
+          '',
+        ].join('\n'),
+      )
+      .join('')
+
+    expect(parseTranscription(srt)).toHaveLength(1)
+  })
+})
+
+describe('describeSegments', () => {
+  test('reports each segment in track time, with the start the alignment gave it', () => {
+    // The offset is the point of the function as much as the fields are: the
+    // reason to read this is to hold a line against what was on screen at the
+    // time, and the reply counts from the start of a chunk nobody watched.
+    const report = describeSegments(
+      JSON.stringify({
+        segments: [
+          {
+            start: 28.4,
+            end: 44.0,
+            text: '天山在这里。',
+            no_speech_prob: 0.93,
+            avg_logprob: -0.41,
+            words: [{ word: '天', t_dtw: 3878 }],
+          },
+        ],
+      }),
+      600,
+    )
+
+    expect(report).toContain('628.40')
+    expect(report).toContain('644.00')
+    expect(report).toContain('638.78')
+    expect(report).toContain('ns  0.93')
+    expect(report).toContain('lp -0.41')
+    expect(report).toContain('天山在这里。')
+  })
+
+  test('says so rather than inventing a number the server did not send', () => {
+    // speaches and the rest send neither field, and a plausible-looking 0.00
+    // there would read as "certainly speech" — the opposite of "not measured".
+    const report = describeSegments(JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }))
+    expect(report).toContain('ns     ?')
+    expect(report).toContain('lp     ?')
+  })
+
+  test('returns null for a reply with no segments to describe', () => {
+    // The caller falls back to describing the cues, which is all an SRT reply
+    // can offer.
+    expect(describeSegments(JSON.stringify({ text: '新疆很大。' }))).toBeNull()
+    expect(describeSegments('1\n00:00:01,000 --> 00:00:02,000\n新疆很大。\n')).toBeNull()
+  })
+})
+
+describe('parseTimestamp', () => {
+  test('reads the shapes SRT and VTT use between them', () => {
+    expect(parseTimestamp('00:00:01,200')).toBeCloseTo(1.2)
+    expect(parseTimestamp('00:00:01.200')).toBeCloseTo(1.2)
+    expect(parseTimestamp('01:02:03.500')).toBeCloseTo(3723.5)
+    expect(parseTimestamp('02:03.500')).toBeCloseTo(123.5)
+  })
+})
+
+describe('shiftBy', () => {
+  test('moves a chunk back to where it belongs in the track', () => {
+    expect(shiftBy([{ start: 1, end: 2, text: '新疆' }], 300)).toEqual([
+      { start: 301, end: 302, text: '新疆' },
+    ])
+  })
+
+  test('returns the cues untouched when there is nothing to shift', () => {
+    const cues = [{ start: 1, end: 2, text: '新疆' }]
+    expect(shiftBy(cues, 0)).toBe(cues)
+  })
+})
+
+/** A fetch that answers each call with the next body in the list. */
+function fetchReturning(...bodies: string[]): typeof fetch {
+  let at = 0
+  return vi.fn(async () => new Response(bodies[at++] ?? '', { status: 200 })) as unknown as typeof fetch
+}
+
+const options = {
+  baseUrl: 'http://localhost:8080/v1',
+  model: 'ggml-large-v3-turbo',
+  audio: new Blob(['x'], { type: 'audio/wav' }),
+}
+
+describe('transcribe', () => {
+  test('uses verbose_json when the server understands it', async () => {
+    const fetchImpl = fetchReturning(
+      JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }),
+    )
+    const cues = await transcribe({ ...options, fetchImpl })
+
+    expect(cues).toEqual([{ start: 1, end: 2, text: '新疆很大。' }])
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  test('falls back to srt when the reply has no timings in it', async () => {
+    // The case this exists for: a 200 with a perfectly good body that cannot be
+    // shown against a video, which no HTTP-level check would catch.
+    const fetchImpl = fetchReturning(
+      JSON.stringify({ text: '新疆很大。' }),
+      ['1', '00:00:01,000 --> 00:00:02,000', '新疆很大。', ''].join('\n'),
+    )
+    const cues = await transcribe({ ...options, fetchImpl })
+
+    expect(cues).toEqual([{ start: 1, end: 2, text: '新疆很大。' }])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  test('accepts a silent chunk without asking again in another format', async () => {
+    const fetchImpl = fetchReturning(JSON.stringify({ segments: [] }))
+    expect(await transcribe({ ...options, fetchImpl })).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  test('gives up rather than looping when no format yields timings', async () => {
+    const fetchImpl = fetchReturning('not json', 'still not subtitles')
+    expect(await transcribe({ ...options, fetchImpl })).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  test('applies the chunk offset to what comes back', async () => {
+    const fetchImpl = fetchReturning(
+      JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }),
+    )
+    const cues = await transcribe({ ...options, offset: 600, fetchImpl })
+    expect(cues).toEqual([{ start: 601, end: 602, text: '新疆很大。' }])
+  })
+
+  test('sends the model, the language and a greedy temperature', async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ segments: [] }), { status: 200 }),
+    ) as unknown as typeof fetch
+    await transcribe({ ...options, fetchImpl })
+
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0]
+    const form = init.body as FormData
+    expect(url).toBe('http://localhost:8080/v1/audio/transcriptions')
+    expect(form.get('model')).toBe('ggml-large-v3-turbo')
+    expect(form.get('language')).toBe('zh')
+    expect(form.get('temperature')).toBe('0')
+    expect(form.get('response_format')).toBe('verbose_json')
+  })
+
+  test('reports a failed request as an LlmError carrying the body', async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response('model not loaded', { status: 500, statusText: 'Server Error' }),
+    ) as unknown as typeof fetch
+
+    await expect(transcribe({ ...options, fetchImpl })).rejects.toThrow(/Transcription failed: 500/)
+  })
+
+  test('falls back to whisper.cpp’s own path when the OpenAI one is a 404', async () => {
+    // whisper-server answers `/v1/audio/transcriptions` with `File Not Found`
+    // and serves `/inference` off the root. It is what tools/asr-server.sh
+    // installs, so this is the default setup rather than an exotic one.
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.endsWith('/inference')
+        ? new Response(JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }), {
+            status: 200,
+          })
+        : new Response('File Not Found (/v1/audio/transcriptions)', {
+            status: 404,
+            statusText: 'Not Found',
+          }),
+    ) as unknown as typeof fetch
+
+    expect(await transcribe({ ...options, fetchImpl })).toEqual([
+      { start: 1, end: 2, text: '新疆很大。' },
+    ])
+
+    const calls = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+    expect(calls.map(([url]) => url)).toEqual([
+      'http://localhost:8080/v1/audio/transcriptions',
+      'http://localhost:8080/inference',
+    ])
+  })
+
+  test('sends the whole form to the fallback path, not a stripped one', async () => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.endsWith('/inference')
+        ? new Response(JSON.stringify({ segments: [] }), { status: 200 })
+        : new Response('', { status: 404, statusText: 'Not Found' }),
+    ) as unknown as typeof fetch
+    await transcribe({ ...options, fetchImpl })
+
+    const [, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[1]
+    const form = init.body as FormData
+    expect(form.get('model')).toBe('ggml-large-v3-turbo')
+    expect(form.get('language')).toBe('zh')
+    expect(form.get('response_format')).toBe('verbose_json')
+  })
+
+  test('names the real problem when no path transcribes', async () => {
+    // "404 Not Found" sends you looking for a broken request. The address being
+    // wrong, or the server not doing transcription at all, is the actual cause.
+    const fetchImpl = vi.fn(
+      async () => new Response('File Not Found', { status: 404, statusText: 'Not Found' }),
+    ) as unknown as typeof fetch
+
+    await expect(transcribe({ ...options, fetchImpl })).rejects.toThrow(
+      /No transcription endpoint at http:\/\/localhost:8080\/v1/,
+    )
+  })
+
+  test('does not retry elsewhere when the server refuses the work itself', async () => {
+    // A 500 is the server answering about this request. Trying another path
+    // would replace its explanation with a less useful one.
+    const fetchImpl = vi.fn(
+      async () => new Response('model not loaded', { status: 500, statusText: 'Server Error' }),
+    ) as unknown as typeof fetch
+
+    await expect(transcribe({ ...options, fetchImpl })).rejects.toThrow(/Transcription failed: 500/)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  test('says something useful when the server is not running', async () => {
+    // The single most likely failure, and `TypeError: Failed to fetch` is the
+    // least helpful thing it could say.
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof fetch
+
+    await expect(transcribe({ ...options, fetchImpl })).rejects.toThrow(/Could not reach/)
+  })
+})
+
+describe('isRetryable', () => {
+  test('retries a server that could not be reached', () => {
+    // The common one, and the one worth waiting for: whisper restarted, or is
+    // still loading its model.
+    expect(isRetryable(connectionError('http://localhost:8080/v1', new Error('refused')))).toBe(true)
+  })
+
+  test('retries the server failing rather than declining', () => {
+    expect(isRetryable(new LlmError('boom', { status: 500 }))).toBe(true)
+    expect(isRetryable(new LlmError('busy', { status: 429 }))).toBe(true)
+    expect(isRetryable(new LlmError('slow', { status: 408 }))).toBe(true)
+  })
+
+  test('gives up at once on an address that serves no transcription', () => {
+    // Otherwise one wrong URL becomes thirty doomed requests across ten chunks
+    // before anything is reported.
+    expect(isRetryable(new LlmError('no endpoint', { status: 404 }))).toBe(false)
+  })
+
+  test('gives up at once on a request the server refused', () => {
+    // An unloaded model, or audio it will not accept. Asking again is the same
+    // question.
+    expect(isRetryable(new LlmError('bad request', { status: 400 }))).toBe(false)
+  })
+
+  test('does not retry something that was never the server’s answer', () => {
+    // A bug here would otherwise be run three times and reported as a timeout.
+    expect(isRetryable(new TypeError('cues is not iterable'))).toBe(false)
+  })
+})
+
+describe('transcribeWithRetry', () => {
+  const segments = (text: string) =>
+    JSON.stringify({ segments: [{ start: 0, end: 2, text }] })
+
+  /** A server that fails the first `failures` times, then answers. */
+  function server(failures: number, status?: number) {
+    let calls = 0
+    const fetchImpl = vi.fn(async () => {
+      if (calls++ < failures) {
+        if (status === undefined) throw new TypeError('Failed to fetch')
+        return new Response('nope', { status })
+      }
+      return new Response(segments('新疆很大。'), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    return { fetchImpl: fetchImpl as unknown as typeof fetch, calls: () => calls }
+  }
+
+  /** Never actually waits; the backoff is seconds long by design. */
+  const wait = vi.fn<(ms: number, signal?: AbortSignal) => Promise<void>>(() =>
+    Promise.resolve(),
+  )
+
+  const attempt = (fetchImpl: typeof fetch) =>
+    transcribeWithRetry({
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'large-v3-turbo',
+      audio: new Blob(['x']),
+      fetchImpl,
+      wait,
+    })
+
+  test('answers on the first attempt when the server is up', async () => {
+    const { fetchImpl, calls } = server(0)
+
+    const result = await attempt(fetchImpl)
+
+    expect(result.cues).toEqual([{ start: 0, end: 2, text: '新疆很大。' }])
+    expect(calls()).toBe(1)
+  })
+
+  test('rides out a server that comes back', async () => {
+    // The common failure: whisper restarted, or is still loading its model.
+    const { fetchImpl, calls } = server(2)
+
+    const result = await attempt(fetchImpl)
+
+    expect(result.cues).toHaveLength(1)
+    expect(calls()).toBe(3)
+  })
+
+  test('gives up after the backoff runs out, and says why', async () => {
+    const { fetchImpl, calls } = server(Infinity)
+
+    const result = await attempt(fetchImpl)
+
+    // Reported rather than thrown: one bad chunk must not cost the rest of
+    // the episode.
+    expect(result.cues).toBeNull()
+    expect(result.error).toMatch(/Could not reach/)
+    expect(calls()).toBe(ASR_BACKOFF_MS.length + 1)
+  })
+
+  test('waits between attempts rather than hammering', async () => {
+    wait.mockClear()
+    const { fetchImpl } = server(Infinity)
+
+    await attempt(fetchImpl)
+
+    expect(wait.mock.calls.map((call) => call[0])).toEqual([...ASR_BACKOFF_MS])
+  })
+
+  test('throws at once on a failure every chunk would share', async () => {
+    // A wrong address answers the same way for all ten chunks. Retrying it is
+    // thirty doomed requests and a minute of backoff before anything is said.
+    const { fetchImpl, calls } = server(Infinity, 404)
+
+    await expect(attempt(fetchImpl)).rejects.toThrow()
+    // Both endpoints tried once each by `transcribe` itself, and no retry.
+    expect(calls()).toBe(2)
+  })
+
+  test('stops quietly when the run was cancelled', async () => {
+    const controller = new AbortController()
+    const fetchImpl = (async () => {
+      controller.abort()
+      throw new DOMException('Aborted', 'AbortError')
+    }) as unknown as typeof fetch
+
+    const result = await transcribeWithRetry({
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'large-v3-turbo',
+      audio: new Blob(['x']),
+      signal: controller.signal,
+      fetchImpl,
+      wait,
+    })
+
+    expect(result).toEqual({ cues: null })
+  })
+})

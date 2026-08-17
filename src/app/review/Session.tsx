@@ -18,15 +18,20 @@ import { segment } from '../../lang/segment'
 import { findPatterns, type PatternMatch } from '../../lang/grammar/match'
 import type { Pattern } from '../../lang/grammar/patterns'
 import { parseDefinitions } from '../../lang/definitions'
+import { isEpisodeId } from '../../bilibili/resolve'
+import { bareId, isYoutubeId } from '../../youtube/site'
 import { rankEntries } from '../../lang/entries'
 import type { Lexicon } from '../../lang/dict'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
 import { canSpeak, speak } from '../../shared/speak'
+import { loadSettings } from '../../shared/settings'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
+import { ChatDrawer } from '../chat/ChatDrawer'
+import { explainQuestion, openExplainChat } from '../chat/explain'
 
 /** Rewind, so the jump-back lands before the line rather than on top of it. */
 const REWIND_S = 10
@@ -40,11 +45,42 @@ const DISTRACTORS = 3
  * `bbq=1` asks the content script to hold translations back for that visit —
  * arriving at the answer with the answer already on screen would defeat the
  * point of coming.
+ *
+ * Built on the URL capture stored rather than reassembled from the id, because
+ * the stored one is the page that actually worked: it already carries the part
+ * number of a multi-part video, which reassembly dropped, and it is the only
+ * thing that knows a bangumi episode does not live under `/video/`.
  */
 function contextUrl(context: Context): string | null {
-  if (!context.bvid || context.start === undefined) return null
+  if (!context.videoId || context.start === undefined) return null
+
+  const base = context.url ?? watchUrlFor(context.videoId)
   const at = Math.max(0, Math.floor(context.start) - REWIND_S)
-  return `https://www.bilibili.com/video/${context.bvid}/?t=${at}&bbq=1`
+
+  try {
+    const url = new URL(base)
+    url.searchParams.set('t', String(at))
+    url.searchParams.set('bbq', '1')
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The fallback for rows captured before the URL was stored alongside them.
+ *
+ * Those rows are all Bilibili's — they predate every other site — but the check
+ * is explicit anyway, because `isEpisodeId` asks whether an id starts with `ep`
+ * and `ep1234ABCDE` is a perfectly legal YouTube id. The `yt:` prefix is what
+ * keeps the two apart; this is where forgetting it would send you to a bangumi
+ * page that does not exist.
+ */
+function watchUrlFor(videoId: string): string {
+  if (isYoutubeId(videoId)) return `https://www.youtube.com/watch?v=${bareId(videoId)}`
+  return isEpisodeId(videoId)
+    ? `https://www.bilibili.com/bangumi/play/${videoId}`
+    : `https://www.bilibili.com/video/${videoId}/`
 }
 
 function timestamp(seconds: number): string {
@@ -109,6 +145,16 @@ export function Session({
   const [combo, setCombo] = useState(0)
   const [best, setBest] = useState(0)
   const [tones, setTones] = useState<number[]>([])
+
+  // The explanation opens over the session rather than instead of it. `opening`
+  // covers the moment the track is being fetched, which is the slow part.
+  const [explaining, setExplaining] = useState<{ chatId: string; question: string } | null>(null)
+  const [opening, setOpening] = useState(false)
+  const [llmReady, setLlmReady] = useState(false)
+
+  useEffect(() => {
+    void loadSettings().then((s) => setLlmReady(s.llmEnabled && Boolean(s.llmBaseUrl)))
+  }, [])
 
   const total = initial.length
   const current = queue[at] ?? null
@@ -288,6 +334,39 @@ export function Session({
   const advance = () => {
     reset()
     setAt((i) => i + 1)
+  }
+
+  /**
+   * Opens an explanation of the line this card came from.
+   *
+   * The card is not graded, not advanced and not unmounted — the drawer sits
+   * over the session and closing it puts you back on the same card.
+   */
+  const explain = async () => {
+    const context = card?.context
+    if (!current || !context?.text || opening) return
+
+    setOpening(true)
+    try {
+      const chatId = await openExplainChat({
+        line: context.text,
+        // A sentence or grammar card is a question about the whole line; only a
+        // word card has a word to single out.
+        ...(current.kind === 'word' ? { target: current.text } : {}),
+        ...(context.videoId !== undefined ? { videoId: context.videoId } : {}),
+        ...(context.start !== undefined ? { start: context.start } : {}),
+        ...(context.title !== undefined ? { sourceTitle: context.title } : {}),
+        itemId: current.id,
+      })
+      setExplaining({
+        chatId,
+        question: explainQuestion(current.kind === 'word' ? current.text : undefined),
+      })
+    } catch (e) {
+      console.warn('[bb-subsgen] could not open an explanation', e)
+    } finally {
+      setOpening(false)
+    }
   }
 
   const check = () => {
@@ -599,6 +678,25 @@ export function Session({
                 <span class="muted">— translations stay hidden</span>
               </p>
             )}
+
+            {/* Said plainly rather than hidden behind an icon. This video had no
+                subtitles, so the Chinese above is a speech model's guess at what
+                was said — and a homophone it got wrong is indistinguishable from
+                a word you simply do not know yet, which is precisely the
+                confusion worth heading off before you try to learn it. */}
+            {context?.source === 'asr' && (
+              <p class="small muted">Transcribed from the audio — this line may be misheard.</p>
+            )}
+
+            {/* Only offered when a model is actually configured: a button that
+                explains why it cannot work is worse than no button. */}
+            {llmReady && context?.text && (
+              <p class="small">
+                <button class="link-btn" disabled={opening} onClick={() => void explain()}>
+                  {opening ? 'Reading the scene…' : 'Explain this line'}
+                </button>
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -623,6 +721,15 @@ export function Session({
           </button>
         )}
       </div>
+
+      {explaining && (
+        <ChatDrawer
+          chatId={explaining.chatId}
+          autoAsk={explaining.question}
+          fullHref={`#/chat/${explaining.chatId}`}
+          onClose={() => setExplaining(null)}
+        />
+      )}
     </>
   )
 }

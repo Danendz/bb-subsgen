@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "build:dict": "node --experimental-strip-types tools/build-dict.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ytdlp": "node --experimental-strip-types tools/ytdlp-server.ts",
+    "services": "node --experimental-strip-types tools/services.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",

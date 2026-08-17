@@ -16,8 +16,10 @@ const DB_NAME = 'bb-subsgen-flashcards'
  * 1 — the original schema.
  * 2 — words no longer wait in the intake pool, so the ones already there are
  *     released. See `releasePooledWords`.
+ * 3 — `bvid` becomes `videoId`, because bangumi episodes have no BV id. See
+ *     `renameBvidToVideoId`.
  */
-const VERSION = 2
+const VERSION = 3
 
 export const STORES = {
   items: 'items',
@@ -28,41 +30,6 @@ export const STORES = {
   signals: 'signals',
   ranks: 'ranks',
 } as const
-
-/** Promise-wraps a request. */
-export function request<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-/**
- * Read-modify-write within a live transaction.
- *
- * The `put` is issued synchronously inside the `get`'s success handler, which
- * is the only reliable way to keep an IndexedDB transaction alive across a
- * read. Awaiting the read first — or chaining off a promise — hands control
- * back to the microtask queue, and the transaction may auto-commit before the
- * write is ever issued.
- */
-export function upsert<T>(
-  store: IDBObjectStore,
-  key: IDBValidKey,
-  update: (existing: T | undefined) => T,
-): void {
-  const req = store.get(key)
-  req.onsuccess = () => store.put(update(req.result as T | undefined))
-}
-
-/** Resolves when the transaction commits, so callers can fire several writes then await once. */
-export function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-    tx.onabort = () => reject(tx.error)
-  })
-}
 
 /**
  * Frees the words that were collected while the intake pool still held them.
@@ -89,6 +56,99 @@ function releasePooledWords(items: IDBObjectStore): void {
   }
 }
 
+/**
+ * Renames the stored `bvid` field to `videoId`, everywhere it appears.
+ *
+ * Bangumi episodes have no BV id — their identity is `ep335910` — so the field
+ * had to start meaning "whatever identifies this video" rather than "Bilibili's
+ * BV id". The name was the only thing standing in the way.
+ *
+ * Two of these stores key on it, and IndexedDB cannot alter a keyPath: the only
+ * way through is to read every row out, drop the store, recreate it under the
+ * new key and write the rows back. That is as alarming as it sounds, which is
+ * why it happens inside the upgrade transaction — it either completes or the
+ * whole version bump rolls back, and there is no state in which half the deck
+ * has moved.
+ */
+function renameBvidToVideoId(db: IDBDatabase, tx: IDBTransaction): void {
+  rekeyOnVideoId(db, tx, STORES.videoWords, (fresh) => {
+    const store = fresh.createObjectStore(STORES.videoWords, {
+      keyPath: ['videoId', 'headword'],
+    })
+    store.createIndex('by-video', 'videoId')
+    return store
+  })
+
+  rekeyOnVideoId(db, tx, STORES.videos, (fresh) =>
+    fresh.createObjectStore(STORES.videos, { keyPath: 'videoId' }),
+  )
+
+  // Not keyed on it, so these two are ordinary field edits — a cursor walk that
+  // touches only the rows that carry the old name.
+  renameInContexts(tx.objectStore(STORES.items))
+  renameFieldInPlace(tx.objectStore(STORES.signals))
+}
+
+/**
+ * Moves a store to a `videoId` key, carrying its rows across.
+ *
+ * The rows are read before the store is dropped and written back into its
+ * replacement, all within the one transaction. `recreate` is a callback rather
+ * than a keyPath because the two stores differ in whether they carry an index.
+ */
+function rekeyOnVideoId(
+  db: IDBDatabase,
+  tx: IDBTransaction,
+  name: string,
+  recreate: (db: IDBDatabase) => IDBObjectStore,
+): void {
+  const rows = tx.objectStore(name).getAll()
+  rows.onsuccess = () => {
+    db.deleteObjectStore(name)
+    const store = recreate(db)
+    for (const row of rows.result as Array<Record<string, unknown>>) {
+      const { bvid, ...rest } = row
+      store.put({ ...rest, videoId: bvid })
+    }
+  }
+}
+
+/** Renames the field inside every `Context` an item carries. */
+function renameInContexts(items: IDBObjectStore): void {
+  const cursor = items.openCursor()
+  cursor.onsuccess = () => {
+    const at = cursor.result
+    if (!at) return
+
+    const item = at.value as { contexts?: Array<Record<string, unknown>> }
+    if (item.contexts?.some((context) => 'bvid' in context)) {
+      at.update({
+        ...item,
+        contexts: item.contexts.map(({ bvid, ...rest }) =>
+          bvid === undefined ? rest : { ...rest, videoId: bvid },
+        ),
+      })
+    }
+    at.continue()
+  }
+}
+
+/** Renames the field on rows that carry it at the top level. */
+function renameFieldInPlace(store: IDBObjectStore): void {
+  const cursor = store.openCursor()
+  cursor.onsuccess = () => {
+    const at = cursor.result
+    if (!at) return
+
+    const row = at.value as Record<string, unknown>
+    if ('bvid' in row) {
+      const { bvid, ...rest } = row
+      at.update(bvid === undefined ? rest : { ...rest, videoId: bvid })
+    }
+    at.continue()
+  }
+}
+
 /** `dbName` is overridable so tests don't share state. */
 export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -102,6 +162,9 @@ export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
         // is whatever each version bump owes.
         if (event.oldVersion < 2) {
           releasePooledWords(req.transaction!.objectStore(STORES.items))
+        }
+        if (event.oldVersion < 3) {
+          renameBvidToVideoId(db, req.transaction!)
         }
         return
       }
@@ -125,11 +188,11 @@ export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
       db.createObjectStore(STORES.exposures, { keyPath: 'headword' })
 
       const videoWords = db.createObjectStore(STORES.videoWords, {
-        keyPath: ['bvid', 'headword'],
+        keyPath: ['videoId', 'headword'],
       })
-      videoWords.createIndex('by-video', 'bvid')
+      videoWords.createIndex('by-video', 'videoId')
 
-      db.createObjectStore(STORES.videos, { keyPath: 'bvid' })
+      db.createObjectStore(STORES.videos, { keyPath: 'videoId' })
 
       const signals = db.createObjectStore(STORES.signals, {
         keyPath: 'seq',

@@ -1,0 +1,79 @@
+# What has to pass before anything reaches main.
+#
+# On the pull request rather than only on the merge, because a check that runs
+# after the merge reports a branch that is already broken. The push trigger is
+# there for the merge commit itself, which no pull request ever built: main can
+# move by a direct push or a squash that resolved differently from the branch.
+#
+# A workflow alone does not stop a merge. Making these checks *required* is a
+# branch protection rule on main, set in the repository's settings — without it
+# this reports and nothing more.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# One run per branch. Pushing three times to a pull request in a minute should
+# leave the newest answer, not three racing to report on it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # The version the extension is developed against. `npm` caching keys
+          # off package-lock.json, which is what `npm ci` installs from.
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        # `ci` rather than `install`: it installs the lockfile exactly and fails
+        # on a lockfile that has drifted from package.json, which is the whole
+        # reason to have one.
+        run: npm ci
+
+      - name: Typecheck
+        # Separately from the build, which runs `tsc` too, so a type error is
+        # reported as a type error rather than as a build that did not finish.
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build the dictionary
+        # public/dict is generated rather than committed, and the manifest
+        # declares dict/words.bin as an asset — so crxjs refuses to bundle
+        # without it, and a checkout has to make it before it can build. Four
+        # tenths of a second from a source that is in the repository, which is
+        # cheaper than caching it would be.
+        run: npm run build:dict
+
+      - name: Build
+        # The bundle is checked as well as the tests: crxjs assembles the
+        # manifest and the content scripts at build time, and a broken entry
+        # point is invisible to a test suite that imports modules directly.
+        run: npm run build
+
+      - name: Upload the unpacked extension
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-${{ github.sha }}
+          path: dist
+          # Loadable unpacked, dictionary included, which is most of its ~35MB.
+          #
+          # A week is long enough to review a pull request with and short enough
+          # not to accumulate. The build is reproducible from the commit anyway.
+          retention-days: 7

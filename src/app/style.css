@@ -891,10 +891,269 @@ details.help pre {
 }
 details.help code { font-size: 12px; }
 
+/* Chat --------------------------------------------------------------------- */
+
+/* History beside the open conversation. The list is fixed-width because chat
+   titles are a scanning target, not something to read — the reply needs the room. */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.chat-list { max-height: 70vh; overflow-y: auto; }
+.chat-row.on { background: var(--inset); border-radius: var(--r-sm); }
+
+/* A row you press, not a link you follow: no underline, and none of the
+   standalone spacing `.link-btn` carries. */
+.row-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin: 0;
+  font: inherit;
+  color: var(--text-2);
+  text-align: left;
+  min-width: 0;
+}
+.row-btn:hover:not(:disabled) { background: none; color: var(--text); }
+.row-btn:active:not(:disabled) { transform: none; }
+
+.chat-row .row-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+/* One line, whatever was said — the timestamp beneath it does the disambiguating. */
+.chat-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-open { padding: 0; }
+.chat { display: flex; flex-direction: column; height: 70vh; }
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--edge);
+}
+.chat-head .model { flex: 1; min-width: 0; }
+
+.transcript { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.turn { margin-bottom: 14px; line-height: 1.55; }
+.turn p { margin: 0 0 8px; }
+.turn p:last-child { margin-bottom: 0; }
+/* Your own turns are set apart rather than bubbled: an explanation is the thing
+   being read, and a column of alternating bubbles fights it for attention. */
+.turn.user {
+  padding: 8px 12px;
+  border-left: 2px solid var(--edge-lit);
+  background: var(--inset);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--text-2);
+}
+.turn code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--inset);
+  font-size: 0.92em;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--edge);
+}
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+}
+.composer textarea:focus-visible { outline: 2px solid var(--edge-lit); outline-offset: 1px; }
+
+select.model {
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 12px;
+}
+
+/* Explain drawer ------------------------------------------------------------ */
+
+/* Over the session, never instead of it: the card behind stays mounted, so
+   closing this puts you back exactly where you were. */
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.45);
+}
+.drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  height: 100%;
+  background: var(--raised);
+  border-left: 1px solid var(--edge);
+  box-shadow: -20px 0 60px rgb(0 0 0 / 0.4);
+  animation: drawer-in 160ms ease-out;
+}
+@keyframes drawer-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.drawer-head a { color: var(--link); }
+/* The panel fills the drawer rather than keeping the tab's fixed height. */
+.drawer .chat { flex: 1; height: auto; min-height: 0; }
+
+/* The same panel, framed inside a video. There is no shell around it: the frame
+   itself is the drawer, and the page it sits in supplies the backdrop. */
+.embed { display: flex; flex-direction: column; height: 100vh; }
+.embed .chat { flex: 1; height: auto; min-height: 0; }
+.embed .panel { margin: 12px; }
+/* The composer is the one thing a 420px frame cannot afford to lose. */
+.embed .transcript { min-height: 0; }
+
+/* What the model was shown, on demand — the first question when an answer looks
+   wrong is what it was actually looking at. */
+.passage { margin-bottom: 14px; }
+.passage summary { cursor: pointer; }
+.passage-lines {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font: 14px/1.7 var(--hanzi);
+}
+.passage-lines p { margin: 0; }
+.passage-line { color: var(--text); font-weight: 600; }
+
+/* Model log ----------------------------------------------------------------- */
+
+.log { max-height: 420px; overflow-y: auto; margin-top: 4px; }
+.log-row + .log-row { border-top: 1px solid var(--edge); }
+.log-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 4px;
+  font-size: 12px;
+}
+.log-time { color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* The message is the column that gets the leftover room, and is clipped rather
+   than wrapped so a hundred rows stay scannable. */
+.log-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-level.warn { color: var(--warn); }
+.log-level.error { color: var(--wrong); }
+.log-level.debug { color: var(--text-3); }
+.log-detail { padding: 2px 4px 10px; }
+.log-detail pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Settings ------------------------------------------------------------------- */
+
+/* The groups themselves are shared with the popup (src/settings/), which is why
+   this is a skin rather than a layout: identical markup, one panel-shaped and
+   one 300px-wide. Anything scoped to `.settings-group` here has a counterpart
+   in src/popup/style.css. */
+
+.settings-group {
+  padding: 14px 18px 16px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+.settings-group + .settings-group { margin-top: 12px; }
+.settings-group > h2 {
+  font: 600 16px var(--display);
+  margin: 0;
+  padding-bottom: 4px;
+}
+
+.settings-group select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 13px;
+  max-width: 60%;
+}
+/* Both controls take the action colour rather than the browser's blue, which is
+   the one hue on this page that belongs to nothing else in the palette. */
+.settings-group input[type='range'] {
+  width: 200px;
+  flex: none;
+  accent-color: var(--action);
+}
+/* An address, not a search box: `input[type=text]` is full-width by default and
+   would push the label off the row. */
+.settings-group input.url { width: 220px; flex: none; }
+.settings-group input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--action); }
+.settings-group .toolbar { margin: 12px 0 0; }
+
+.value { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.hint { color: var(--text-3); font-size: 12px; margin: 10px 0 0; }
+/* Still legible, still there, and not reachable until the thing above it is on. */
+.disabled { opacity: 0.4; pointer-events: none; }
+.divider { border: 0; border-top: 1px solid var(--edge); margin: 12px 0 0; }
+
+.presets { display: flex; gap: 8px; padding: 12px 0 2px; }
+.presets .preset { flex: 1; font-size: 13px; padding: 6px 10px; }
+.connect { width: 100%; margin-top: 12px; }
+.status {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: 12px;
+}
+.status-ok { color: var(--right); }
+.status-bad { color: var(--warn); }
+.status-busy { color: var(--text-3); }
+
 /* ---------------------------------------------------------------------------- */
 
 @media (max-width: 560px) {
   .shell { padding: 20px 16px 60px; }
+  /* The list stacks above the conversation rather than squeezing beside it. */
+  .chat-layout { grid-template-columns: 1fr; }
+  .chat-list { max-height: 180px; }
   .card { min-height: 240px; padding: 24px 16px; }
   .actions { flex-direction: column-reverse; }
   .actions button { max-width: none; }

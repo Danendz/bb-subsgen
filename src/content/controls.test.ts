@@ -4,7 +4,6 @@ import {
   floorFor,
   HOVER_SETTLE_MS,
   liftFor,
-  shouldLift,
   type PlayerGeometry,
 } from './controls'
 import { RESUME_GRACE_MS } from './hover'
@@ -131,22 +130,6 @@ describe('floorFor', () => {
 
   test('is zero rather than negative if the video overflows the container', () => {
     expect(floorFor({ top: 0, bottom: 900 }, { top: 0, bottom: 950 })).toBe(0)
-  })
-})
-
-describe('shouldLift', () => {
-  test('lifts while Bilibili reports its controls as showing', () => {
-    expect(shouldLift('false')).toBe(true)
-  })
-
-  test('rests while the controls are hidden', () => {
-    expect(shouldLift('true')).toBe(false)
-  })
-
-  test('rests when the attribute is missing entirely', () => {
-    // A player rewrite that drops data-ctrl-hidden must degrade to today's
-    // behavior, not to a card permanently floating mid-screen.
-    expect(shouldLift(undefined)).toBe(false)
   })
 })
 

@@ -4,6 +4,7 @@ import {
   emptyBackup,
   isBackup,
   merge,
+  upgrade,
   type Backup,
   type Conflict,
 } from '../flashcards/backup'
@@ -17,6 +18,9 @@ import {
 } from '../background/flashcards-store'
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
 import { WordListHelp } from './WordListHelp'
+import { LlmLog } from './LlmLog'
+import { cacheSize, clearCache } from '../background/llm-cache'
+import { clearTranscripts, transcriptSize } from '../background/transcript-cache'
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10)
@@ -175,6 +179,100 @@ function WordLists() {
   )
 }
 
+/**
+ * The model's translations, and the button that throws them away.
+ *
+ * Separate from "Clear everything" and deliberately below it: this costs GPU
+ * time to rebuild and nothing else, where that one costs history that cannot be
+ * rebuilt at all. Worth being able to wipe on its own — it is the only part of
+ * this extension that grows without bound.
+ */
+function TranslationCache() {
+  const [size, setSize] = useState<{ videos: number; lines: number } | null>(null)
+
+  const refresh = () => void cacheSize().then(setSize, () => setSize(null))
+  useEffect(refresh, [])
+
+  const wipe = async () => {
+    if (!confirm('Delete every translation the local model has produced?')) return
+    await clearCache()
+    refresh()
+  }
+
+  return (
+    <div class="panel">
+      <div class="row">
+        <div class="grow">
+          <strong>Model translations</strong>
+          <div class="muted small">
+            {size?.lines
+              ? `${size.lines.toLocaleString()} lines across ${size.videos} video${size.videos === 1 ? '' : 's'}. ` +
+                'Kept so a second viewing is instant instead of costing the same half hour again.'
+              : 'Nothing cached yet. Subtitle lines the local model translates are kept here, so rewatching costs nothing.'}
+          </div>
+        </div>
+        <button disabled={!size?.lines} onClick={() => void wipe()}>
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The transcripts the speech model has produced, and a way to be rid of them.
+ *
+ * Beside the translation cache rather than inside it, because they are not the
+ * same kind of thing to lose. A translation that goes costs you the model's
+ * wording and leaves Chrome's on-device version on screen; a transcript that
+ * goes leaves a bangumi episode with no subtitles at all until it has been
+ * listened to again, which is two or three minutes of fans.
+ *
+ * Worth offering anyway. These are the largest rows this extension writes — a
+ * transcript is every line of a fifty-minute episode — and a model swapped for a
+ * Mandarin-tuned one makes every one of them the old model's mistakes, kept
+ * under a key nothing will ask for again.
+ */
+function Transcripts() {
+  const [size, setSize] = useState<{ videos: number; lines: number } | null>(null)
+
+  const refresh = () => void transcriptSize().then(setSize, () => setSize(null))
+  useEffect(refresh, [])
+
+  const wipe = async () => {
+    if (
+      !confirm(
+        'Delete every transcript? Videos with no subtitle track of their own will have ' +
+          'to be transcribed again before they show any lines.',
+      )
+    ) {
+      return
+    }
+    await clearTranscripts()
+    refresh()
+  }
+
+  return (
+    <div class="panel">
+      <div class="row">
+        <div class="grow">
+          <strong>Transcripts</strong>
+          <div class="muted small">
+            {size?.lines
+              ? `${size.lines.toLocaleString()} lines across ${size.videos} video${size.videos === 1 ? '' : 's'}. ` +
+                'Kept so an episode is listened to once ever, rather than once per viewing.'
+              : 'Nothing transcribed yet. Lines the speech model hears in videos with no subtitle ' +
+                'track are kept here, so watching one again costs nothing.'}
+          </div>
+        </div>
+        <button disabled={!size?.lines} onClick={() => void wipe()}>
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface Pending {
   incoming: Backup
   local: Backup
@@ -200,16 +298,20 @@ export function Data() {
       return
     }
 
+    // Upgraded at the one point a file enters the app, so conflict detection,
+    // the merge and the restore all see a single shape.
+    const incoming = upgrade(parsed)
+
     const local = await exportBackup()
-    const conflicts = conflictsOf(local, parsed)
+    const conflicts = conflictsOf(local, incoming)
 
     // Nothing to arbitrate: apply straight away rather than asking a question
     // with one possible answer.
     if (!conflicts.length) {
-      await apply(local, parsed, 'local')
+      await apply(local, incoming, 'local')
       return
     }
-    setPending({ incoming: parsed, local, conflicts })
+    setPending({ incoming, local, conflicts })
   }
 
   const apply = async (local: Backup, incoming: Backup, prefer: 'local' | 'incoming') => {
@@ -328,6 +430,10 @@ export function Data() {
           <button onClick={() => void clearEverything()}>Clear</button>
         </div>
       </div>
+
+      <TranslationCache />
+      <Transcripts />
+      <LlmLog />
     </>
   )
 }

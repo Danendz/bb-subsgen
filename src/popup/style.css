@@ -8,9 +8,11 @@ body {
 }
 .app { padding: 14px 16px; }
 h1 { font-size: 15px; margin: 0 0 10px; }
-/* Section headers double as the dividers between the three groups, so the
-   panel reads as "what I'm reading / where / the player" without extra rules. */
-.section {
+/* Section headers double as the dividers between the groups, so the panel reads
+   as "what I'm reading / where / the player" without extra rules. The groups
+   themselves are laid out by src/settings/, which the flashcards app renders
+   too — only these skins differ between the two. */
+.settings-group > h2 {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -20,7 +22,10 @@ h1 { font-size: 15px; margin: 0 0 10px; }
   padding-top: 10px;
   border-top: 1px solid #33333a;
 }
-.app > .section:first-of-type { margin-top: 10px; }
+.app > .settings-group:first-of-type > h2 { margin-top: 10px; }
+/* Deliberately no `min-width: 0`: at 300px the labels are the part that must
+   not be crushed, so a long option name shrinks the control instead. */
+.grow { flex: 1; }
 .row {
   display: flex;
   align-items: center;
@@ -37,6 +42,9 @@ select {
   border: 1px solid #444;
   border-radius: 4px;
   padding: 2px 4px;
+  /* Voice names run to half a sentence ("Microsoft Yaoyao - Chinese (Simplified,
+     PRC)"); without this the picker pushes its own label off the row. */
+  max-width: 170px;
 }
 .disabled { opacity: 0.4; pointer-events: none; }
 .divider { border: 0; border-top: 1px solid #33333a; margin: 10px 0 4px; }
@@ -47,9 +55,9 @@ select {
   font-size: 12px;
   background: #2a2a30;
 }
-.status-active { color: #7ee787; }
-.status-no-track { color: #e3b341; }
-.status-not-bilibili, .status-loading { color: #999; }
+.status-active, .status-ok { color: #7ee787; }
+.status-no-track, .status-bad { color: #e3b341; }
+.status-not-bilibili, .status-loading, .status-busy { color: #999; }
 .hint { color: #999; font-size: 11px; margin-top: 12px; }
 .attribution { color: #777; font-size: 10px; margin-top: 8px; }
 .attribution a { color: #8ab4f8; }
@@ -69,6 +77,47 @@ select {
 }
 .open-app:hover { background: #3568c4; }
 
+/* The model server: an address to type, two shortcuts for the runners most
+   people have, and a button that asks Chrome for permission to reach it. */
+.presets { display: flex; gap: 6px; padding: 6px 0 2px; }
+.preset {
+  flex: 1;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: #ccc;
+  background: #2a2a30;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.preset:hover { background: #33333c; color: #eee; }
+input.url {
+  width: 150px;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 12px;
+  color: #eee;
+  background: #2a2a30;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+/* Model ids run long ("qwen/qwen3-8b-instruct"), and the popup is 300px wide. */
+select.model { max-width: 165px; }
+.connect {
+  display: block;
+  width: 100%;
+  margin: 8px 0 6px;
+  padding: 6px 10px;
+  font: inherit;
+  color: #eee;
+  background: #2a2a30;
+  border: 1px solid #4a4a55;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.connect:hover { background: #33333c; }
+
 /* Whether this video is worth 30 minutes, before you spend them. */
 .coverage {
   margin: 10px 0 0;
@@ -78,3 +127,83 @@ select {
   font-size: 12px;
   line-height: 1.45;
 }
+
+/* How far the local model has got through this video's subtitles. Sits under
+   the subtitle status line, and is absent entirely when no pass is running. */
+.pass-progress {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #2a2a30;
+}
+.pass-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+}
+/* Model ids are long and a four-digit line count is wide, so on a narrow popup
+   one of the two has to give. It is this one: the count is the part being
+   watched, and the full id is on the title attribute. `min-width: 0` is what
+   lets a flex child shrink below its content at all. */
+.pass-progress-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The count is the part you re-read on every poll, so it holds still: tabular
+   figures stop the digits shuffling sideways as the number climbs. */
+.pass-progress-count {
+  color: #999;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pass-progress-track {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: #3a3a44;
+  overflow: hidden;
+}
+.pass-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #8ab4f8;
+  /* Matches the poll interval, so the bar slides between samples rather than
+     stepping once a second. */
+  transition: width 1s linear;
+}
+
+/* The transcription's own progress, sharing the pass's shape so the two read as
+   one column rather than two designs. What differs is the stopped state, which
+   the pass has no equivalent of: a pass that fails leaves the on-device
+   translation on screen, while a transcription that fails leaves no subtitles
+   at all, so it has to be said and it has to be actionable. */
+.asr-progress.stopped {
+  background: #3a2626;
+  color: #f0c9c4;
+}
+.asr-progress-error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e0b0aa;
+}
+.asr-retry {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid #5a4040;
+  background: #4a3030;
+  color: #f0c9c4;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.asr-retry:hover { background: #5a3838; }
+.asr-retry:disabled { opacity: 0.6; cursor: default; }

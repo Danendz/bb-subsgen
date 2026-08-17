@@ -1,5 +1,5 @@
-const PLAYER_CONTAINER_SELECTOR = '.bpx-player-container'
-const NATIVE_SUBTITLE_SELECTOR = '.bpx-player-subtitle-wrap'
+import type { PlayerChrome } from './chrome'
+
 const HOST_ID = 'bb-subsgen-host'
 
 export interface MountHandle {
@@ -13,19 +13,15 @@ export interface MountHandle {
 
 type OnMount = (handle: Omit<MountHandle, 'teardown'>) => (() => void) | void
 
-function findPlayerContainer(): HTMLElement | null {
-  return document.querySelector(PLAYER_CONTAINER_SELECTOR)
-}
-
-function hideNativeSubtitles(container: HTMLElement) {
+function hideNativeSubtitles(container: HTMLElement, selector: string) {
   container
-    .querySelectorAll<HTMLElement>(NATIVE_SUBTITLE_SELECTOR)
+    .querySelectorAll<HTMLElement>(selector)
     .forEach((el) => el.style.setProperty('display', 'none', 'important'))
 }
 
-function restoreNativeSubtitles(container: HTMLElement) {
+function restoreNativeSubtitles(container: HTMLElement, selector: string) {
   container
-    .querySelectorAll<HTMLElement>(NATIVE_SUBTITLE_SELECTOR)
+    .querySelectorAll<HTMLElement>(selector)
     .forEach((el) => el.style.removeProperty('display'))
 }
 
@@ -42,28 +38,31 @@ function createShadowHost(container: HTMLElement): ShadowRoot {
 }
 
 /**
- * Waits for `.bpx-player-container` to exist (Bilibili is an SPA; the
- * player isn't present at document_start), mounts a shadow-root overlay
- * inside it so it survives native fullscreen, hides the native CC track,
- * and re-mounts automatically if the player subtree is replaced.
+ * Waits for the player container to exist (both supported sites are SPAs, so it
+ * isn't present at document_start), mounts a shadow-root overlay inside it so it
+ * survives native fullscreen, hides the native CC track, and re-mounts
+ * automatically if the player subtree is replaced.
+ *
+ * Which container, and which native subtitles, comes from `chrome` — the one
+ * thing about this that is not the same on every site.
  */
-export function mount(onMount: OnMount): () => void {
+export function mount(chrome: PlayerChrome, onMount: OnMount): () => void {
   let current: MountHandle | null = null
 
   const tryMount = () => {
-    const container = findPlayerContainer()
+    const container = document.querySelector<HTMLElement>(chrome.containerSelector)
     const video = container?.querySelector('video')
     if (!container || !video) return
 
     if (current && document.contains(current.video)) return // already mounted on the live player
 
     current?.teardown()
-    hideNativeSubtitles(container)
+    hideNativeSubtitles(container, chrome.nativeSubtitleSelector)
     const shadowRoot = createShadowHost(container)
     const extraCleanup = onMount({ shadowRoot, video, container })
     const teardown = () => {
       extraCleanup?.()
-      restoreNativeSubtitles(container)
+      restoreNativeSubtitles(container, chrome.nativeSubtitleSelector)
       shadowRoot.host.remove()
     }
     current = { shadowRoot, video, container, teardown }

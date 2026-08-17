@@ -1,10 +1,36 @@
 import { loadSettings, saveSettings, nextFontSize } from './shared/settings'
 import {
+  isAsrMessage,
   isFlashcardsMessage,
+  isGetPassStatusMessage,
+  isGetTranscriptStatusMessage,
+  isLlmMessage,
   isLookupDefsMessage,
+  type AsrMessage,
   type FlashcardsMessage,
+  type LlmMessage,
   type LookupDefsResponse,
+  type PassStatusResponse,
+  type TranscriptStatusResponse,
 } from './shared/messages'
+import {
+  cancelTranscription,
+  handleOffscreenEvent,
+  reportAsrPlayhead,
+  retryTranscription,
+  startTranscription,
+  transcriptStatus,
+  watchAsrTab,
+} from './background/asr-pass'
+import {
+  cancelPass,
+  cancelPassIfNavigatedAway,
+  passStatus,
+  watchTabLiveness,
+  reportPlayhead,
+  setChatBusy,
+  startPass,
+} from './background/llm-translate'
 import { lookupDefs } from './background/defs-store'
 import {
   captureSentence,
@@ -41,7 +67,93 @@ function handleFlashcards(msg: FlashcardsMessage): Promise<void> {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+function handleLlm(msg: LlmMessage, tabId: number | undefined): void {
+  switch (msg.type) {
+    case 'bb-subsgen:llm-translate-track':
+      // A pass exists to paint a tab; without one there is nothing to paint.
+      if (tabId === undefined) return
+      void startPass({
+        tabId,
+        videoId: msg.videoId,
+        lang: msg.lang,
+        model: msg.model,
+        baseUrl: msg.baseUrl,
+        ...(msg.video ? { video: msg.video } : {}),
+        cues: msg.cues,
+      }).catch((e: unknown) => console.warn('[bb-subsgen] translation pass failed', e))
+      return
+    case 'bb-subsgen:llm-playhead':
+      if (tabId !== undefined) reportPlayhead(tabId, msg.index)
+      return
+    case 'bb-subsgen:llm-cancel':
+      cancelPass(tabId)
+      return
+    case 'bb-subsgen:llm-busy':
+      // From the app page or the drawer, which have no tab of the pass's own.
+      setChatBusy(msg.busy)
+      return
+  }
+}
+
+function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
+  switch (msg.type) {
+    case 'bb-subsgen:asr-transcribe':
+      // A transcript exists to paint a tab; without one there is nothing to paint.
+      if (tabId === undefined) return
+      void startTranscription(tabId, {
+        videoId: msg.videoId,
+        audio: msg.audio,
+        model: msg.model,
+        baseUrl: msg.baseUrl,
+        playhead: msg.playhead,
+      }).catch((e: unknown) => console.warn('[bb-subsgen] transcription failed', e))
+      return
+    case 'bb-subsgen:asr-cancel':
+      void cancelTranscription(tabId)
+      return
+    case 'bb-subsgen:asr-playhead':
+      if (tabId !== undefined) void reportAsrPlayhead(tabId, msg.seconds)
+      return
+    case 'bb-subsgen:asr-retry': {
+      // From the popup, which carries the tab explicitly because it has none of
+      // its own, or from the overlay, which does.
+      const target = msg.tabId ?? tabId
+      if (target !== undefined) {
+        void retryTranscription(target).catch((e: unknown) =>
+          console.warn('[bb-subsgen] retry failed', e),
+        )
+      }
+      return
+    }
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // First, because these come from the offscreen document rather than a tab and
+  // match none of the guards below.
+  if (handleOffscreenEvent(msg)) return
+
+  if (isGetPassStatusMessage(msg)) {
+    // Synchronous: the pass keeps its own counters, so there is nothing to await.
+    sendResponse({ status: passStatus(msg.tabId) } satisfies PassStatusResponse)
+    return
+  }
+
+  if (isGetTranscriptStatusMessage(msg)) {
+    // Asynchronous, unlike the pass above: a transcription's state lives in
+    // session storage so that it survives this worker being shut down as idle
+    // mid-run, which is exactly when somebody opens the popup to ask about it.
+    transcriptStatus(msg.tabId).then(
+      (status) => sendResponse({ status } satisfies TranscriptStatusResponse),
+      (e) => {
+        console.warn('[bb-subsgen] transcript status failed', e)
+        sendResponse({ status: null } satisfies TranscriptStatusResponse)
+      },
+    )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
   if (isLookupDefsMessage(msg)) {
     lookupDefs(msg.headwords).then(
       (entries) => sendResponse({ entries } satisfies LookupDefsResponse),
@@ -59,6 +171,45 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleFlashcards(msg).catch((e) => console.warn('[bb-subsgen] flashcards write failed', e))
     return
   }
+
+  if (isLlmMessage(msg)) {
+    handleLlm(msg, sender.tab?.id)
+    return
+  }
+
+  if (isAsrMessage(msg)) {
+    handleAsr(msg, sender.tab?.id)
+    return
+  }
+})
+
+// A tab closing while its pass is running leaves nothing to paint; the pass is
+// otherwise happy to keep a GPU busy for half an hour on nobody's behalf.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  cancelPass(tabId)
+  void cancelTranscription(tabId)
+})
+
+// And the same tab navigating somewhere else without closing, which the content
+// script cannot report because the navigation is what destroys it. Only fires
+// when the URL actually changed — onUpdated is also how a tab announces its
+// title, its favicon and its load state.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) cancelPassIfNavigatedAway(tabId, changeInfo.url)
+})
+
+// And the case neither of the above can see: a tab leaving Bilibili entirely.
+// `changeInfo.url` is only populated for URLs the extension has permission for,
+// so the listener above goes quiet at exactly the moment it is most needed. The
+// port has no such condition — see watchTabLiveness.
+//
+// The transcription port is separate rather than shared. The two runs start and
+// end at different moments — a pass is cancelled by switching translation off,
+// which a transcript has no reason to care about — and one port cannot be
+// released by one of them without silently ending the other.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'bb-subsgen:pass') watchTabLiveness(port)
+  if (port.name === 'bb-subsgen:asr') watchAsrTab(port)
 })
 
 // The mirror is what content scripts read to decide what to annotate, and it

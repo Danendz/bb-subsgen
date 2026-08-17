@@ -47,7 +47,7 @@ function batches(): ExposureBatch[] {
     .map((msg) => (msg as Extract<FlashcardsMessage, { batch: ExposureBatch }>).batch)
 }
 
-const video = { bvid: 'BV1xx', title: 'Test', url: 'https://b.tv/BV1xx' }
+const video = { videoId: 'BV1xx', title: 'Test', url: 'https://b.tv/BV1xx' }
 
 describe('createExposureBuffer', () => {
   test('posts nothing until the interval elapses', () => {

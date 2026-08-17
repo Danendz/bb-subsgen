@@ -1,37 +1,48 @@
+// The popup: the settings form, plus the things that only make sense with a
+// tab in front of you.
+//
+// Every group of settings here is the same component the settings tab renders
+// (src/settings/). What is local to this file is what needs the current tab —
+// how much of this video you can follow, whether the overlay found subtitles,
+// and the reader switch for the site you are actually on.
+
 import { useEffect, useState } from 'preact/hooks'
+import { disableReaderFor, enableReaderFor, originOf, readerEnabledFor } from '../shared/reader-sites'
+import { Hint, Section, Toggle } from '../settings/controls'
 import {
-  DEFAULT_SETTINGS,
-  loadSettings,
-  MAX_SPEECH_RATE,
-  MIN_SPEECH_RATE,
-  READER_MODIFIERS,
-  saveSettings,
-  TRANSLATION_LANGS,
-  type ReaderModifier,
-  type Settings,
-  type TranslationLang,
-  type TranslationLayout,
-} from '../shared/settings'
-import { isRemote, listVoices, speak } from '../shared/speak'
-import {
-  disableReaderFor,
-  enableReaderFor,
-  originOf,
-  readerEnabledFor,
-} from '../shared/reader-sites'
-import type { Status, StatusResponse } from '../shared/messages'
+  LanguageSection,
+  LocalModelSection,
+  SpeechSection,
+  modifierLabel,
+  ReaderOptions,
+  StudyingSection,
+  SubtitlesSection,
+} from '../settings/sections'
+import { hostLabel } from '../settings/sites'
+import { useSettings } from '../settings/useSettings'
+import type {
+  GetPassStatusMessage,
+  GetTranscriptStatusMessage,
+  PassStatusResponse,
+  Status,
+  StatusResponse,
+  TranscriptStatusResponse,
+} from '../shared/messages'
+import type { PassStatus } from '../background/llm-translate'
+import type { TranscriptStatus } from '../background/asr-pass'
+import { passProgressView, transcriptProgressView } from '../llm/progress'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
-import { parseBvidFromUrl } from '../bilibili/resolve'
+import { parseVideoIdFromUrl } from '../bilibili/resolve'
 
-type TabStatus = Status | 'not-bilibili'
+type TabStatus = Status | 'no-video'
 
 const STATUS_LABEL: Record<TabStatus, string> = {
   loading: 'Loading subtitles…',
   'no-track': 'No subtitle track on this video.',
   active: 'Active on this video.',
-  'not-bilibili': 'Open a Bilibili video for subtitles.',
+  'no-video': 'Open a Bilibili or YouTube video for subtitles.',
 }
 
 async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -40,14 +51,14 @@ async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
 }
 
 async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
-  if (!tabId) return 'not-bilibili'
+  if (!tabId) return 'no-video'
   try {
     const response = (await chrome.tabs.sendMessage(tabId, {
       type: 'bb-subsgen:get-status',
     })) as StatusResponse | undefined
-    return response?.status ?? 'not-bilibili'
+    return response?.status ?? 'no-video'
   } catch {
-    return 'not-bilibili' // no content script on this tab
+    return 'no-video' // no content script on this tab
   }
 }
 
@@ -59,9 +70,9 @@ async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
  * video is watchable. Below ~90% comprehension falls apart; above ~95% you can
  * follow along and infer the rest.
  */
-async function coverageFor(bvid: string): Promise<{ tokens: number; types: string } | null> {
+async function coverageFor(videoId: string): Promise<{ tokens: number; types: string } | null> {
   const db = await flashcardsDb()
-  const [items, counts] = await Promise.all([listItems(db), videoWords(db, bvid)])
+  const [items, counts] = await Promise.all([listItems(db), videoWords(db, videoId)])
   if (!counts.length) return null
 
   const coverage = coverageOf(counts, knownSetOf(items))
@@ -71,128 +82,201 @@ async function coverageFor(bvid: string): Promise<{ tokens: number; types: strin
   }
 }
 
-/** Short label for an origin — `https://www.zhihu.com` reads as `www.zhihu.com`. */
-function hostLabel(origin: string): string {
-  return origin.replace(/^https?:\/\//, '')
+/** How often the popup re-asks the worker how far the pass has got. */
+const PASS_POLL_MS = 1000
+
+async function fetchPassStatus(tabId: number | undefined): Promise<PassStatus | null> {
+  if (!tabId) return null
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: 'bb-subsgen:llm-pass-status',
+      tabId,
+    } satisfies GetPassStatusMessage)) as PassStatusResponse | undefined
+    return response?.status ?? null
+  } catch {
+    return null // the worker was asleep, which is itself "no pass running"
+  }
 }
 
-function Toggle({
-  label,
-  checked,
-  disabled = false,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  disabled?: boolean
-  onChange: (v: boolean) => void
-}) {
-  return (
-    <label class="row">
-      <span>{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.currentTarget.checked)}
-      />
-    </label>
-  )
-}
+/**
+ * The model's progress through this video's subtitles.
+ *
+ * Polled rather than pushed: a pass runs for tens of minutes in the worker and
+ * the popup lives for seconds, so there is no subscription worth setting up.
+ * Batches land every ten seconds or so, which a one-second poll tracks closely
+ * enough while costing nothing measurable.
+ */
+function PassProgress({ tabId }: { tabId: number | undefined }) {
+  const [status, setStatus] = useState<PassStatus | null>(null)
 
-function Slider({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  suffix = '',
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step?: number
-  suffix?: string
-  onChange: (v: number) => void
-}) {
+  useEffect(() => {
+    let live = true
+    const tick = () => {
+      void fetchPassStatus(tabId).then((next) => {
+        if (live) setStatus(next)
+      })
+    }
+    tick()
+    const timer = setInterval(tick, PASS_POLL_MS)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [tabId])
+
+  // Nothing running is nothing to show. A finished pass drops its state in the
+  // worker, so this is also what "done" looks like.
+  if (!status) return null
+
+  const view = passProgressView(status)
   return (
-    <label class="row">
-      <span>
-        {label} <span class="value">{value}{suffix}</span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onInput={(e) => onChange(Number(e.currentTarget.value))}
-      />
-    </label>
+    <div class="pass-progress">
+      <div class="pass-progress-head">
+        <span class="pass-progress-model" title={status.model}>
+          {view.label}
+        </span>
+        <span class="pass-progress-count">{view.count}</span>
+      </div>
+      <div
+        class="pass-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={status.total}
+        aria-valuenow={status.translated}
+        aria-label={view.label}
+      >
+        <div class="pass-progress-fill" style={{ width: `${view.fraction * 100}%` }} />
+      </div>
+    </div>
   )
 }
 
 /**
- * The Chinese voices this browser has, best first.
+ * Whether a remembered run is about the video the tab is actually on.
  *
- * `getVoices()` comes back empty on the first call and fills in later. In a
- * popup that is the normal case rather than the edge one — the window is opened
- * and measured well inside that gap — and `voiceschanged` does not reliably fire
- * in a page this short-lived, so listening alone leaves the picker empty. Hence
- * the poll as well, which stops as soon as anything arrives.
+ * A stopped run is kept per tab so it can still be retried after a reload, which
+ * means it outlives navigating to the next episode — and reporting the previous
+ * one's failure here would be misleading.
+ *
+ * A season URL is let through rather than hidden on a guess: `/bangumi/play/ss…`
+ * names a season, and the episode it settles on is decided by an API call this
+ * has no part in, so the two ids cannot be compared.
  */
-function useVoices(): SpeechSynthesisVoice[] {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(listVoices)
+function isCurrentVideo(status: TranscriptStatus, videoId: string | null): boolean {
+  if (!videoId) return false
+  if (videoId.startsWith('ss')) return true
+  return status.videoId === videoId
+}
+
+async function fetchTranscriptStatus(tabId: number | undefined): Promise<TranscriptStatus | null> {
+  if (!tabId) return null
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: 'bb-subsgen:asr-status',
+      tabId,
+    } satisfies GetTranscriptStatusMessage)) as TranscriptStatusResponse | undefined
+    return response?.status ?? null
+  } catch {
+    return null // the worker was asleep, which is itself "nothing running"
+  }
+}
+
+/**
+ * The speech model's progress through this video, and what to do if it stopped.
+ *
+ * Polled on the same interval as `PassProgress`, and for the same reason. It
+ * earns its place beside the overlay's own bar by covering what the overlay
+ * cannot: the notice dismissed, the tab in the background, the video fullscreen.
+ */
+function AsrProgress({
+  tabId,
+  videoId,
+}: {
+  tabId: number | undefined
+  videoId: string | null
+}) {
+  const [status, setStatus] = useState<TranscriptStatus | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
-    if (voices.length > 0) return
-
-    const refresh = () => setVoices(listVoices())
-    speechSynthesis.addEventListener('voiceschanged', refresh)
-    const timer = setInterval(refresh, 150)
-
+    let live = true
+    const tick = () => {
+      void fetchTranscriptStatus(tabId).then((next) => {
+        if (!live) return
+        setStatus(next)
+        // Cleared once the worker agrees something is going again, rather than
+        // on the click: the run takes a moment to start, and a button that
+        // re-enables before then invites a second retry that cancels the first.
+        if (next?.running) setRetrying(false)
+      })
+    }
+    tick()
+    const timer = setInterval(tick, PASS_POLL_MS)
     return () => {
-      speechSynthesis.removeEventListener('voiceschanged', refresh)
+      live = false
       clearInterval(timer)
     }
-  }, [voices.length])
+  }, [tabId])
 
-  return voices
+  if (!status || !isCurrentVideo(status, videoId)) return null
+
+  const view = transcriptProgressView(status)
+  return (
+    <div class={`pass-progress asr-progress${view.stopped ? ' stopped' : ''}`}>
+      <div class="pass-progress-head">
+        <span class="pass-progress-model" title={status.model}>
+          {view.label}
+        </span>
+        <span class="pass-progress-count">{view.count}</span>
+      </div>
+      <div
+        class="pass-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={status.total}
+        aria-valuenow={status.done}
+        aria-label={view.label}
+      >
+        <div class="pass-progress-fill" style={{ width: `${view.fraction * 100}%` }} />
+      </div>
+      {view.detail && <p class="asr-progress-error">{view.detail}</p>}
+      {view.stopped && (
+        <button
+          class="asr-retry"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true)
+            void chrome.runtime.sendMessage({ type: 'bb-subsgen:asr-retry', tabId })
+          }}
+        >
+          {retrying ? 'Retrying…' : 'Retry the missing parts'}
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function App() {
-  const voices = useVoices()
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
-  const [loaded, setLoaded] = useState(false)
+  const { settings, loaded, update } = useSettings()
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
+  const [videoId, setVideoId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadSettings().then((s) => {
-      setSettings(s)
-      setLoaded(true)
-    })
     currentTab().then((t) => {
       setTab(t)
       fetchTabStatus(t?.id).then(setTabStatus)
 
-      const bvid = parseBvidFromUrl(t?.url ?? '')
-      if (bvid) {
-        coverageFor(bvid).then(setCoverage, (e: unknown) =>
+      const id = parseVideoIdFromUrl(t?.url ?? '')
+      setVideoId(id)
+      if (id) {
+        coverageFor(id).then(setCoverage, (e: unknown) =>
           console.warn('[bb-subsgen] coverage failed', e),
         )
       }
     })
   }, [])
-
-  const update = (patch: Partial<Settings>) => {
-    const next = { ...settings, ...patch }
-    setSettings(next)
-    saveSettings(patch)
-  }
 
   const origin = originOf(tab?.url)
   const readerOn = origin ? readerEnabledFor(settings, origin) : false
@@ -200,7 +284,8 @@ export function App() {
   /**
    * Chrome only prompts for an optional permission inside a user gesture, so
    * this has to run in the click handler itself — it can't be deferred to the
-   * worker or awaited behind anything else.
+   * worker or awaited behind anything else. Both helpers write `readerOrigins`
+   * themselves, and the switch follows from the storage change they cause.
    */
   const toggleReader = async (on: boolean) => {
     if (!origin) return
@@ -208,28 +293,15 @@ export function App() {
     if (on) {
       const granted = await enableReaderFor(origin)
       if (!granted) return // prompt declined; leave the switch where it was
-      setSettings((s) => ({ ...s, readerOrigins: [...s.readerOrigins, origin] }))
       // A declared script only injects on load, so the page it was just
       // enabled for needs a reload before the reader is actually there.
       if (tab?.id) chrome.tabs.reload(tab.id)
     } else {
       await disableReaderFor(origin)
-      setSettings((s) => ({
-        ...s,
-        readerOrigins: s.readerOrigins.filter((o) => o !== origin),
-      }))
     }
   }
 
   if (!loaded) return null
-
-  const modifierLabel =
-    READER_MODIFIERS.find((m) => m.code === settings.readerModifier)?.label ?? 'Shift'
-
-  // Derived rather than stored: an intake of zero already means "no lines", so
-  // a separate flag would be a second source of truth that could disagree with
-  // the number beside it.
-  const studyLines = settings.newSentencesPerDay > 0
 
   return (
     <div class="app">
@@ -256,222 +328,40 @@ export function App() {
         </p>
       )}
 
-      <h2 class="section">Studying</h2>
-      <Toggle
-        label="Quiz mode (Alt+Q)"
-        checked={settings.quizMode}
-        onChange={(v) => update({ quizMode: v })}
-      />
-      <Toggle
-        label="Study whole lines"
-        checked={studyLines}
-        onChange={(on) => update({ newSentencesPerDay: on ? DEFAULT_SETTINGS.newSentencesPerDay : 0 })}
-      />
-      {studyLines && (
-        <Slider
-          label="New lines / day"
-          value={settings.newSentencesPerDay}
-          min={1}
-          max={20}
-          onChange={(v) => update({ newSentencesPerDay: v })}
-        />
-      )}
-      <p class="hint">
-        Quiz mode holds back readings and translations until you hover. Every word you
-        collect is studiable straight away.{' '}
-        {studyLines
-          ? 'Whole lines are let in a few a day, easiest first.'
-          : 'Lines are still collected while you read — turn this on whenever you want them.'}
-      </p>
+      <StudyingSection settings={settings} update={update} />
+      <LanguageSection settings={settings} update={update} />
+      <LocalModelSection settings={settings} update={update} />
+      <SpeechSection settings={settings} update={update} />
 
-      <>
-          <label class="row">
-            <span>Card voice</span>
-            <select
-              value={settings.speechVoice}
-              onChange={(e) => update({ speechVoice: e.currentTarget.value })}
-            >
-              <option value="">Automatic (best available)</option>
-              {voices.map((voice) => (
-                <option key={voice.name} value={voice.name}>
-                  {voice.name}
-                  {isRemote(voice) ? ' — networked' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          {voices.length === 0 && (
-            <p class="hint">No Chinese voice found on this computer, so cards cannot be spoken.</p>
-          )}
-          <Slider
-            label="Voice speed"
-            value={settings.speechRate}
-            min={MIN_SPEECH_RATE}
-            max={MAX_SPEECH_RATE}
-            step={0.05}
-            suffix="×"
-            // Rounded to the step: the range input walks 0.6 up in floats, and
-            // the label would otherwise read 0.8500000000000001.
-            onChange={(v) => update({ speechRate: Math.round(v * 20) / 20 })}
-          />
-          <button class="ghost" onClick={() => speak('你好，今天天气很好。')}>
-            Test voice
-          </button>
-          <p class="hint">
-            Networked voices sound best but are synthesised by Google, so the card text
-            leaves your computer and they go quiet offline — a local voice takes over when
-            that happens.
-          </p>
-      </>
-
-      <h2 class="section">Language</h2>
-      <label class="row">
-        <span>Translate to</span>
-        <select
-          value={settings.translationLang}
-          onChange={(e) => update({ translationLang: e.currentTarget.value as TranslationLang })}
-        >
-          {TRANSLATION_LANGS.map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Toggle
-        label="Tone colors"
-        checked={settings.showToneColors}
-        onChange={(v) => update({ showToneColors: v })}
-      />
-      <Toggle
-        label="Show traditional in definitions"
-        checked={settings.useTraditional}
-        onChange={(v) => update({ useTraditional: v })}
-      />
-
-      <h2 class="section">Page reader</h2>
-      {origin ? (
-        <>
-          <Toggle
-            label={hostLabel(origin)}
-            checked={readerOn}
-            onChange={(v) => void toggleReader(v)}
-          />
-          <div class={readerOn ? '' : 'disabled'}>
-            <label class="row">
-              <span>Hold key</span>
-              <select
-                value={settings.readerModifier}
-                onChange={(e) =>
-                  update({ readerModifier: e.currentTarget.value as ReaderModifier })
-                }
-              >
-                {READER_MODIFIERS.map((modifier) => (
-                  <option key={modifier.code} value={modifier.code}>
-                    {modifier.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+      <Section title="Page reader">
+        {origin ? (
+          <>
             <Toggle
-              label="Translate the sentence"
-              checked={settings.readerSentenceTranslation}
-              onChange={(v) => update({ readerSentenceTranslation: v })}
+              label={hostLabel(origin)}
+              checked={readerOn}
+              onChange={(v) => void toggleReader(v)}
             />
-          </div>
-          <p class="hint">
-            Hold {modifierLabel} and point at a word; click it for characters. Select Chinese
-            text for a phrase card.
-          </p>
-        </>
-      ) : (
-        <p class="hint">The reader can't run on this page.</p>
-      )}
+            <div class={readerOn ? '' : 'disabled'}>
+              <ReaderOptions settings={settings} update={update} />
+            </div>
+            <Hint>
+              Hold {modifierLabel(settings)} and point at a word; click it for characters. Select
+              Chinese text for a phrase card.
+            </Hint>
+          </>
+        ) : (
+          <Hint>The reader can't run on this page.</Hint>
+        )}
+      </Section>
 
-      <h2 class="section">Bilibili subtitles</h2>
-      <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
+      <Section title="Bilibili subtitles">
+        <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
+        <AsrProgress tabId={tab?.id} videoId={videoId} />
+        <PassProgress tabId={tab?.id} />
+        <SubtitlesSection settings={settings} update={update} />
+      </Section>
 
-      <Toggle label="Enabled" checked={settings.enabled} onChange={(v) => update({ enabled: v })} />
-
-      <div class={settings.enabled ? '' : 'disabled'}>
-        <Toggle
-          label="Show pinyin"
-          checked={settings.showPinyin}
-          onChange={(v) => update({ showPinyin: v })}
-        />
-
-        <Slider
-          label="Font size"
-          value={settings.fontSize}
-          min={18}
-          max={48}
-          suffix="px"
-          onChange={(v) => update({ fontSize: v })}
-        />
-        <Slider
-          label="Word spacing"
-          value={settings.wordSpacing}
-          min={0}
-          max={24}
-          suffix="px"
-          onChange={(v) => update({ wordSpacing: v })}
-        />
-        <Slider
-          label="Backdrop opacity"
-          value={settings.backdropOpacity}
-          min={0}
-          max={100}
-          suffix="%"
-          onChange={(v) => update({ backdropOpacity: v })}
-        />
-
-        <Slider
-          label="Height"
-          value={settings.positionPercent}
-          min={0}
-          max={85}
-          suffix="%"
-          onChange={(v) => update({ positionPercent: v })}
-        />
-        <Toggle
-          label="Lift above player controls"
-          checked={settings.liftAboveControls}
-          onChange={(v) => update({ liftAboveControls: v })}
-        />
-
-        <hr class="divider" />
-
-        <Toggle
-          label="Translation"
-          checked={settings.showTranslation}
-          onChange={(v) => update({ showTranslation: v })}
-        />
-
-        <div class={settings.showTranslation ? '' : 'disabled'}>
-          <Slider
-            label="Translation size"
-            value={settings.translationFontSize}
-            min={10}
-            max={32}
-            suffix="px"
-            onChange={(v) => update({ translationFontSize: v })}
-          />
-          <label class="row">
-            <span>Translation layout</span>
-            <select
-              value={settings.translationLayout}
-              onChange={(e) =>
-                update({ translationLayout: e.currentTarget.value as TranslationLayout })
-              }
-            >
-              <option value="inline">Same card</option>
-              <option value="card">Separate card</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <p class="hint">Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.</p>
+      <Hint>Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.</Hint>
 
       <p class="attribution">
         Dictionary data from{' '}

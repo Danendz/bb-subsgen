@@ -3,6 +3,7 @@ import type { Token } from '../lang/segment'
 import type { Settings } from '../shared/settings'
 import type { ProgressView } from './progress'
 import type { PlayerGeometry } from './controls'
+import type { Source } from './tier'
 
 const STYLE = `
 :host {
@@ -99,7 +100,63 @@ const STYLE = `
   transition: width 200ms ease;
 }
 
+/* Sits below the card rather than above it, where the progress pill is: this
+   reports something that has already stopped, so it must not push the line you
+   are reading around, and it must not be mistaken for progress.
+
+   The only part of the overlay that takes pointer events. The host is
+   pointer-events: none so that hovering the video reaches the player's own
+   controls; the two buttons here opt back in individually rather than the box
+   doing it wholesale, which would put a dead rectangle over the video. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 100%);
+  padding: 7px 8px 7px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 138, 128, 0.28);
+  background: rgba(38, 22, 22, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f0c9c4;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+}
+.notice.hidden { display: none; }
+
+.notice-text { flex: 1; }
+
+.notice-retry,
+.notice-close {
+  pointer-events: auto;
+  cursor: pointer;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+}
+.notice-retry { padding: 4px 10px; }
+.notice-close {
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  background: none;
+  font-size: 14px;
+  line-height: 1;
+}
+.notice-retry:hover,
+.notice-close:hover { background: rgba(255, 255, 255, 0.18); }
+
 .translation {
+  /* Anchors the .ai dot. */
+  position: relative;
   max-width: 100%;
   text-align: center;
   /* Muted, so it reads as secondary and doesn't compete with the tone colors. */
@@ -107,6 +164,46 @@ const STYLE = `
   font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-weight: 400;
   line-height: 1.35;
+}
+
+/* Marks a line the local model translated, as opposed to Chrome's on-device
+   translator. A pseudo-element rather than a child, for two reasons:
+   the :empty rule above still matches while the line is waiting for its text,
+   and visibility: hidden on a withheld line takes the dot with it instead of
+   leaking which translator was behind the blank.
+
+   Violet is the one hue not already spoken for — the tone palette owns coral,
+   amber, mint and sky, and the progress bar owns blue.
+
+   Inline layout has no padding to sit inside, so the dot hangs off the right
+   edge, vertically centered — clear of descenders on a one-line translation and
+   of the wrap on a two-line one. On a translation long enough to reach
+   max-width this paints a few pixels outside the card, which is a fair trade
+   for never displacing the text. */
+.translation.ai::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b18aff;
+}
+
+/* The standalone card has padding, so the dot sits in the corner proper.
+   The extra padding is what keeps it from touching the end of the sentence on
+   a short line, and it is applied to both sides so the text stays centered in
+   its box rather than being nudged left by the room the dot needs. */
+.translation.ai.standalone {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.translation.ai.standalone::after {
+  top: 6px;
+  right: 7px;
+  transform: none;
 }
 
 /* The element is created as soon as a cue renders, but the translation lands
@@ -180,7 +277,25 @@ function ensureStack(shadowRoot: ShadowRoot): HTMLElement {
     const line = document.createElement('div')
     line.className = 'line'
 
-    stack.append(progress, line)
+    // Below the line, unlike the progress pill above it: this reports something
+    // that has stopped, and must not shift the sentence being read.
+    const notice = document.createElement('div')
+    notice.className = 'notice hidden'
+    const noticeText = document.createElement('span')
+    noticeText.className = 'notice-text'
+    const retry = document.createElement('button')
+    retry.className = 'notice-retry'
+    retry.type = 'button'
+    // Replaced on every render; see `NoticeView.action`.
+    retry.textContent = 'Retry'
+    const close = document.createElement('button')
+    close.className = 'notice-close'
+    close.type = 'button'
+    close.textContent = '✕'
+    close.title = 'Dismiss'
+    notice.append(noticeText, retry, close)
+
+    stack.append(progress, line, notice)
     shadowRoot.appendChild(stack)
   }
   return stack
@@ -192,7 +307,7 @@ function backdrop(settings: Settings): string {
 
 function buildTranslationElement(
   settings: Settings,
-  text: string,
+  view: CueView,
   withheld: boolean,
 ): HTMLElement {
   const el = document.createElement('div')
@@ -202,13 +317,21 @@ function buildTranslationElement(
     el.classList.add('standalone')
     el.style.setProperty('background', backdrop(settings))
   }
-  el.textContent = text
+  markSource(el, view.translationSource)
+  el.textContent = view.translation
   return el
+}
+
+/** Turns the dot on for the model's translations and off for everything else. */
+function markSource(el: HTMLElement, source: Source | null): void {
+  el.classList.toggle('ai', source === 'llm')
 }
 
 export interface CueView {
   tokens: Token[]
   translation: string
+  /** Which translator produced `translation`; null while it is still empty. */
+  translationSource: Source | null
   /** Words whose reading is withheld — declared known, or reviewed to maturity. */
   known: ReadonlySet<string>
   /** Withholds everything regardless of what you know, for testing yourself. */
@@ -256,7 +379,7 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
   stack.querySelector(':scope > .translation')?.remove()
 
   if (settings.showTranslation) {
-    const el = buildTranslationElement(settings, view.translation, translationWithheld(view))
+    const el = buildTranslationElement(settings, view, translationWithheld(view))
     if (settings.translationLayout === 'card') stack.appendChild(el)
     else line.appendChild(el)
   }
@@ -267,10 +390,19 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
  *
  * Patches the single text node rather than re-rendering: a full renderCue would
  * rebuild every `.word`, which destroys an open hover popup mid-read.
+ *
+ * The mark is patched alongside it, because this is exactly the path a line
+ * takes when it arrives from one translator and is filled in by the other.
  */
-export function setTranslation(shadowRoot: ShadowRoot, text: string): void {
+export function setTranslation(
+  shadowRoot: ShadowRoot,
+  text: string,
+  source: Source | null,
+): void {
   const el = shadowRoot.querySelector<HTMLElement>('.translation')
-  if (el) el.textContent = text
+  if (!el) return
+  el.textContent = text
+  markSource(el, source)
 }
 
 /**
@@ -299,6 +431,39 @@ export function setProgress(shadowRoot: ShadowRoot, view: ProgressView): void {
     'width',
     `${Math.round(view.fraction * 100)}%`,
   )
+}
+
+export interface NoticeView {
+  text: string
+  /**
+   * What the button says.
+   *
+   * Two jobs share this widget: reporting a run that stopped, where the button
+   * is `Retry`, and asking whether a video is worth transcribing at all, where
+   * it is `Transcribe`. Same shape, same placement, different sentence.
+   */
+  action: string
+  onAction: () => void
+  onDismiss: () => void
+}
+
+/**
+ * Says something about transcription, with the two things you can do about it.
+ *
+ * Null hides it. The handlers are replaced rather than added to on every call,
+ * because this is re-rendered on settings changes and on remounts, and
+ * `addEventListener` would accumulate a retry per repaint.
+ */
+export function setNotice(shadowRoot: ShadowRoot, view: NoticeView | null): void {
+  const el = ensureStack(shadowRoot).querySelector<HTMLElement>('.notice')!
+  el.classList.toggle('hidden', !view)
+  if (!view) return
+
+  el.querySelector<HTMLElement>('.notice-text')!.textContent = view.text
+  const action = el.querySelector<HTMLButtonElement>('.notice-retry')!
+  action.textContent = view.action
+  action.onclick = view.onAction
+  el.querySelector<HTMLButtonElement>('.notice-close')!.onclick = view.onDismiss
 }
 
 export function clearCue(shadowRoot: ShadowRoot): void {

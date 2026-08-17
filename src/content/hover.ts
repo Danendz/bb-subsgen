@@ -84,6 +84,23 @@ export interface HoverDeps {
   onLookup: (headword: string) => void
   /** How long the card stayed open, once the pointer has finally left. */
   onLookupEnd: (ms: number) => void
+  /**
+   * Opens the explanation drawer, resolving once it has been closed.
+   *
+   * Omitted renders no Explain button. The promise is what keeps the video
+   * paused for exactly as long as the drawer is up: the ordinary leave timer
+   * would otherwise resume playback the moment the pointer left the card, and
+   * you would be reading an explanation over a video that had moved on.
+   */
+  openExplain?: (headword: string) => Promise<void>
+  /**
+   * Whether a model is configured, read at card-build time.
+   *
+   * A getter like the other live settings, so turning the model on in the popup
+   * shows the button on the next card rather than the next page load. A button
+   * whose only possible outcome is an apology is worse than no button.
+   */
+  canExplain?: () => boolean
 }
 
 export function attachHover({
@@ -97,6 +114,8 @@ export function attachHover({
   known,
   onLookup,
   onLookupEnd,
+  openExplain,
+  canExplain,
 }: HoverDeps): () => void {
   const controller = new HoverPauseController()
   let dwellTimer: ReturnType<typeof setTimeout> | null = null
@@ -104,6 +123,8 @@ export function attachHover({
   let popup: HTMLElement | null = null
   let programmaticPause = false
   let activeWord: HTMLElement | null = null
+  /** While true, the pointer leaving neither closes the card nor resumes playback. */
+  let drawerOpen = false
   // When the current card opened. The video is paused throughout, so elapsed
   // wall-clock time here is real reading time rather than playback drifting on.
   let openedAt = 0
@@ -145,6 +166,9 @@ export function attachHover({
         useTraditional,
         toneColors: showToneColors(),
         onMarkKnown: (next) => markKnown(headword, next),
+        ...(openExplain && canExplain?.() !== false
+          ? { onExplain: () => void explain(headword) }
+          : {}),
       },
     )
     // Append before measuring — the popup needs layout to have a width.
@@ -187,10 +211,28 @@ export function attachHover({
     cancelLeave()
     resumeTimer = setTimeout(() => {
       resumeTimer = null
+      // The drawer holds the pause: closing it schedules this again.
+      if (drawerOpen) return
       activeWord = null
       closePopup()
       if (controller.onHoverEnd()) video.play()
     }, RESUME_GRACE_MS)
+  }
+
+  const explain = async (headword: string) => {
+    if (!openExplain || drawerOpen) return
+    cancelLeave()
+    drawerOpen = true
+    try {
+      await openExplain(headword)
+    } catch (e) {
+      console.warn('[bb-subsgen] explain drawer failed', e)
+    } finally {
+      drawerOpen = false
+      // Back to the ordinary grace period, so the pointer can return to the
+      // card without playback stuttering on.
+      scheduleLeave()
+    }
   }
 
   const onPointerOver = (e: Event) => {

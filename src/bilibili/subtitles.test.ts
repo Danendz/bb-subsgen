@@ -1,5 +1,25 @@
 import { describe, expect, test } from 'vitest'
-import { normalizeCue, pickBestSubtitleTrack } from './subtitles'
+import { normalizeCue, pickBestSubtitleTrack, trackQuery } from './subtitles'
+
+describe('trackQuery', () => {
+  test('names an ordinary video with bvid', () => {
+    const query = new URLSearchParams(
+      trackQuery({ aid: 12345, cid: 678, videoId: 'BV1bVuo6AESP' }),
+    )
+    expect(query.get('bvid')).toBe('BV1bVuo6AESP')
+    expect(query.get('ep_id')).toBeNull()
+    expect(query.get('aid')).toBe('12345')
+    expect(query.get('cid')).toBe('678')
+  })
+
+  test('names a bangumi episode with ep_id, and drops the prefix', () => {
+    // The endpoint wants the bare number; `ep335910` is the URL's spelling and
+    // sending it verbatim is how this silently returns no tracks at all.
+    const query = new URLSearchParams(trackQuery({ aid: 12345, cid: 678, videoId: 'ep335910' }))
+    expect(query.get('ep_id')).toBe('335910')
+    expect(query.get('bvid')).toBeNull()
+  })
+})
 
 describe('pickBestSubtitleTrack', () => {
   test('prefers human Chinese over AI Chinese', () => {

@@ -207,10 +207,25 @@ export const CARD_STYLE = `
    downward rather than shifting the button out from under the pointer. */
 .popup-actions {
   display: flex;
+  gap: 6px;
   margin-top: 8px;
   padding-top: 7px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+/* Same shape as the known button — they sit side by side and are equally
+   ordinary things to do with a word you have just looked up. */
+.explain-btn {
+  padding: 3px 9px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9aa3b2;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.explain-btn:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .known-btn {
   display: inline-flex;
   align-items: center;
@@ -314,6 +329,23 @@ function buildKnownButton(known: boolean, onToggle: (next: boolean) => void): HT
     button.classList.toggle('on', state)
     button.querySelector('span')!.textContent = state ? 'Known' : 'I know this'
     onToggle(state)
+  })
+
+  return button
+}
+
+/** Opens the explanation drawer for the word this card is about. */
+function buildExplainButton(onExplain: () => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.className = 'explain-btn'
+  button.textContent = 'Explain'
+
+  button.addEventListener('click', (e) => {
+    // Same reason as the other two: this click otherwise reaches Bilibili's
+    // player and toggles playback.
+    e.preventDefault()
+    e.stopPropagation()
+    onExplain()
   })
 
   return button
@@ -485,6 +517,13 @@ export interface CardOptions {
   toneColors?: boolean
   /** Omitted renders no "I know this" button — which is what card tests want. */
   onMarkKnown?: (known: boolean) => void
+  /**
+   * Omitted renders no "Explain" button.
+   *
+   * Which is the case whenever no local model is configured: a button whose
+   * only possible outcome is an apology is worse than no button.
+   */
+  onExplain?: () => void
 }
 
 /**
@@ -495,7 +534,7 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { useTraditional, toneColors = true, onMarkKnown } = options
+  const { useTraditional, toneColors = true, onMarkKnown, onExplain } = options
   const { headword, displayedPinyin = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
@@ -642,10 +681,11 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
     el.appendChild(structure)
   }
 
-  if (onMarkKnown) {
+  if (onMarkKnown || onExplain) {
     const actions = document.createElement('div')
     actions.className = 'popup-actions'
-    actions.appendChild(buildKnownButton(data.known ?? false, onMarkKnown))
+    if (onMarkKnown) actions.appendChild(buildKnownButton(data.known ?? false, onMarkKnown))
+    if (onExplain) actions.appendChild(buildExplainButton(onExplain))
     el.appendChild(actions)
   }
 

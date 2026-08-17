@@ -2,7 +2,8 @@
 // them. Only the service worker and the study app can call these — content
 // scripts run on the page's IndexedDB origin. See db.ts.
 
-import { request, STORES } from './db'
+import { STORES } from './db'
+import { request } from '../shared/idb'
 import { isKnown } from './known'
 import { previousDay, startOfDay } from './scheduler'
 import type { Exposure, Item, Rank, Review, Video, VideoWord } from './types'
@@ -34,12 +35,12 @@ export function getItem(db: IDBDatabase, id: string): Promise<Item | undefined> 
 }
 
 /** Every word counted in one video, via the by-video index. */
-export function videoWords(db: IDBDatabase, bvid: string): Promise<VideoWord[]> {
+export function videoWords(db: IDBDatabase, videoId: string): Promise<VideoWord[]> {
   const index = db
     .transaction(STORES.videoWords, 'readonly')
     .objectStore(STORES.videoWords)
     .index('by-video')
-  return request<VideoWord[]>(index.getAll(IDBKeyRange.only(bvid)))
+  return request<VideoWord[]>(index.getAll(IDBKeyRange.only(videoId)))
 }
 
 /** The words the overlay stops annotating — the same rule the mirror publishes. */
