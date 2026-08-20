@@ -59,6 +59,7 @@ import {
 import { alignCues } from '../llm/timing'
 import { openExplainDrawer } from './explain-drawer'
 import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
+import { planTranscription } from './transcribe-plan'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -493,42 +494,18 @@ async function main() {
      * however this particular video reads — that is what saying yes meant.
      */
     const { confidence, approvalKey } = resolved.transcribe
-    const settled =
-      confidence === 'certain' || (Boolean(approvalKey) && (await isApproved(approvalKey)))
-    const start: 'now' | 'on-playback' | 'ask' | 'never' =
-      confidence === 'negative'
-        ? 'never'
-        : settled
-          ? 'now'
-          : isRefused(videoId)
-            ? 'never'
-            : confidence === 'likely'
-              ? 'on-playback'
-              : 'ask'
-
-    // A track too sparse to be this video's dialogue counts as no track at all,
-    // but only where there is something better to put in its place. Discarding
-    // a publisher's own text for nothing would be strictly worse than showing
-    // an odd line, so the check is deliberately downstream of the ASR one.
-    const usable = looksLikeTranscript(cues, duration)
-    const canTranscribe =
-      settings.asrEnabled && Boolean(settings.asrBaseUrl) && Boolean(settings.asrModel)
-    // Still true while the answer is `ask` or `on-playback`: the overlay has to
-    // exist to carry the question, and the cue subscription has to be live
-    // before the run it will receive is allowed to begin.
-    const transcribing = !usable && canTranscribe && start !== 'never'
-
-    const verdict = usable
-      ? 'using the track'
-      : !canTranscribe
-        ? 'speech to text is off (Settings → Speech to text)'
-        : start === 'never'
-          ? `not transcribing — ${confidence === 'negative' ? 'this is not a Chinese video' : 'declined for now'}`
-          : start === 'now'
-            ? 'transcribing'
-            : start === 'on-playback'
-              ? 'probably Chinese; transcribing once it has been watched a while'
-              : 'not recognised as Chinese; asking'
+    const { start, transcribing, running, verdict } = planTranscription({
+      confidence,
+      approved: Boolean(approvalKey) && (await isApproved(approvalKey)),
+      refused: isRefused(videoId),
+      // A track too sparse to be this video's dialogue counts as no track at
+      // all, but only where there is something better to put in its place.
+      // Discarding a publisher's own text for nothing would be strictly worse
+      // than showing an odd line.
+      usable: looksLikeTranscript(cues, duration),
+      canTranscribe:
+        settings.asrEnabled && Boolean(settings.asrBaseUrl) && Boolean(settings.asrModel),
+    })
 
     console.log(
       `[bb-subsgen] ${cues.length} cues over ${Math.round(duration)}s,`,
@@ -580,8 +557,16 @@ async function main() {
      */
     let covered: Span[] = []
 
-    /** Chunk progress while a transcription is running; null when none is. */
-    let transcribeState: { done: number; total: number; covered: Span[] } | null = transcribing
+    /**
+     * Chunk progress while a transcription is running; null when none is.
+     *
+     * Seeded from `running` and not from `transcribing`, which is also true of
+     * a video still being asked about. Those have spent nothing and have no run
+     * to report — and because no run would ever complete to clear this, a pill
+     * raised there stayed over the video for good, including after the question
+     * was answered no. The paths that do start a run raise it themselves.
+     */
+    let transcribeState: { done: number; total: number; covered: Span[] } | null = running
       ? { done: 0, total: 0, covered: [] }
       : null
     /** The translation phases. Transcription is held separately, above. */
