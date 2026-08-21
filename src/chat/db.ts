@@ -13,6 +13,8 @@
 // Opened directly by the study app and by the drawer iframe, both of which run
 // on the extension origin.
 
+import { connection } from '../shared/idb'
+
 const DB_NAME = 'bb-subsgen-chat'
 const VERSION = 1
 
@@ -48,15 +50,4 @@ export function openChatDb(dbName = DB_NAME): Promise<IDBDatabase> {
   })
 }
 
-let ready: Promise<IDBDatabase> | null = null
-
-export function chatDb(): Promise<IDBDatabase> {
-  if (!ready) {
-    ready = openChatDb().catch((e) => {
-      // Never cache a failed open, or one transient error poisons the page.
-      ready = null
-      throw e
-    })
-  }
-  return ready
-}
+export const chatDb = connection(() => openChatDb())

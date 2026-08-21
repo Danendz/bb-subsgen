@@ -18,6 +18,7 @@ import { DICT_SOURCES, type DictSource } from '../dict/sources'
 import { dictDb, getMetaIn, type DictMeta } from '../dict/store'
 import { installDictionary, type InstallProgress } from '../dict/install'
 import { navigate } from './hooks'
+import { Flag } from './flags'
 
 const SOURCES = Object.values(DICT_SOURCES)
 
@@ -53,6 +54,17 @@ const EMPTY_LANG_STATE: LangState = {
   noChangeNote: false,
 }
 
+/**
+ * The languages on offer, as cards.
+ *
+ * Named by `langName`, not by `name`: the question is "what are you studying?"
+ * and the honest answer is "Chinese". The dictionary that answers it is named
+ * once, on the Required card below, next to the attribution it needs anyway.
+ *
+ * Built out of the global `.choice` vocabulary that review/Setup.tsx already
+ * uses rather than a third card recipe, so a picked language looks picked in
+ * the same way everywhere in the app.
+ */
 function LanguagePicker({
   enabled,
   onToggle,
@@ -64,18 +76,25 @@ function LanguagePicker({
     <div class="wizard-picker">
       <h2>What are you studying?</h2>
       <p class="hint">
-        Checking a language just remembers it — nothing downloads until the next step.
+        Choosing a language just remembers it — nothing downloads until the next step.
       </p>
-      {SOURCES.map((source) => (
-        <label class="wizard-row" key={source.lang}>
-          <input
-            type="checkbox"
-            checked={enabled.includes(source.lang)}
-            onChange={(e) => onToggle(source.lang, e.currentTarget.checked)}
-          />
-          <span class="grow">{source.name}</span>
-        </label>
-      ))}
+      <div class="choices row">
+        {SOURCES.map((source) => {
+          const on = enabled.includes(source.lang)
+          return (
+            <button
+              key={source.lang}
+              type="button"
+              class={`choice lang-card ${on ? 'on' : ''}`}
+              aria-pressed={on}
+              onClick={() => onToggle(source.lang, !on)}
+            >
+              <Flag lang={source.lang} />
+              <span class="choice-label">{source.langName}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -152,9 +171,6 @@ function RequirementRow({
 export function SetupWizard() {
   const { settings, loaded, update } = useSettings()
   const [langState, setLangState] = useState<Record<string, LangState>>({})
-  // Re-entering with languages already chosen opens on step two; the picker
-  // stays reachable through the button below rather than being hidden.
-  const [showPicker, setShowPicker] = useState(false)
 
   const enabled = settings.enabledLanguages
   const at = (lang: string): LangState => langState[lang] ?? EMPTY_LANG_STATE
@@ -182,7 +198,11 @@ export function SetupWizard() {
 
   const toggleLanguage = (lang: string, on: boolean) => {
     const next = on ? [...enabled, lang] : enabled.filter((l) => l !== lang)
-    update({ enabledLanguages: next })
+    // Cleared in the same write when it points at the language being dropped:
+    // two settings, one intent, and a `studyLang` naming a language you no
+    // longer study would send every lookup at a dictionary that isn't there.
+    const clearStudyLang = !on && settings.studyLang === lang
+    update({ enabledLanguages: next, ...(clearStudyLang ? { studyLang: '' } : {}) })
   }
 
   const install = async (source: DictSource) => {
@@ -236,15 +256,7 @@ export function SetupWizard() {
     <div class="wizard">
       <h1>Set up your dictionaries</h1>
 
-      {(showPicker || enabled.length === 0) && (
-        <LanguagePicker enabled={enabled} onToggle={toggleLanguage} />
-      )}
-
-      {enabled.length > 0 && !showPicker && (
-        <div class="toolbar">
-          <button onClick={() => setShowPicker(true)}>Change languages</button>
-        </div>
-      )}
+      <LanguagePicker enabled={enabled} onToggle={toggleLanguage} />
 
       {enabled.length > 0 && (
         <div class="wizard-requirements">
@@ -272,8 +284,10 @@ export function SetupWizard() {
         </div>
       )}
 
-      <div class="toolbar">
-        <button onClick={() => navigate('/')}>Done</button>
+      <div class="toolbar wizard-done">
+        <button class="primary" onClick={() => navigate('/')}>
+          Done
+        </button>
       </div>
     </div>
   )

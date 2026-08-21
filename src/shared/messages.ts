@@ -80,12 +80,21 @@ export function isGetTranscriptStatusMessage(msg: unknown): msg is GetTranscript
 /**
  * Asks the service worker for dictionary entries.
  *
- * Batched by design — see `lookupDefsIn` in background/defs-store.ts. The
- * definition store lives in the worker because content scripts would otherwise
- * each import it under their own page origin.
+ * Batched by design — see `lookupDefsIn` in src/dict/store.ts. The definition
+ * store lives in the worker because content scripts would otherwise each import
+ * it under their own page origin.
  */
 export interface LookupDefsMessage {
   type: 'bb-subsgen:lookup-defs'
+  /**
+   * Which language's definitions to answer with.
+   *
+   * On the message rather than resolved in the worker because `defs` is keyed
+   * `${lang}:${headword}` since schema 2, so there is no answer without one —
+   * and the sender is the only party that knows which language the text it is
+   * annotating is in.
+   */
+  lang: string
   headwords: string[]
 }
 
@@ -98,6 +107,7 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
     typeof msg === 'object' &&
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:lookup-defs' &&
+    typeof (msg as { lang?: unknown }).lang === 'string' &&
     Array.isArray((msg as { headwords?: unknown }).headwords)
   )
 }

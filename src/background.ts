@@ -1,4 +1,10 @@
-import { loadSettings, onSettingsChanged, saveSettings, nextFontSize } from './shared/settings'
+import {
+  loadSettings,
+  onSettingsChanged,
+  resolveStudyLang,
+  saveSettings,
+  nextFontSize,
+} from './shared/settings'
 import {
   isAsrMessage,
   isDictChangedMessage,
@@ -59,6 +65,19 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 })
 
+/**
+ * Refreshes the badge, swallowing the rejection.
+ *
+ * Every caller is an event listener with nowhere to return a promise to, and
+ * `refreshBadge` reads the dictionary database — so a bare `void refreshBadge()`
+ * turned a database that had gone away into an uncaught rejection in the worker
+ * console. The badge being one paint out of date is not worth reporting; the
+ * connection lifecycle that caused it is fixed in src/shared/idb.ts.
+ */
+function badge(): void {
+  refreshBadge().catch((e) => console.warn('[bb-subsgen] badge refresh failed', e))
+}
+
 /** What the popup and the setup wizard ask for: per enabled language, whether it's installed. */
 async function getDictStatus(): Promise<DictStatus[]> {
   const [settings, db] = await Promise.all([loadSettings(), dictDb()])
@@ -94,15 +113,22 @@ function handleLlm(msg: LlmMessage, tabId: number | undefined): void {
     case 'bb-subsgen:llm-translate-track':
       // A pass exists to paint a tab; without one there is nothing to paint.
       if (tabId === undefined) return
-      void startPass({
-        tabId,
-        videoId: msg.videoId,
-        lang: msg.lang,
-        model: msg.model,
-        baseUrl: msg.baseUrl,
-        ...(msg.video ? { video: msg.video } : {}),
-        cues: msg.cues,
-      }).catch((e: unknown) => console.warn('[bb-subsgen] translation pass failed', e))
+      // The study language is resolved here rather than inside the pass, which
+      // must not reach for storage between batches — see `PassRequest`.
+      void loadSettings()
+        .then((settings) =>
+          startPass({
+            tabId,
+            videoId: msg.videoId,
+            lang: msg.lang,
+            studyLang: resolveStudyLang(settings),
+            model: msg.model,
+            baseUrl: msg.baseUrl,
+            ...(msg.video ? { video: msg.video } : {}),
+            cues: msg.cues,
+          }),
+        )
+        .catch((e: unknown) => console.warn('[bb-subsgen] translation pass failed', e))
       return
     case 'bb-subsgen:llm-playhead':
       if (tabId !== undefined) reportPlayhead(tabId, msg.index)
@@ -177,7 +203,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (isLookupDefsMessage(msg)) {
-    lookupDefs(msg.headwords).then(
+    lookupDefs(msg.lang, msg.headwords).then(
       (entries) => sendResponse({ entries } satisfies LookupDefsResponse),
       (e) => {
         console.warn('[bb-subsgen] defs lookup failed in worker', e)
@@ -215,7 +241,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (isDictChangedMessage(msg)) {
-    void refreshBadge()
+    badge()
     return
   }
 
@@ -275,6 +301,6 @@ chrome.runtime.onInstalled.addListener(() => void refreshKnownMirror())
 // The badge reflects settings and installed dictionaries, neither of which the
 // worker is told about except by these three routes: a fresh start, a settings
 // write, and the wizard reporting an install or a delete.
-chrome.runtime.onStartup.addListener(() => void refreshBadge())
-chrome.runtime.onInstalled.addListener(() => void refreshBadge())
-onSettingsChanged(() => void refreshBadge())
+chrome.runtime.onStartup.addListener(badge)
+chrome.runtime.onInstalled.addListener(badge)
+onSettingsChanged(badge)

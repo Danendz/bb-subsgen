@@ -42,7 +42,11 @@ Bumping a `VERSION` requires a numbered migration note in the module header, nex
 already there. Treat the flashcards database as data you cannot regenerate: migrations there get
 a test.
 
-All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB.
+All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB — including
+the connection itself. `connection()` there owns the memo, the `onversionchange` / `onclose`
+handlers and the probe that catches a connection which died without firing either. Do not
+re-introduce a per-module `let ready` memo: all four had one, all four handed out a dead
+connection after an MV3 worker began teardown, and the fix only holds in one place.
 
 ## `src/dict/`
 

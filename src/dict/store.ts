@@ -13,7 +13,7 @@
 //     place: the key shape changed, the data is re-derivable from a re-install
 //     (see install.ts), and clearing also fixes a bug in the old code where a
 //     re-import never removed a headword CC-CEDICT had since dropped.
-import { done, request } from '../shared/idb'
+import { connection, done, request } from '../shared/idb'
 import type { CedictEntry } from './cedict'
 
 const DB_NAME = 'bb-subsgen'
@@ -153,28 +153,15 @@ export async function getAllMeta(db: IDBDatabase): Promise<Record<string, DictMe
 }
 
 // Memoized, not eager: the worker is torn down whenever it goes idle and woken
-// by the next lookup, so this resolves once per worker lifetime.
-let ready: Promise<IDBDatabase> | null = null
+// by the next lookup, so this resolves once per worker lifetime. `connection`
+// also drops the memo when the connection dies — see src/shared/idb.ts, which
+// explains why that matters most to this database in particular.
+export const dictDb = connection(() => openDictDb())
 
-export function dictDb(): Promise<IDBDatabase> {
-  if (!ready) {
-    ready = openDictDb().catch((e) => {
-      // Don't cache a failed open, or one transient error poisons the worker
-      // until the browser restarts.
-      ready = null
-      throw e
-    })
-  }
-  return ready
-}
-
-/**
- * Convenience for callers that only ever ask about one language.
- *
- * Hardcoded to `zh` because it is still the only installed source — see
- * src/dict/sources.ts. Once a second language is enabled (#14) callers that
- * need it will ask `lookupDefsIn` for a language directly instead.
- */
-export async function lookupDefs(headwords: string[]): Promise<Record<string, CedictEntry[]>> {
-  return lookupDefsIn(await dictDb(), 'zh', headwords)
+/** Convenience for callers that already have a language and no database handle. */
+export async function lookupDefs(
+  lang: string,
+  headwords: string[],
+): Promise<Record<string, CedictEntry[]>> {
+  return lookupDefsIn(await dictDb(), lang, headwords)
 }

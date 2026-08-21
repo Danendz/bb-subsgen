@@ -5,6 +5,7 @@ import type { DictSource } from './sources'
 
 const source: DictSource = {
   lang: 'zh',
+  langName: 'Chinese',
   name: 'Test dictionary',
   url: 'https://example.test/dict.gz',
   licence: 'CC BY-SA 4.0',

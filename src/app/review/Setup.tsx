@@ -7,8 +7,18 @@
 
 import type { StudyInclude, StudyMode } from '../../flashcards/types'
 import { MAX_SESSION_SIZE, MIN_SESSION_SIZE } from '../../shared/settings'
+import type { DictSource } from '../../dict/sources'
+import { Flag } from '../flags'
 
 export interface SessionSetup {
+  /**
+   * Which language's lexicon the session segments against.
+   *
+   * A real `Settings` key rather than local state, because `change` in
+   * Review.tsx writes every key of this straight to `saveSettings` — and
+   * because it is shared with the Dictionary tab on purpose.
+   */
+  studyLang: string
   studyMode: StudyMode
   studyInclude: StudyInclude
   studySessionSize: number
@@ -50,12 +60,44 @@ export interface SetupProps {
   setup: SessionSetup
   /** False when the machine has no Mandarin voice, which rules listening out. */
   canSpeak: boolean
+  /**
+   * Languages with a dictionary installed, resolved by the caller.
+   *
+   * A prop rather than a read from here, for the same reason `canSpeak` is one:
+   * this component renders a saved setup and reports changes to it, and nothing
+   * in it opens a database.
+   */
+  languages: DictSource[]
   onChange: (patch: Partial<SessionSetup>) => void
 }
 
-export function Setup({ setup, canSpeak, onChange }: SetupProps) {
+export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
   return (
     <div class="setup">
+      {/*
+        Hidden at one language: there is nothing to choose between, and a
+        control whose only option is already selected is worse than no control.
+      */}
+      {languages.length > 1 && (
+        <fieldset class="setup-group">
+          <legend>Which language</legend>
+          <div class="choices row">
+            {languages.map((source) => (
+              <button
+                key={source.lang}
+                type="button"
+                class={`choice lang-card ${setup.studyLang === source.lang ? 'on' : ''}`}
+                aria-pressed={setup.studyLang === source.lang}
+                onClick={() => onChange({ studyLang: source.lang })}
+              >
+                <Flag lang={source.lang} />
+                <span class="choice-label">{source.langName}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <fieldset class="setup-group">
         <legend>How you are asked</legend>
         <div class="choices">

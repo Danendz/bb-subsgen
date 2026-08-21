@@ -10,6 +10,8 @@
 // extension origin. Content scripts get the *page's* origin (the same reason
 // defs-store.ts lives in the worker), so they go through messages instead.
 
+import { connection } from '../shared/idb'
+
 const DB_NAME = 'bb-subsgen-flashcards'
 
 /**
@@ -209,17 +211,6 @@ export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
   })
 }
 
-// Memoized for the same reason as defsDb(): the worker is torn down whenever it
+// Memoized for the same reason as dictDb(): the worker is torn down whenever it
 // goes idle, so this resolves once per worker lifetime.
-let ready: Promise<IDBDatabase> | null = null
-
-export function flashcardsDb(): Promise<IDBDatabase> {
-  if (!ready) {
-    ready = openFlashcardsDb().catch((e) => {
-      // Never cache a failed open, or one transient error poisons the worker.
-      ready = null
-      throw e
-    })
-  }
-  return ready
-}
+export const flashcardsDb = connection(() => openFlashcardsDb())

@@ -44,6 +44,7 @@ import {
 import {
   loadSettings,
   onSettingsChanged,
+  resolveStudyLang,
   TRANSLATION_LANGS,
   type TranslationLang,
 } from '../shared/settings'
@@ -207,6 +208,20 @@ async function main() {
     return
   }
 
+  const initialSettings = await loadSettings()
+  let settings = initialSettings
+
+  /**
+   * The language being annotated, fixed for as long as this script is loaded.
+   *
+   * Read once from the initial settings rather than from the live `settings`,
+   * because the lexicon below is memoized: following a mid-page change would
+   * leave the segmenter on one language and the definitions on another. A
+   * settings change takes effect on the next page, which is where the reload
+   * that reloads the lexicon happens anyway.
+   */
+  const lang = resolveStudyLang(initialSettings)
+
   /**
    * The dictionary, asked for the first time a video actually needs it.
    *
@@ -218,13 +233,10 @@ async function main() {
    * list would be the price of that, and it is avoidable.
    *
    * Memoised on the promise so two videos in quick succession share one request.
-   * Null means no dictionary is installed for `zh`.
+   * Null means no dictionary is installed for `lang`.
    */
   let lexicon: Promise<Awaited<ReturnType<typeof loadLexicon>>> | null = null
-  const getLexicon = () => (lexicon ??= loadLexicon('zh'))
-
-  const initialSettings = await loadSettings()
-  let settings = initialSettings
+  const getLexicon = () => (lexicon ??= loadLexicon(lang))
   let stopMount: (() => void) | null = null
   /**
    * Subscriptions that belong to the video rather than to the overlay.
@@ -756,7 +768,9 @@ async function main() {
       const stopHover = attachHover({
         shadowRoot,
         video,
-        lookup: lookupDefs,
+        // Partially applied: the hover card is one language for the life of the
+        // page, so it never has to be told which one. See `DefsLookup`.
+        lookup: (headwords) => lookupDefs(lang, headwords),
         isTraditional: () => settings.useTraditional,
         showToneColors: () => settings.showToneColors,
         currentTokens: () => currentTokens,

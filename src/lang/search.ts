@@ -9,7 +9,7 @@ import { dictDb, getLexiconIn } from '../dict/store'
 import { isHan } from './segment'
 
 /**
- * The dictionary, read at most once per page.
+ * The dictionary for one language, read at most once per page.
  *
  * Nearly 200,000 entries, so this is called only when a query could actually
  * match one — see `hasHan`. Anyone who never searches for a new word never
@@ -17,24 +17,30 @@ import { isHan } from './segment'
  * reads the store directly rather than asking the worker for it — see
  * src/dict/store.ts.
  *
- * A failed load is not cached: the memo is cleared so the next keystroke tries
- * again, rather than one transient error disabling search for the life of the
- * page. No dictionary installed resolves to the empty lexicon rather than
- * rejecting — a search page with nothing to search is not a failure.
+ * Keyed by language rather than held in one slot: the Dictionary tab can switch
+ * languages without a reload, and a single memo would keep answering with the
+ * lexicon you just switched away from.
+ *
+ * A failed load is not cached — that entry is cleared so the next keystroke
+ * tries again, rather than one transient error disabling search for the life of
+ * the page. No dictionary installed resolves to the empty lexicon rather than
+ * rejecting: a search page with nothing to search is not a failure.
  */
-let dictionary: Promise<Lexicon> | null = null
+const dictionaries = new Map<string, Promise<Lexicon>>()
 
-export function loadDictionary(): Promise<Lexicon> {
-  if (!dictionary) {
-    dictionary = (async () => {
-      const text = await getLexiconIn(await dictDb(), 'zh')
-      return text === null ? EMPTY_LEXICON : parseWords(text)
-    })().catch((e: unknown) => {
-      dictionary = null
-      throw e
-    })
-  }
-  return dictionary
+export function loadDictionary(lang: string): Promise<Lexicon> {
+  const cached = dictionaries.get(lang)
+  if (cached) return cached
+
+  const loading = (async () => {
+    const text = await getLexiconIn(await dictDb(), lang)
+    return text === null ? EMPTY_LEXICON : parseWords(text)
+  })().catch((e: unknown) => {
+    dictionaries.delete(lang)
+    throw e
+  })
+  dictionaries.set(lang, loading)
+  return loading
 }
 
 /** Whether a query could match a headword at all. */

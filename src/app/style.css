@@ -1519,11 +1519,36 @@ select.model {
   margin-bottom: 20px;
 }
 
-.wizard-row {
-  display: flex;
+/*
+ * A `.choice` with the flag stacked above its label.
+ *
+ * The border is not decoration: a flag with a white field (and most of them
+ * have one) bleeds into the card without it, so the drawing needs its own edge
+ * rather than borrowing the card's.
+ */
+.lang-card {
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  text-align: center;
+  gap: 8px;
+  padding: 14px;
+}
+.lang-card svg {
+  display: block;
+  width: auto;
+  height: 34px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+}
+
+/* Smaller, and inline with the search box rather than stacked above it. */
+.lang-switch {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+}
+.lang-switch svg {
+  height: 16px;
 }
 
 .wizard-requirements {
@@ -1548,4 +1573,15 @@ select.model {
 
 .wizard-requirement .bar {
   margin: 8px 0;
+}
+
+/*
+ * The one toolbar on this page that closes it rather than sitting inside a
+ * card, so it gets room above and is pushed to the end of the line. `.toolbar`
+ * alone carries only `margin-bottom`, which left Done crowded against the
+ * requirement card above it.
+ */
+.wizard-done {
+  margin-top: 24px;
+  justify-content: flex-end;
 }

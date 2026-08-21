@@ -26,7 +26,7 @@ import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
 import { canSpeak, speak } from '../../shared/speak'
-import { loadSettings } from '../../shared/settings'
+import { loadSettings, resolveStudyLang } from '../../shared/settings'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
@@ -184,7 +184,10 @@ export function Session({
     [current?.id, line, words],
   )
 
-  const loadDefs = useCallback(() => lookupDefs(headwords), [headwords.join('|')])
+  const loadDefs = useCallback(
+    async () => lookupDefs(resolveStudyLang(await loadSettings()), headwords),
+    [headwords.join('|')],
+  )
   const { data: defs } = useAsync(loadDefs)
 
   const card = useMemo(() => {

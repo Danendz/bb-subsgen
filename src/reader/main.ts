@@ -11,7 +11,7 @@ import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
 import { dropLegacyPageDefsDb, type Lexicon } from '../lang/dict'
 import { loadLexicon, lookupDefs } from '../shared/dict-client'
-import { loadSettings, onSettingsChanged } from '../shared/settings'
+import { loadSettings, onSettingsChanged, resolveStudyLang } from '../shared/settings'
 import { readerEnabledFor } from '../shared/reader-sites'
 import { watchKnownSet } from '../shared/flashcards-client'
 
@@ -35,10 +35,15 @@ async function main(): Promise<void> {
   let translator: SentenceTranslator | null = null
   let detach: (() => void) | null = null
 
+  // Fixed for as long as the script is loaded, for the same reason the lexicon
+  // below is memoized: a mid-page change would leave the segmenter on one
+  // language and the definitions on another.
+  const lang = resolveStudyLang(settings)
+
   // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
   // the modifier down, and never on a page you just read past.
   let words: Promise<Lexicon | null> | null = null
-  const getWords = () => (words ??= loadLexicon('zh'))
+  const getWords = () => (words ??= loadLexicon(lang))
 
   // Subscribed once for the page's lifetime rather than per attach: the set
   // changes rarely, and re-reading it every time the reader is toggled on for
@@ -66,7 +71,8 @@ async function main(): Promise<void> {
     detach = attachReader({
       mount,
       pageMode: createPageMode(),
-      lookup: lookupDefs,
+      // Partially applied — see `DefsLookup` in shared/dict-client.ts.
+      lookup: (headwords) => lookupDefs(lang, headwords),
       translator,
       words: getWords,
       settings: () => settings,

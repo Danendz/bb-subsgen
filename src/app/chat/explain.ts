@@ -27,7 +27,7 @@ import { log } from '../../llm/log'
 import { explainQuestion } from '../../llm/prompts'
 import { newRequestId } from '../../llm/types'
 import { lookupDefs } from '../../shared/dict-client'
-import { loadSettings } from '../../shared/settings'
+import { loadSettings, resolveStudyLang } from '../../shared/settings'
 
 /**
  * Tracks already fetched this page load.
@@ -43,8 +43,8 @@ const tracks = new Map<string, Promise<Cue[]>>()
  * the worker — see src/dict/store.ts. No dictionary installed resolves to the
  * empty lexicon: an explanation with nothing to gloss is not a reason to fail.
  */
-async function loadWords() {
-  const text = await getLexiconIn(await dictDb(), 'zh')
+async function loadWords(lang: string) {
+  const text = await getLexiconIn(await dictDb(), lang)
   return text === null ? EMPTY_LEXICON : parseWords(text)
 }
 
@@ -136,9 +136,10 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   }
 
   try {
-    const [lexicon, known] = await Promise.all([loadWords(), knownSet()])
+    const lang = resolveStudyLang(await loadSettings())
+    const [lexicon, known] = await Promise.all([loadWords(lang), knownSet()])
     const words = hanWords(segment(req.line, lexicon))
-    const defs = await lookupDefs(words)
+    const defs = await lookupDefs(lang, words)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)
 
     context.knownWords = mastered

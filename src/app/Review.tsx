@@ -13,8 +13,9 @@ import { hanWords, unknownIn } from '../flashcards/capture'
 import { rankMap } from '../background/flashcards-store'
 import { segment } from '../lang/segment'
 import { EMPTY_LEXICON, parseWords } from '../lang/dict'
-import { dictDb, getLexiconIn } from '../dict/store'
-import { loadSettings, saveSettings } from '../shared/settings'
+import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
+import { installedSources } from '../dict/sources'
+import { loadSettings, resolveStudyLang, saveSettings } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
 import { canSpeak } from '../shared/speak'
@@ -27,18 +28,29 @@ import { Setup, setupSummary, type SessionSetup } from './review/Setup'
  * to the empty lexicon: a deck with nothing to segment against is not a
  * reason to fail the whole screen.
  */
-async function loadWords() {
-  const text = await getLexiconIn(await dictDb(), 'zh')
+async function loadWords(lang: string) {
+  const text = await getLexiconIn(await dictDb(), lang)
   return text === null ? EMPTY_LEXICON : parseWords(text)
 }
 
 export function Review() {
+  const [override, setOverride] = useState<Partial<SessionSetup>>({})
+
+  // The language this visit is working in, if it was changed here. Held out of
+  // `override` for the load's dependency list: everything else in the setup
+  // only shapes a queue built from data already in hand, but this decides which
+  // lexicon is read, so changing it has to re-run the read.
+  const chosenLang = override.studyLang ?? ''
+
   const load = useCallback(async () => {
+    const settings = await loadSettings()
+    const lang = chosenLang || resolveStudyLang(settings)
+    const dict = await dictDb()
     const db = await flashcardsDb()
-    const [items, words, settings, ranks, streak, exposures] = await Promise.all([
+    const [items, words, installed, ranks, streak, exposures] = await Promise.all([
       listItems(db),
-      loadWords(),
-      loadSettings(),
+      loadWords(lang),
+      getAllMeta(dict),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -47,6 +59,8 @@ export function Review() {
       items,
       words,
       settings,
+      lang,
+      languages: installedSources(settings.enabledLanguages, new Set(Object.keys(installed))),
       ranks,
       streak,
       known: knownSetOf(items),
@@ -54,12 +68,11 @@ export function Review() {
       // claim on your attention than how often you have actually met them.
       seen: new Map(exposures.map((e) => [e.headword, e.count])),
     }
-  }, [])
+  }, [chosenLang])
   const { data, loading, reload } = useAsync(load)
 
   const [session, setSession] = useState<QueueSession | null>(null)
   const [editing, setEditing] = useState(false)
-  const [override, setOverride] = useState<Partial<SessionSetup>>({})
 
   const unknownCount = useCallback(
     (item: Item) =>
@@ -78,6 +91,10 @@ export function Review() {
     () =>
       data
         ? {
+            // The resolved language, not the raw setting: with one dictionary
+            // installed nothing has ever written `studyLang`, and the control
+            // has to show that language as the one in use.
+            studyLang: data.lang,
             studyMode: data.settings.studyMode,
             studyInclude: data.settings.studyInclude,
             studySessionSize: data.settings.studySessionSize,
@@ -202,7 +219,9 @@ export function Review() {
           </button>
         </div>
 
-        {editing && <Setup setup={setup} canSpeak={canSpeak()} onChange={change} />}
+        {editing && (
+          <Setup setup={setup} canSpeak={canSpeak()} languages={data.languages} onChange={change} />
+        )}
       </div>
 
       {studying > 0 ? (

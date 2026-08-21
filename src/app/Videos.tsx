@@ -3,6 +3,7 @@ import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, listVideos, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction, type Coverage } from '../flashcards/capture'
 import { lookupDefs } from '../shared/dict-client'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { parseDefinitions } from '../lang/definitions'
 import { rankEntries } from '../lang/entries'
 import { Pinyin } from './pinyin'
@@ -110,7 +111,11 @@ function VideoDetail({ videoId }: { videoId: string }) {
 
   const page: VideoWord[] = data?.words.slice(0, limit) ?? []
   const loadDefs = useCallback(
-    () => lookupDefs(page.map((w) => w.headword)),
+    async () =>
+      lookupDefs(
+        resolveStudyLang(await loadSettings()),
+        page.map((w) => w.headword),
+      ),
     [page.map((w) => w.headword).join(' ')],
   )
   const { data: defs } = useAsync(loadDefs)
