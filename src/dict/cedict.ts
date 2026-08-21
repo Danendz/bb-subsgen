@@ -8,8 +8,8 @@
 //
 // CC-CEDICT is CC BY-SA 4.0 (https://cc-cedict.org). Attribution required
 // wherever this derived data is shown or redistributed.
-import { excludeFromSegmentation, rankEntries } from '../lang/entries'
-import { functionWord } from '../lang/grammar/function-words'
+import { excludeFromSegmentation, rankEntries } from '../lang/zh/entries'
+import { functionWord } from '../lang/zh/grammar/function-words'
 
 export interface CedictEntry {
   simplified: string

@@ -17,7 +17,7 @@ import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
 import type { ListKind } from '../flashcards/wordlist'
-import { PATTERNS, type Pattern } from '../lang/grammar/patterns'
+import { PATTERNS, type Pattern } from '../lang/zh/grammar/patterns'
 import {
   grammarId,
   sentenceId,

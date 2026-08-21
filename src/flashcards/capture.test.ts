@@ -9,7 +9,7 @@ import {
   shouldCaptureLine,
   unknownIn,
 } from './capture'
-import type { Token } from '../lang/segment'
+import type { Token } from '../lang/zh/segment'
 
 const token = (text: string, pinyin: string | null = null): Token => ({ text, pinyin })
 

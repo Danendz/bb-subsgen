@@ -8,7 +8,7 @@
 // Pure, so every format guess below is testable against the shapes real files
 // actually arrive in rather than the shapes their documentation describes.
 
-import { isHan } from '../lang/segment'
+import { isHan } from '../lang/zh/segment'
 
 export type ListKind = 'frequency' | 'hsk'
 

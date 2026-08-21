@@ -34,20 +34,4 @@ export function parseWords(raw: string): Lexicon {
  * it from here, and there is no reason to make them all point at `dict/` for a
  * type alone.
  */
-export type { CedictEntry } from '../dict/cedict'
-
-/**
- * Removes the definition store earlier versions wrote into the *page's* origin.
- *
- * Definitions now live in the service worker (background/defs-store.ts), so any
- * database left under a site's origin is 31MB of dead weight. Deleting is a
- * no-op where it never existed, so this needs no flag — and it can't be done
- * from the worker, which has no access to another origin's storage.
- */
-export function dropLegacyPageDefsDb(): void {
-  try {
-    indexedDB.deleteDatabase('bb-subsgen')
-  } catch (e) {
-    console.warn('[bb-subsgen] could not drop the legacy page-origin defs db', e)
-  }
-}
+export type { CedictEntry } from '../../dict/cedict'

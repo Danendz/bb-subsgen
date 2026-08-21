@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { excludeFromSegmentation, isPhrase, rankEntries } from './entries'
-import type { CedictEntry } from './dict'
+import type { CedictEntry } from './lexicon'
 
 function entry(pinyin: string, ...definitions: string[]): CedictEntry {
   return { traditional: '', simplified: '', pinyin, definitions }

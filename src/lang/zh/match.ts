@@ -1,4 +1,11 @@
-import { isHan } from '../lang/segment'
+// The dictionary word under a character, for the page reader's hover card.
+//
+// Lives here rather than in `reader/` because it is not reader infrastructure:
+// it scans backwards from the hovered character because Chinese has no spaces,
+// and it ranks candidates by whether CC-CEDICT has a reading for them. Both are
+// facts about the language, not about hovering.
+
+import { isHan } from './segment'
 
 export interface Match {
   text: string

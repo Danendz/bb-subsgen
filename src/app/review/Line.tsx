@@ -5,9 +5,9 @@
 // gives every word a reading you can turn on and a meaning you can ask for,
 // without ever volunteering the meaning to a question that is asking for it.
 
-import { parseDefinitions } from '../../lang/definitions'
-import { rankEntries } from '../../lang/entries'
-import type { CedictEntry, Lexicon } from '../../lang/dict'
+import { parseDefinitions } from '../../lang/zh/definitions'
+import { rankEntries } from '../../lang/zh/entries'
+import type { CedictEntry, Lexicon } from '../../lang/zh/lexicon'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 

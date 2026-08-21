@@ -4,9 +4,9 @@
 // it is pure so the ordering can be argued with in tests rather than by typing
 // into the box and squinting.
 
-import { parseWords, EMPTY_LEXICON, type Lexicon } from './dict'
+import { parseWords, EMPTY_LEXICON, type Lexicon } from './zh/lexicon'
 import { dictDb, getLexiconIn } from '../dict/store'
-import { isHan } from './segment'
+import { isHan } from './zh/segment'
 
 /**
  * The dictionary for one language, read at most once per page.

@@ -5,9 +5,9 @@
 // one is blanked, which one is the card's own. The component below it only turns
 // these flags into spans.
 
-import { isHan, segment } from '../../lang/segment'
-import type { Lexicon } from '../../lang/dict'
-import { isFunctionWord } from '../../lang/grammar/function-words'
+import { isHan, segment } from '../../lang/zh/segment'
+import type { Lexicon } from '../../lang/zh/lexicon'
+import { isFunctionWord } from '../../lang/zh/grammar/function-words'
 
 export interface LineToken {
   text: string

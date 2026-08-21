@@ -1,4 +1,8 @@
 // Sentence boundaries within a flattened block, for the card's translation line.
+//
+// A language question rather than a reader one: the terminators below are the
+// CJK set, and a language that ends its sentences differently needs a different
+// table, not a different reader.
 
 export interface Span {
   start: number

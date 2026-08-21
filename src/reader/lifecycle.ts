@@ -6,7 +6,7 @@
 // glyphs, English text, images, page chrome — and over the card itself. A card
 // that vanishes when you move toward it cannot be read.
 
-import type { Match } from './lookup'
+import type { Match } from '../lang/zh/match'
 
 /**
  * Identity of the word a card is showing.

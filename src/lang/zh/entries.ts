@@ -1,4 +1,4 @@
-import type { CedictEntry } from './dict'
+import type { CedictEntry } from './lexicon'
 
 // Definitions that only point at another headword rather than carrying a
 // meaning of their own.

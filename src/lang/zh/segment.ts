@@ -1,4 +1,4 @@
-import type { Lexicon } from './dict'
+import type { Lexicon } from './lexicon'
 import { isFunctionWord } from './grammar/function-words'
 import { applyReadingRules } from './reading'
 

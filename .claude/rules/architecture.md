@@ -48,6 +48,13 @@ handlers and the probe that catches a connection which died without firing eithe
 re-introduce a per-module `let ready` memo: all four had one, all four handed out a dead
 connection after an MV3 worker began teardown, and the fix only holds in one place.
 
+## `src/lang/`
+
+Everything that knows what language the text is in. `src/lang/zh/` holds the Chinese
+implementation — the segmenter, the tone and reading rules, the CC-CEDICT entry ranking, the
+grammar pattern table, the sentence terminators and the hover match. Everything directly under
+`src/lang/` is language-neutral.
+
 ## `src/dict/`
 
 The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of

@@ -1,7 +1,7 @@
 /* The study app's visual language.
  *
  * The palette is the Mandarin tone palette. Those five colours are already in
- * this codebase — src/lang/tone.ts, the MDBG convention the subtitle overlay
+ * this codebase — src/lang/zh/tone.ts, the MDBG convention the subtitle overlay
  * colours pinyin with — and this stylesheet had been reaching for three of them
  * by hand for its verdicts and links without ever saying so. Naming them here
  * makes that deliberate: colour means tone, the app and the overlay cannot
@@ -26,7 +26,7 @@
      pink into a muddy crimson — and form controls render in the light theme. */
   color-scheme: dark;
 
-  /* Tones. Identical to TONE_COLORS in src/lang/tone.ts — change both or neither. */
+  /* Tones. Identical to TONE_COLORS in src/lang/zh/tone.ts — change both or neither. */
   --tone-1: #ff8a8a; /* flat   */
   --tone-2: #ffc46b; /* rising */
   --tone-3: #7ee0a8; /* dipping */

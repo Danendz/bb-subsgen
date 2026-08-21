@@ -7,8 +7,8 @@ import {
   characterBreakdown,
   setCardTranslation,
 } from './card'
-import type { CedictEntry } from '../lang/dict'
-import { PATTERNS } from '../lang/grammar/patterns'
+import type { CedictEntry } from '../lang/zh/lexicon'
+import { PATTERNS } from '../lang/zh/grammar/patterns'
 
 const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
   simplified: '学习',

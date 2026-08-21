@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { matchAt } from './lookup'
+import { matchAt } from './match'
 
 const words = new Map<string, string>([
   ['学', 'xue2'],

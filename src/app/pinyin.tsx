@@ -6,9 +6,9 @@
 // the palette in style.css is the tone palette, and anything showing pinyin
 // shows it in the tone's own colour.
 
-import { segment } from '../lang/segment'
-import type { Lexicon } from '../lang/dict'
-import { parseTone, toDiacritic } from '../lang/tone'
+import { segment } from '../lang/zh/segment'
+import type { Lexicon } from '../lang/zh/lexicon'
+import { parseTone, toDiacritic } from '../lang/zh/tone'
 
 /** CC-CEDICT writes a run as space-separated numeric syllables: `xue2 xi2`. */
 function syllables(pinyin: string): string[] {

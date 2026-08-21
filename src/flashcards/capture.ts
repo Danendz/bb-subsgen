@@ -2,9 +2,9 @@
 // are the rules most likely to need tuning, and tuning them by argument rather
 // than by measurement is how a capture system ends up burying you.
 
-import { isHan, type Token } from '../lang/segment'
+import { isHan, type Token } from '../lang/zh/segment'
 
-/** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in reader/sentence.ts. */
+/** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
 
 /** The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary. */

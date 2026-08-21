@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
-import type { Match } from './lookup'
+import type { Match } from '../lang/zh/match'
 
 const match = (text: string, start: number): Match => ({
   text,

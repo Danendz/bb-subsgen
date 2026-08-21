@@ -8,8 +8,8 @@
 // Pure. The lookups happen elsewhere; this only decides what to say about them.
 
 import type { Glossed } from '../chat/types'
-import type { CedictEntry } from '../lang/dict'
-import { rankEntries } from '../lang/entries'
+import type { CedictEntry } from '../lang/zh/lexicon'
+import { rankEntries } from '../lang/zh/entries'
 
 /** How many senses of a word are worth the tokens. */
 const SENSES = 2

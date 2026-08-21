@@ -12,7 +12,7 @@
 // because the evidence genuinely differs in strength, and the right response to
 // weak evidence is neither to spend nor to give up silently — it is to ask.
 
-import { isHan } from '../lang/segment'
+import { isHan } from '../lang/zh/segment'
 import type { Confidence } from '../media/site'
 import type { CaptionTrack } from './player-response'
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseWords } from './dict'
+import { parseWords } from './lexicon'
 
 describe('parseWords', () => {
   test('parses tab-separated headword/pinyin lines into a Map', () => {

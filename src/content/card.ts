@@ -2,13 +2,13 @@
 // reader. Both mount it into a shadow root of their own, so this module owns
 // the markup and the styles but never the positioning.
 
-import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/tone'
-import { parseDefinitions } from '../lang/definitions'
-import { rankEntries } from '../lang/entries'
-import { isFunctionWord } from '../lang/grammar/function-words'
-import type { Pattern } from '../lang/grammar/patterns'
-import { isHan, type Token } from '../lang/segment'
-import type { CedictEntry } from '../lang/dict'
+import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/zh/tone'
+import { parseDefinitions } from '../lang/zh/definitions'
+import { rankEntries } from '../lang/zh/entries'
+import { isFunctionWord } from '../lang/zh/grammar/function-words'
+import type { Pattern } from '../lang/zh/grammar/patterns'
+import { isHan, type Token } from '../lang/zh/segment'
+import type { CedictEntry } from '../lang/zh/lexicon'
 
 const MAX_DEFINITIONS = 3
 
@@ -503,7 +503,7 @@ export interface CardData {
    * The section the dictionary cannot supply. A gloss describes a word, and for
    * a function word that is close to useless — CC-CEDICT calls 啊 an
    * "interjection of surprise", which is true of the character and wrong about
-   * every sentence it ends. See lang/grammar/patterns.ts.
+   * every sentence it ends. See lang/zh/grammar/patterns.ts.
    */
   patterns?: readonly Pattern[]
   /** Sentence translation; empty renders no section. */

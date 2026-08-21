@@ -2,7 +2,7 @@
 // a store of its own. See src/dict/store.ts for why the store lives there.
 
 import type { CedictEntry } from '../dict/cedict'
-import { parseWords, type Lexicon } from '../lang/dict'
+import { parseWords, type Lexicon } from '../lang/zh/lexicon'
 import type {
   DictStatus,
   DictStatusMessage,

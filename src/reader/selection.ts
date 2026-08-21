@@ -1,4 +1,4 @@
-import { isHan } from '../lang/segment'
+import { isHan } from '../lang/zh/segment'
 
 /** How far the pointer must travel before a mouseup counts as a drag, not a click. */
 const DRAG_THRESHOLD_PX = 4

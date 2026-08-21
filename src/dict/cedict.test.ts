@@ -61,7 +61,7 @@ describe('buildLexiconText', () => {
 
   test('carries the \\tp flag for a phrasebook entry into the lexicon text', () => {
     // A capitalized, terminally-punctuated gloss is what excludeFromSegmentation
-    // treats as a phrase rather than a word — see lang/entries.ts.
+    // treats as a phrase rather than a word — see lang/zh/entries.ts.
     const entry = parseCedictLine('得意 得意 [de2 yi4] /How are you getting by?/')!
     expect(buildLexiconText(groupByHeadword([entry]))).toBe('得意\tde2 yi4\tp')
   })

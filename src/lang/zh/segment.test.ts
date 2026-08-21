@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { segment } from './segment'
-import type { Lexicon } from './dict'
+import type { Lexicon } from './lexicon'
 
 function dict(entries: Record<string, string>, phrases: string[] = []): Lexicon {
   return { words: new Map(Object.entries(entries)), phrases: new Set(phrases) }
