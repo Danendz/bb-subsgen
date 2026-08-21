@@ -5,8 +5,8 @@
 // one is blanked, which one is the card's own. The component below it only turns
 // these flags into spans.
 
-import { isHan, segment } from '../../lang/zh/segment'
-import type { Lexicon } from '../../lang/zh/lexicon'
+import { isHan } from '../../lang/zh/segment'
+import type { Lexicon } from '../../lang/pack'
 import { isFunctionWord } from '../../lang/zh/grammar/function-words'
 
 export interface LineToken {
@@ -65,7 +65,7 @@ export function lineTokens(
   // harder one than the card was scheduled as.
   let blanked = false
 
-  return segment(text, lexicon).map((token) => {
+  return lexicon.segment(text).map((token) => {
     const han = token.text.length > 0 && isHan(token.text[0])
     const gap = han && !blanked && token.text === blank
     if (gap) blanked = true

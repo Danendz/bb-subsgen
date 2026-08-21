@@ -2,8 +2,9 @@
 // are the rules most likely to need tuning, and tuning them by argument rather
 // than by measurement is how a capture system ends up burying you.
 
-import { isHan, type Token } from '../lang/zh/segment'
-import type { LanguagePack } from '../lang/pack'
+import type { Token } from '../lang/pack'
+import { isHan } from '../lang/zh/segment'
+import type { LanguagePack, Lexicon } from '../lang/pack'
 
 /** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
@@ -47,17 +48,17 @@ export type SelectionTarget =
  *
  * Exactly one dictionary headword is a word; anything else is a sentence. That
  * resolves the awkward middle — 选择 is a word, 我在学习 is not — without asking
- * the user to classify their own selection, and it uses the same word set that
- * already drives segmentation.
+ * the user to classify their own selection, and it uses the same dictionary
+ * that already drives segmentation.
+ *
+ * Takes the lexicon rather than a word set and a pack: it needs both "is this
+ * one headword" and "is this text in the script", and the lexicon carries its
+ * own pack precisely so callers do not thread two values here.
  */
-export function selectionTarget(
-  selected: string,
-  words: Map<string, string>,
-  pack: LanguagePack,
-): SelectionTarget {
+export function selectionTarget(selected: string, lexicon: Lexicon): SelectionTarget {
   const text = selected.trim()
-  if (!isCapturableText(text, pack)) return null
-  if (words.has(text)) return { kind: 'word', text }
+  if (!isCapturableText(text, lexicon.pack)) return null
+  if (lexicon.has(text)) return { kind: 'word', text }
   return { kind: 'sentence', text }
 }
 

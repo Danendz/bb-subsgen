@@ -7,7 +7,7 @@
 // charging for the input method.
 
 import { hanWords } from './capture'
-import type { Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
 
 /**
  * A small deterministic PRNG.

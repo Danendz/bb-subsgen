@@ -2,7 +2,8 @@
 // a store of its own. See src/dict/store.ts for why the store lives there.
 
 import type { CedictEntry } from '../dict/cedict'
-import { parseWords, type Lexicon } from '../lang/zh/lexicon'
+import type { Lexicon } from '../lang/pack'
+import { packFor } from '../lang/packs'
 import type {
   DictStatus,
   DictStatusMessage,
@@ -69,8 +70,10 @@ async function getLexicon(lang: string): Promise<string | null> {
  * installed" state rather than segmenting against an empty lexicon.
  */
 export async function loadLexicon(lang: string): Promise<Lexicon | null> {
+  const pack = packFor(lang)
+  if (!pack) return null
   const text = await getLexicon(lang)
-  return text === null ? null : parseWords(text)
+  return text === null ? null : pack.load(text)
 }
 
 export async function dictStatus(): Promise<DictStatus[]> {

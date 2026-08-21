@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { answerOf, buildBank, isCorrect, seedFor, shuffle } from './wordbank'
-import type { Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
 
 const tokens = (...texts: string[]): Token[] => texts.map((text) => ({ text, pinyin: null }))
 

@@ -1,21 +1,16 @@
-// Finding a word in the dictionary that is not in your deck yet.
-//
-// Separate from `dict.ts`, which only parses and loads. This is the ranking, and
-// it is pure so the ordering can be argued with in tests rather than by typing
-// into the box and squinting.
+// The installed dictionary for a language, read at most once per page.
 
-import { parseWords, EMPTY_LEXICON, type Lexicon } from './zh/lexicon'
 import { dictDb, getLexiconIn } from '../dict/store'
-import { isHan } from './zh/segment'
+import type { Lexicon } from './pack'
+import { packFor } from './packs'
 
 /**
- * The dictionary for one language, read at most once per page.
- *
  * Nearly 200,000 entries, so this is called only when a query could actually
- * match one — see `hasHan`. Anyone who never searches for a new word never
- * pays for it. This is an extension-origin caller (the flashcards app), so it
- * reads the store directly rather than asking the worker for it — see
- * src/dict/store.ts.
+ * match one — `Lexicon.search` answers a query with nothing to match without
+ * walking the index, and the caller does not ask for a dictionary it will not
+ * search. Anyone who never searches for a new word never pays for it. This is
+ * an extension-origin caller (the flashcards app), so it reads the store
+ * directly rather than asking the worker for it — see src/dict/store.ts.
  *
  * Keyed by language rather than held in one slot: the Dictionary tab can switch
  * languages without a reload, and a single memo would keep answering with the
@@ -24,66 +19,25 @@ import { isHan } from './zh/segment'
  * A failed load is not cached — that entry is cleared so the next keystroke
  * tries again, rather than one transient error disabling search for the life of
  * the page. No dictionary installed resolves to the empty lexicon rather than
- * rejecting: a search page with nothing to search is not a failure.
+ * rejecting: a search page with nothing to search is not a failure. A language
+ * with no pack is the one case that resolves null — there is nothing to read
+ * the download with, so there is no lexicon to hand back.
  */
-const dictionaries = new Map<string, Promise<Lexicon>>()
+const dictionaries = new Map<string, Promise<Lexicon | null>>()
 
-export function loadDictionary(lang: string): Promise<Lexicon> {
+export function loadDictionary(lang: string): Promise<Lexicon | null> {
   const cached = dictionaries.get(lang)
   if (cached) return cached
 
   const loading = (async () => {
+    const pack = packFor(lang)
+    if (!pack) return null
     const text = await getLexiconIn(await dictDb(), lang)
-    return text === null ? EMPTY_LEXICON : parseWords(text)
+    return pack.load(text ?? '')
   })().catch((e: unknown) => {
     dictionaries.delete(lang)
     throw e
   })
   dictionaries.set(lang, loading)
   return loading
-}
-
-/** Whether a query could match a headword at all. */
-export function hasHan(query: string): boolean {
-  return Array.from(query).some(isHan)
-}
-
-/**
- * Headwords matching `query`, best first.
- *
- * Prefix matches lead. Typing 学 nearly always means "a word beginning 学", so
- * 大学 is a worse answer to that keystroke than 学习 is — but it is still an
- * answer, which is why containment follows rather than being dropped.
- *
- * Length breaks the tie inside each group. Shorter words are commoner, and it
- * keeps the exact word you typed off the bottom of a list of idioms that happen
- * to contain it.
- *
- * `exclude` is the deck. Those words are already rendered above the suggestions,
- * and offering an Add button for something added is how a list stops being
- * trustworthy.
- */
-export function searchHeadwords(
-  words: Map<string, string>,
-  query: string,
-  exclude: ReadonlySet<string>,
-  limit: number,
-): string[] {
-  const q = query.trim()
-  if (!q || !hasHan(q)) return []
-
-  const starts: string[] = []
-  const contains: string[] = []
-
-  for (const headword of words.keys()) {
-    if (exclude.has(headword)) continue
-    if (headword.startsWith(q)) starts.push(headword)
-    else if (headword.includes(q)) contains.push(headword)
-  }
-
-  const byLength = (a: string, b: string) => a.length - b.length || (a < b ? -1 : 1)
-  starts.sort(byLength)
-  contains.sort(byLength)
-
-  return [...starts, ...contains].slice(0, limit)
 }

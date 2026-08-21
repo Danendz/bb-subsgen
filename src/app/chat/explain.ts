@@ -18,9 +18,8 @@ import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
 import { hanWords } from '../../flashcards/capture'
 import { KNOWN_SET_KEY } from '../../flashcards/known'
-import { EMPTY_LEXICON, parseWords } from '../../lang/zh/lexicon'
+import { packFor } from '../../lang/packs'
 import { dictDb, getLexiconIn } from '../../dict/store'
-import { segment } from '../../lang/zh/segment'
 import { lineWindow } from '../../llm/context'
 import { splitByKnown } from '../../llm/glossary'
 import { log } from '../../llm/log'
@@ -40,12 +39,15 @@ const tracks = new Map<string, Promise<Cue[]>>()
 
 /**
  * Extension-origin caller, so it reads the store directly rather than asking
- * the worker — see src/dict/store.ts. No dictionary installed resolves to the
- * empty lexicon: an explanation with nothing to gloss is not a reason to fail.
+ * the worker — see src/dict/store.ts. No dictionary installed loads the empty
+ * lexicon: an explanation with nothing to gloss is not a reason to fail, and
+ * neither is a language with no pack.
  */
 async function loadWords(lang: string) {
+  const pack = packFor(lang)
+  if (!pack) return null
   const text = await getLexiconIn(await dictDb(), lang)
-  return text === null ? EMPTY_LEXICON : parseWords(text)
+  return pack.load(text ?? '')
 }
 
 export function trackFor(videoId: string): Promise<Cue[]> {
@@ -138,7 +140,7 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   try {
     const lang = resolveStudyLang(await loadSettings())
     const [lexicon, known] = await Promise.all([loadWords(lang), knownSet()])
-    const words = hanWords(segment(req.line, lexicon))
+    const words = lexicon ? hanWords(lexicon.segment(req.line)) : []
     const defs = await lookupDefs(lang, words)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)
 

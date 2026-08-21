@@ -7,7 +7,8 @@ import { parseDefinitions } from '../lang/zh/definitions'
 import { rankEntries } from '../lang/zh/entries'
 import { isFunctionWord } from '../lang/zh/grammar/function-words'
 import type { Pattern } from '../lang/zh/grammar/patterns'
-import { isHan, type Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
+import { isHan } from '../lang/zh/segment'
 import type { CedictEntry } from '../lang/zh/lexicon'
 
 const MAX_DEFINITIONS = 3

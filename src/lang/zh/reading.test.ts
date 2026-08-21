@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { applyReadingRules } from './reading'
-import type { Token } from './segment'
+import type { Token } from '../pack'
 
 function tokens(...pairs: [string, string | null][]): Token[] {
   return pairs.map(([text, pinyin]) => ({ text, pinyin }))

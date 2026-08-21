@@ -1,11 +1,7 @@
-import type { Lexicon } from './lexicon'
+import type { Token } from '../pack'
+import type { WordIndex } from './lexicon'
 import { isFunctionWord } from './grammar/function-words'
 import { applyReadingRules } from './reading'
-
-export interface Token {
-  text: string
-  pinyin: string | null
-}
 
 const wordSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
 
@@ -71,8 +67,8 @@ function costOf(candidate: string, pinyin: string | undefined): number {
  * to join. This scores whole parses instead, so a long word that wrecks the
  * remainder loses to two words that don't.
  */
-function cheapestParse(run: string, lexicon: Lexicon): Token[] {
-  const { words, phrases } = lexicon
+function cheapestParse(run: string, index: WordIndex): Token[] {
+  const { words, phrases } = index
   // best[i] — cost of the cheapest parse of run[0..i). take[i] — the length of
   // the token that parse ends with, which is what the walk back reads.
   const best = new Array<number>(run.length + 1).fill(Infinity)
@@ -106,7 +102,7 @@ function cheapestParse(run: string, lexicon: Lexicon): Token[] {
   return tokens.reverse()
 }
 
-export function segment(text: string, lexicon: Lexicon): Token[] {
+export function segment(text: string, index: WordIndex): Token[] {
   const baseSegments = Array.from(wordSegmenter.segment(text))
 
   const tokens: Token[] = []
@@ -114,7 +110,7 @@ export function segment(text: string, lexicon: Lexicon): Token[] {
 
   const flushHanziRun = () => {
     if (hanziRun) {
-      tokens.push(...cheapestParse(hanziRun, lexicon))
+      tokens.push(...cheapestParse(hanziRun, index))
       hanziRun = ''
     }
   }

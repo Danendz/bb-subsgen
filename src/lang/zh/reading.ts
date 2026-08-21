@@ -12,7 +12,7 @@
 // than the default, because it also drags the gloss along with it (`rankEntries`
 // weights the displayed reading above everything else).
 
-import type { Token } from './segment'
+import type { Token } from '../pack'
 import { isNominal } from './grammar/function-words'
 
 /** Whether nothing precedes that a complement could attach back to. See `isNominal`. */

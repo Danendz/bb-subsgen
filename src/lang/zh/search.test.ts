@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { hasHan, searchHeadwords } from './search'
+import { searchHeadwords } from './search'
+import { chinesePack } from './pack'
 
 /** A slice of CC-CEDICT, shaped exactly as `words.bin` parses into. */
 const WORDS = new Map<string, string>([
@@ -66,13 +67,20 @@ describe('searchHeadwords', () => {
   })
 })
 
-describe('hasHan', () => {
-  test('is what decides whether the dictionary is worth loading at all', () => {
-    // 4.5MB and 198k entries. A query that cannot match must never fetch it.
-    expect(hasHan('学')).toBe(true)
-    expect(hasHan('a学b')).toBe(true)
-    expect(hasHan('study')).toBe(false)
-    expect(hasHan('')).toBe(false)
-    expect(hasHan('xue2')).toBe(false)
+describe('Lexicon.search', () => {
+  const lexicon = chinesePack.load(
+    [...WORDS].map(([headword, pinyin]) => `${headword}\t${pinyin}`).join('\n'),
+  )
+
+  test('a query that cannot match never walks the index', () => {
+    // 198k entries, on every keystroke. Pinyin is not an index into them and
+    // neither is English, so both are answered from the query alone.
+    expect(lexicon.search('xue2', nothing, 20)).toEqual([])
+    expect(lexicon.search('study', nothing, 20)).toEqual([])
+    expect(lexicon.search('', nothing, 20)).toEqual([])
+  })
+
+  test('hands a real query to the same ranking the box has always used', () => {
+    expect(lexicon.search('学', nothing, 3)).toEqual(searchHeadwords(WORDS, '学', nothing, 3))
   })
 })

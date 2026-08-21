@@ -5,16 +5,8 @@
 // and it ranks candidates by whether CC-CEDICT has a reading for them. Both are
 // facts about the language, not about hovering.
 
+import type { Match } from '../pack'
 import { isHan } from './segment'
-
-export interface Match {
-  text: string
-  /** CC-CEDICT numeric-tone pinyin, or '' when only the characters are known. */
-  pinyin: string
-  start: number
-  /** Exclusive. */
-  end: number
-}
 
 /**
  * Longest dictionary entry that fits inside 8 characters.

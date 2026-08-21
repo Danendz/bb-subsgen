@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { parseWords } from './lexicon'
+import { loadChinese, parseWords } from './lexicon'
+import { chinesePack } from './pack'
 
 describe('parseWords', () => {
   test('parses tab-separated headword/pinyin lines into a Map', () => {
@@ -30,5 +31,27 @@ describe('parseWords', () => {
 
     expect(words.size).toBe(2)
     expect(phrases.size).toBe(0)
+  })
+})
+
+describe('loadChinese', () => {
+  const lexicon = loadChinese('学习\txue2 xi2\n我\two3', chinesePack)
+
+  test('carries the pack it was loaded from, so a holder need not carry both', () => {
+    expect(lexicon.pack).toBe(chinesePack)
+  })
+
+  test('answers whether a selection is exactly one headword', () => {
+    // What separates a word from a sentence in the reader — see selectionTarget.
+    expect(lexicon.has('学习')).toBe(true)
+    expect(lexicon.has('我学习')).toBe(false)
+  })
+
+  test('an empty download is a working lexicon that finds nothing', () => {
+    // A screen open before the dictionary is installed, which must render.
+    const empty = loadChinese('', chinesePack)
+    expect(empty.has('我')).toBe(false)
+    expect(empty.search('学', new Set(), 5)).toEqual([])
+    expect(empty.segment('我学习').map((t) => t.text)).toEqual(['我', '学', '习'])
   })
 })

@@ -1,5 +1,5 @@
 import { buildWordElement, CARD_STYLE, WORD_STYLE } from './card'
-import type { Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
 import type { Settings } from '../shared/settings'
 import type { ProgressView } from './progress'
 import type { PlayerGeometry } from './controls'

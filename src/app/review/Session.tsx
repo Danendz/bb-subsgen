@@ -14,14 +14,13 @@ import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/schedu
 import { Pips } from '../mastery'
 import { PATTERNS } from '../../lang/zh/grammar/patterns'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
-import { segment } from '../../lang/zh/segment'
 import { findPatterns, type PatternMatch } from '../../lang/zh/grammar/match'
 import type { Pattern } from '../../lang/zh/grammar/patterns'
 import { parseDefinitions } from '../../lang/zh/definitions'
 import { isEpisodeId } from '../../bilibili/resolve'
 import { bareId, isYoutubeId } from '../../youtube/site'
 import { rankEntries } from '../../lang/zh/entries'
-import type { Lexicon } from '../../lang/zh/lexicon'
+import type { Lexicon } from '../../lang/pack'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
@@ -178,7 +177,7 @@ export function Session({
     () => [
       ...new Set([
         ...(current?.kind === 'word' ? [current.text] : []),
-        ...hanWords(segment(line, words)),
+        ...hanWords(words.segment(line)),
       ]),
     ],
     [current?.id, line, words],
@@ -198,7 +197,7 @@ export function Session({
     // Segmented from the example for a grammar card — `current.text` is the
     // skeleton, which is not a sentence and has no tiles in it.
     const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
-    const tokens = segment(exampleText, words)
+    const tokens = words.segment(exampleText)
     const target =
       current.kind === 'sentence' ? chooseTarget(hanWords(tokens), known, current.target) : null
 

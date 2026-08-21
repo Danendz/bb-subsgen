@@ -4,6 +4,7 @@
 // and it is reached through `packs.ts` rather than by name.
 
 import type { LanguagePack } from '../pack'
+import { loadChinese } from './lexicon'
 import { isHan } from './segment'
 
 export const chinesePack: LanguagePack = {
@@ -13,4 +14,8 @@ export const chinesePack: LanguagePack = {
 
   inScript: isHan,
   containsScript: (text) => Array.from(text).some(isHan),
+
+  load(raw) {
+    return loadChinese(raw, this)
+  },
 }

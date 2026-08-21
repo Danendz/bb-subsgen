@@ -11,8 +11,7 @@ import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards
 import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
 import { hanWords, unknownIn } from '../flashcards/capture'
 import { rankMap } from '../background/flashcards-store'
-import { segment } from '../lang/zh/segment'
-import { EMPTY_LEXICON, parseWords } from '../lang/zh/lexicon'
+import { packFor } from '../lang/packs'
 import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
 import { installedSources } from '../dict/sources'
 import { loadSettings, resolveStudyLang, saveSettings } from '../shared/settings'
@@ -24,13 +23,16 @@ import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 
 /**
  * Extension-origin caller, so it reads the store directly rather than asking
- * the worker for it — see src/dict/store.ts. No dictionary installed resolves
- * to the empty lexicon: a deck with nothing to segment against is not a
- * reason to fail the whole screen.
+ * the worker for it — see src/dict/store.ts. No dictionary installed loads the
+ * empty lexicon: a deck with nothing to segment against is not a reason to fail
+ * the whole screen. A language with no pack has nothing to load it with, and is
+ * the one case that has to be null.
  */
 async function loadWords(lang: string) {
+  const pack = packFor(lang)
+  if (!pack) return null
   const text = await getLexiconIn(await dictDb(), lang)
-  return text === null ? EMPTY_LEXICON : parseWords(text)
+  return pack.load(text ?? '')
 }
 
 export function Review() {
@@ -76,7 +78,7 @@ export function Review() {
 
   const unknownCount = useCallback(
     (item: Item) =>
-      data ? unknownIn(hanWords(segment(item.text, data.words)), data.known).length : 0,
+      data?.words ? unknownIn(hanWords(data.words.segment(item.text)), data.known).length : 0,
     [data],
   )
 
@@ -123,6 +125,10 @@ export function Review() {
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
 
   if (loading || !data || !counts || !setup) return <p class="muted">Loading…</p>
+  // Only reachable if the study language outlived its pack — `packs.test.ts`
+  // holds the registries together, so this says which language rather than
+  // pretending the screen is still loading.
+  if (!data.words) return <p class="muted">No language pack for {data.lang}.</p>
 
   const change = (patch: Partial<SessionSetup>) => {
     setOverride((current) => ({ ...current, ...patch }))

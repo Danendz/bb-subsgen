@@ -22,7 +22,7 @@ import { fetchAudioBytes } from '../bilibili/audio'
 import { isAudioNeeded, OFFSCREEN_TARGET, type AudioSupply } from '../offscreen/protocol'
 import { sliceAudio } from '../offscreen/audio-transfer'
 import { looksLikeTranscript, type Cue } from '../media/cue'
-import { segment, type Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
 import { findPatterns } from '../lang/zh/grammar/match'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { loadLexicon } from '../shared/dict-client'
@@ -901,7 +901,7 @@ async function main() {
           clearCue(shadowRoot)
           return
         }
-        currentTokens = segment(cues[lastIndex].text, words)
+        currentTokens = words.segment(cues[lastIndex].text)
         renderCue(shadowRoot, cueView(), settings)
       }
 
@@ -1134,7 +1134,7 @@ async function main() {
         cues: cues.map((cue) => ({
           start: cue.start,
           text: cue.text,
-          words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
+          words: cue.text.trim() ? hanWords(words.segment(cue.text)) : [],
         })),
       })
     }

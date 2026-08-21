@@ -7,7 +7,8 @@
 
 import { parseDefinitions } from '../../lang/zh/definitions'
 import { rankEntries } from '../../lang/zh/entries'
-import type { CedictEntry, Lexicon } from '../../lang/zh/lexicon'
+import type { CedictEntry } from '../../lang/zh/lexicon'
+import type { Lexicon } from '../../lang/pack'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 

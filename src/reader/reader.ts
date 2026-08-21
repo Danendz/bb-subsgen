@@ -5,8 +5,7 @@ import {
   characterBreakdown,
   setCardTranslation,
 } from '../content/card'
-import { segment } from '../lang/zh/segment'
-import { EMPTY_LEXICON, type Lexicon } from '../lang/zh/lexicon'
+import type { LanguagePack, Lexicon, Match } from '../lang/pack'
 import { patternsForWord } from '../lang/zh/grammar/match'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { hanWords, selectionTarget, unknownIn } from '../flashcards/capture'
@@ -15,10 +14,8 @@ import { blockAncestor, createBlockCache, indexOf, rangeOf, rootElement } from '
 import { caretAt } from './caret'
 import { createWordHighlight } from './highlight'
 import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
-import { matchAt, type Match } from '../lang/zh/match'
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
-import type { LanguagePack } from '../lang/pack'
 import { sentenceTextAt } from '../lang/zh/sentence'
 import type { SentenceTranslator } from './translator'
 import type { DefsLookup } from '../shared/dict-client'
@@ -241,7 +238,7 @@ export function attachReader({
         breakdown: characterBreakdown(match.text, found, useTraditional),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
-        patterns: wordList ? patternsForWord(segment(sentence, wordList), match.text) : [],
+        patterns: wordList ? patternsForWord(wordList.segment(sentence), match.text) : [],
         known: known().has(match.text),
       },
       {
@@ -277,7 +274,7 @@ export function attachReader({
     const index = indexOf(block, caret.node, caret.offset)
     if (index === null) return null
 
-    const match = matchAt(block.text, index, wordList.words)
+    const match = wordList.matchAt(block.text, index)
     if (!match) return null
 
     const range = rangeOf(block, match.start, match.end)
@@ -483,7 +480,7 @@ export function attachReader({
    * drag 的 and 我们 back in.
    */
   const captureSelection = (selected: string, list: Lexicon) => {
-    const target = selectionTarget(selected, list.words, pack)
+    const target = selectionTarget(selected, list)
     if (!target) return
 
     const context = pageContext(target.text)
@@ -497,19 +494,19 @@ export function attachReader({
         target.text,
         context,
         undefined,
-        unknownIn(hanWords(segment(target.text, list)), known()),
+        unknownIn(hanWords(list.segment(target.text)), known()),
       )
     }
   }
 
-  const buildSelectionCard = (text: string, anchor: Anchor) => {
+  const buildSelectionCard = (text: string, list: Lexicon, anchor: Anchor) => {
     const config = settings()
     const card = document.createElement('div')
     card.className = 'selection-card'
 
     const wordsEl = document.createElement('div')
     wordsEl.className = 'words'
-    segment(text, wordList ?? EMPTY_LEXICON).forEach((token, index) => {
+    list.segment(text).forEach((token, index) => {
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,
@@ -563,7 +560,7 @@ export function attachReader({
       wordList = loaded
       if (token !== pending) return
       closeSelectionCard()
-      const card = buildSelectionCard(text, anchor)
+      const card = buildSelectionCard(text, loaded, anchor)
       fillTranslation(card, text.trim(), token)
       captureSelection(text, loaded)
     })

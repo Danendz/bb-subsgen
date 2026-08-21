@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { findPatterns, patternsForWord } from './match'
 import { PATTERNS } from './patterns'
-import type { Token } from '../segment'
+import type { Token } from '../../pack'
 
 /**
  * Tokens as `segment` would hand them over.

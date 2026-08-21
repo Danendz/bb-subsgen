@@ -1,31 +1,24 @@
 import { describe, expect, test } from 'vitest'
 import { lineTokens } from './tokens'
+import { chinesePack } from '../../lang/zh/pack'
 
 /** Enough of a word list to segment the lines below the way the app would. */
-const WORDS = {
-  words: new Map([
-    ['南昌', 'nan2 chang1'],
-    ['真的', 'zhen1 de5'],
-    ['太', 'tai4'],
-    ['恐怖', 'kong3 bu4'],
-    ['了', 'le5'],
-    ['好', 'hao3'],
-    ['好好', 'hao3 hao3'],
-    ['学习', 'xue2 xi2'],
-  ]),
-  phrases: new Set<string>(),
-}
+const WORDS = chinesePack.load(
+  [
+    '南昌\tnan2 chang1',
+    '真的\tzhen1 de5',
+    '太\ttai4',
+    '恐怖\tkong3 bu4',
+    '了\tle5',
+    '好\thao3',
+    '好好\thao3 hao3',
+    '学习\txue2 xi2',
+  ].join('\n'),
+)
 
 const LINE = '南昌真的太恐怖了。'
 
-const WORDS_WITH_PARTICLE = {
-  words: new Map([
-    ['我', 'wo3'],
-    ['的', 'de5'],
-    ['书', 'shu1'],
-  ]),
-  phrases: new Set<string>(),
-}
+const WORDS_WITH_PARTICLE = chinesePack.load('我\two3\n的\tde5\n书\tshu1')
 
 const texts = (tokens: ReturnType<typeof lineTokens>) => tokens.map((t) => t.text)
 const reading = (tokens: ReturnType<typeof lineTokens>) =>

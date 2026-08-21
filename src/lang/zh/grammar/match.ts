@@ -7,7 +7,7 @@
 // and where the clause ends. That is enough for the patterns worth explaining,
 // and it fails by finding nothing rather than by inventing something.
 
-import type { Token } from '../segment'
+import type { Token } from '../../pack'
 import { functionWord, isNominal, type PartOfSpeech } from './function-words'
 import { PATTERNS, type Pattern } from './patterns'
 

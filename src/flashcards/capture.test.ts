@@ -9,7 +9,7 @@ import {
   shouldCaptureLine,
   unknownIn,
 } from './capture'
-import type { Token } from '../lang/zh/segment'
+import type { Token } from '../lang/pack'
 import { chinesePack } from '../lang/zh/pack'
 
 const token = (text: string, pinyin: string | null = null): Token => ({ text, pinyin })
@@ -59,32 +59,28 @@ describe('isCapturableText', () => {
 })
 
 describe('selectionTarget', () => {
-  const words = new Map([
-    ['选择', 'xuan3 ze2'],
-    ['我', 'wo3'],
-    ['学习', 'xue2 xi2'],
-  ])
+  const words = chinesePack.load('选择\txuan3 ze2\n我\two3\n学习\txue2 xi2')
 
   test('a single dictionary headword is a word', () => {
-    expect(selectionTarget('选择', words, chinesePack)).toEqual({ kind: 'word', text: '选择' })
+    expect(selectionTarget('选择', words)).toEqual({ kind: 'word', text: '选择' })
   })
 
   test('anything the dictionary does not hold is a sentence', () => {
     // The awkward middle: two words in a row is not a headword, so it is a
     // sentence rather than being forced into the word deck by length alone.
-    expect(selectionTarget('我学习', words, chinesePack)).toEqual({
+    expect(selectionTarget('我学习', words)).toEqual({
       kind: 'sentence',
       text: '我学习',
     })
   })
 
   test('trims before deciding, so a sloppy drag still reads as one word', () => {
-    expect(selectionTarget('  学习 \n', words, chinesePack)).toEqual({ kind: 'word', text: '学习' })
+    expect(selectionTarget('  学习 \n', words)).toEqual({ kind: 'word', text: '学习' })
   })
 
   test('rejects a selection with nothing to look up', () => {
-    expect(selectionTarget('hello', words, chinesePack)).toBeNull()
-    expect(selectionTarget('', words, chinesePack)).toBeNull()
+    expect(selectionTarget('hello', words)).toBeNull()
+    expect(selectionTarget('', words)).toBeNull()
   })
 })
 
