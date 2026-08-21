@@ -8,8 +8,16 @@
 // Pure. The lookups happen elsewhere; this only decides what to say about them.
 
 import type { Glossed } from '../chat/types'
-import type { CedictEntry } from '../lang/zh/lexicon'
-import { rankEntries } from '../lang/zh/entries'
+import type { CedictEntry } from '../lang/pack'
+import { packFor } from '../lang/packs'
+
+/**
+ * Pinned to Chinese: the LLM passes are (PRD #6, Out of Scope), so a glossary
+ * built for anything else has nothing downstream that could use it. Reached
+ * through the registry even so, so this reads as one of the sites still to
+ * change rather than as an ordinary import.
+ */
+const zh = packFor('zh')
 
 /** How many senses of a word are worth the tokens. */
 const SENSES = 2
@@ -17,11 +25,11 @@ const SENSES = 2
 /**
  * The best gloss for a word, or null when the dictionary has nothing usable.
  *
- * `rankEntries` is the same ranking the hover card uses, so the sense named
+ * The pack's ranking is the same one the hover card uses, so the sense named
  * here is the sense the learner would have been shown.
  */
 export function glossFor(word: string, entries: CedictEntry[] | undefined): Glossed | null {
-  const [best] = rankEntries(entries ?? [], word)
+  const [best] = zh?.rankEntries(entries ?? [], word) ?? []
   if (!best) return null
 
   const gloss = best.definitions.slice(0, SENSES).join('; ')

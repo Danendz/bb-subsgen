@@ -4,8 +4,7 @@ import { knownSetOf, listItems, listVideos, videoWords } from '../flashcards/que
 import { coverageOf, fraction, type Coverage } from '../flashcards/capture'
 import { lookupDefs } from '../shared/dict-client'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
-import { parseDefinitions } from '../lang/zh/definitions'
-import { rankEntries } from '../lang/zh/entries'
+import { packFor } from '../lang/packs'
 import { Pinyin } from './pinyin'
 import type { VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
@@ -96,6 +95,7 @@ function VideoDetail({ videoId }: { videoId: string }) {
 
   const load = useCallback(async () => {
     const db = await flashcardsDb()
+    const lang = resolveStudyLang(await loadSettings())
     const [items, videos, words] = await Promise.all([
       listItems(db),
       listVideos(db),
@@ -105,6 +105,7 @@ function VideoDetail({ videoId }: { videoId: string }) {
       video: videos.find((v) => v.videoId === videoId) ?? null,
       words: [...words].sort((a, b) => b.count - a.count),
       known: knownSetOf(items),
+      pack: packFor(lang),
     }
   }, [videoId])
   const { data, loading } = useAsync(load)
@@ -145,14 +146,17 @@ function VideoDetail({ videoId }: { videoId: string }) {
       <div class="panel">
         {page.map((word) => {
           const entries = defs?.[word.headword]
-          const [primary] = rankEntries(entries ?? [], word.headword)
+          const [primary] = data.pack?.rankEntries(entries ?? [], word.headword) ?? []
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
               <Pinyin pinyin={primary?.pinyin ?? ''} />
               <span class="grow gloss">
-                {primary
-                  ? parseDefinitions(primary.definitions).definitions.slice(0, 2).join('; ')
+                {primary && data.pack
+                  ? data.pack
+                      .parseDefinitions(primary.definitions)
+                      .definitions.slice(0, 2)
+                      .join('; ')
                   : ''}
               </span>
               <span class="muted small">{word.count}×</span>

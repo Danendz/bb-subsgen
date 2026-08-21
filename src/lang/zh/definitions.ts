@@ -1,15 +1,5 @@
+import type { Classifier, ParsedDefinitions } from '../pack'
 import { toDiacriticPhrase } from './tone'
-
-export interface Classifier {
-  word: string
-  /** CC-CEDICT numeric-tone pinyin, e.g. "ge4" — kept raw so it can be tone-colored on render. */
-  pinyin: string
-}
-
-export interface ParsedDefinitions {
-  definitions: string[]
-  classifiers: Classifier[]
-}
 
 // A single classifier: `个[ge4]`, or `個|个[ge4]` when traditional and
 // simplified differ. Multiple are comma-separated.

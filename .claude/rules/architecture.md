@@ -69,6 +69,27 @@ the other — otherwise the popup and the badge, which only ever ask where a dic
 downloaded from, would transitively import a segmenter. `src/lang/packs.test.ts` asserts their key
 sets agree, which is the part that has to stay true.
 
+**Two levels, as `Site` → `Video` is two levels.** A `LanguagePack` is stateless and says what is
+true of the language. `pack.load(raw)` returns a `Lexicon` whose methods close over the parsed
+download, and which carries its own `pack` back-reference so code holding one never has to be
+handed both. That split is what lets a language keep a private index — a deinflection table, a
+reading map — without widening a record every other language would then carry.
+
+**Nothing outside `src/lang/zh/` imports a module from inside it.** That is the point of the
+directory: an import of `zh/segment` from `reader/` is a Chinese assumption that compiles cleanly
+and is invisible from the file it sits in. The exceptions are the surfaces the PRD pins to Chinese
+on purpose, and each says so where it names the language:
+
+- `src/youtube/language.ts`, `src/llm/glossary.ts` and `src/background/flashcards-store.ts` reach
+  Chinese through `packFor('zh')` rather than by importing the table, so the surviving `'zh'`
+  literals read as an inventory of what is still pinned.
+- `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
+  own.
+- `src/content/card.ts` and `src/app/pinyin.tsx` still import `zh/tone.ts` for tone colouring.
+  That is #8's and #10's work.
+
+Tests may import `zh/pack.ts` directly — a fixture has to name a language.
+
 ## `src/dict/`
 
 The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of

@@ -14,3 +14,18 @@ describe('chinesePack.containsScript', () => {
     expect(chinesePack.containsScript('。！？')).toBe(false)
   })
 })
+
+describe('chinesePack.cardHeadwords', () => {
+  test('asks for the word and each of its characters in one batch', () => {
+    expect(chinesePack.cardHeadwords('学习')).toEqual(['学习', '学', '习'])
+  })
+
+  test('asks only for itself when there is nothing to break down', () => {
+    // The breakdown of 我 is 我 — noise, not information.
+    expect(chinesePack.cardHeadwords('学')).toEqual(['学'])
+  })
+
+  test('ignores non-Han characters when deciding', () => {
+    expect(chinesePack.cardHeadwords('学!')).toEqual(['学!'])
+  })
+})

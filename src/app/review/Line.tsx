@@ -5,10 +5,7 @@
 // gives every word a reading you can turn on and a meaning you can ask for,
 // without ever volunteering the meaning to a question that is asking for it.
 
-import { parseDefinitions } from '../../lang/zh/definitions'
-import { rankEntries } from '../../lang/zh/entries'
-import type { CedictEntry } from '../../lang/zh/lexicon'
-import type { Lexicon } from '../../lang/pack'
+import type { CedictEntry, LanguagePack, Lexicon } from '../../lang/pack'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 
@@ -33,7 +30,13 @@ export function Line({ text, words, known, defs, readings = false, mark, blank }
   return (
     <span class="line-words">
       {tokens.map((token, i) => (
-        <Word key={i} token={token} entries={defs?.[token.text]} reserve={readings} />
+        <Word
+          key={i}
+          token={token}
+          pack={words.pack}
+          entries={defs?.[token.text]}
+          reserve={readings}
+        />
       ))}
     </span>
   )
@@ -49,10 +52,13 @@ export function Line({ text, words, known, defs, readings = false, mark, blank }
  */
 function Word({
   token,
+  pack,
   entries,
   reserve,
 }: {
   token: LineToken
+  /** Taken from the line's own lexicon: what ranks and parses the entry below. */
+  pack: LanguagePack
   entries?: CedictEntry[]
   /** Whether the line keeps a row for readings, so its characters share a baseline. */
   reserve: boolean
@@ -69,9 +75,9 @@ function Word({
 
   if (!token.han) return <span class="line-word punct">{token.text}</span>
 
-  const [primary] = rankEntries(entries ?? [], token.text)
+  const [primary] = pack.rankEntries(entries ?? [], token.text)
   const gloss = primary
-    ? parseDefinitions(primary.definitions).definitions.slice(0, SENSES).join('; ')
+    ? pack.parseDefinitions(primary.definitions).definitions.slice(0, SENSES).join('; ')
     : ''
   // The card's own reading is the fallback: a word the dictionary has no entry
   // for can still have been segmented, and half an answer beats none.

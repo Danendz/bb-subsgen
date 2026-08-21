@@ -23,7 +23,6 @@ import { isAudioNeeded, OFFSCREEN_TARGET, type AudioSupply } from '../offscreen/
 import { sliceAudio } from '../offscreen/audio-transfer'
 import { looksLikeTranscript, type Cue } from '../media/cue'
 import type { Token } from '../lang/pack'
-import { findPatterns } from '../lang/zh/grammar/match'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { loadLexicon } from '../shared/dict-client'
 import { lookupDefs } from '../shared/dict-client'
@@ -778,6 +777,7 @@ async function main() {
 
       const stopHover = attachHover({
         shadowRoot,
+        pack,
         video,
         // Partially applied: the hover card is one language for the life of the
         // page, so it never has to be told which one. See `DefsLookup`.
@@ -911,7 +911,7 @@ async function main() {
        * Derived from the tokens already segmented for rendering, so finding them
        * costs nothing beyond the match itself.
        */
-      const patternsInLine = () => findPatterns(currentTokens).map((match) => match.pattern.id)
+      const patternsInLine = () => pack.findPatterns(currentTokens).map((match) => match.pattern.id)
 
       /**
        * Counts a line as seen, and keeps it if it still has something to teach.

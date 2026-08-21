@@ -16,32 +16,23 @@
 // that are still true. They are read by someone stuck mid-sentence, not by a
 // linguist, so "says how the action goes" beats "post-verbal degree complement".
 
+import type { Pattern } from '../../pack'
 import type { Rule } from './match'
 
-export interface Pattern {
-  /** Stable slug. A grammar card's id derives from this, so it must never move. */
-  id: string
-  /** What the structure is called, in words that mean something to a learner. */
-  name: string
-  /** The shape, written out: `V + 得 + ADJ`. */
-  skeleton: string
-  /** What it does to the meaning. One or two sentences. */
-  explanation: string
-  /** Roughly where this shows up, for intake ordering. */
-  hsk: number
-  /** How to recognise it. See match.ts. */
+/**
+ * What every card renderer shows, plus how this language recognises it.
+ *
+ * `rule` stays here rather than on `Pattern`: it anchors on a character and
+ * reads its neighbours' readings, which is a way of recognising a structure
+ * that no other language would share. `example` doubles as documentation and
+ * as the table's own regression test — every pattern is asserted to match its
+ * example, so the data cannot quietly drift away from the matcher.
+ */
+export interface ChinesePattern extends Pattern {
   rule: Rule
-  /**
-   * A line this pattern matches, as `text/reading` pairs.
-   *
-   * Doubles as documentation and as the table's own regression test — every
-   * pattern is asserted to match its example, so the data cannot quietly drift
-   * away from the matcher.
-   */
-  example: string
 }
 
-export const PATTERNS: readonly Pattern[] = [
+export const PATTERNS: readonly ChinesePattern[] = [
   // ---------------------------------------------------------------- particles
   {
     id: 'de-complement',

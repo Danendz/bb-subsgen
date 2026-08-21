@@ -7,9 +7,9 @@
 // and where the clause ends. That is enough for the patterns worth explaining,
 // and it fails by finding nothing rather than by inventing something.
 
-import type { Token } from '../../pack'
+import type { Pattern, PatternMatch, Token } from '../../pack'
 import { functionWord, isNominal, type PartOfSpeech } from './function-words'
-import { PATTERNS, type Pattern } from './patterns'
+import { PATTERNS } from './patterns'
 
 /** One token's worth of requirement. */
 export type Slot =
@@ -47,14 +47,6 @@ export interface Rule {
   requires?: readonly string[]
   /** Whether the pattern covers the rest of the clause or only its own slots. */
   extent?: 'clause'
-}
-
-export interface PatternMatch {
-  pattern: Pattern
-  /** First token index the pattern covers. */
-  from: number
-  /** Last token index the pattern covers, inclusive. */
-  to: number
 }
 
 /** Particles that close a sentence rather than belonging to the clause. */

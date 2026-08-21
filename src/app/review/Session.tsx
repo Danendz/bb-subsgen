@@ -12,14 +12,10 @@ import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
-import { PATTERNS } from '../../lang/zh/grammar/patterns'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
-import { findPatterns, type PatternMatch } from '../../lang/zh/grammar/match'
-import type { Pattern } from '../../lang/zh/grammar/patterns'
-import { parseDefinitions } from '../../lang/zh/definitions'
+import type { Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
 import { bareId, isYoutubeId } from '../../youtube/site'
-import { rankEntries } from '../../lang/zh/entries'
 import type { Lexicon } from '../../lang/pack'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
@@ -226,7 +222,8 @@ export function Session({
     // its context, not in `text`, so there is nothing here to match against.
     // Spans are dropped here: the reveal names the structures, it does not
     // underline them, so one entry per distinct pattern is what it wants.
-    const patterns = current.kind === 'sentence' ? distinctPatterns(findPatterns(tokens)) : []
+    const patterns =
+      current.kind === 'sentence' ? distinctPatterns(words.pack.findPatterns(tokens)) : []
 
     return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
   }, [current?.id, current?.reps, words, known, distractorPool, mode])
@@ -242,9 +239,9 @@ export function Session({
   }, [current?.id, checked, card?.exercise.response])
 
   const entries = defs?.[current?.text ?? '']
-  const [primary] = rankEntries(entries ?? [], current?.text ?? '')
+  const [primary] = words.pack.rankEntries(entries ?? [], current?.text ?? '')
   const gloss = primary
-    ? parseDefinitions(primary.definitions).definitions.slice(0, 3).join('; ')
+    ? words.pack.parseDefinitions(primary.definitions).definitions.slice(0, 3).join('; ')
     : ''
 
   const answered =
@@ -457,7 +454,7 @@ export function Session({
   const { exercise, context, translation, target, bank, patterns, exampleText } = card
   // The card's own pattern, as opposed to `patterns`, which is everything the
   // example line happens to contain.
-  const ownPattern = PATTERNS.find((p) => p.id === current.patternId)
+  const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
   const spokenText = current.kind === 'grammar' ? exampleText : current.text
   const pinyin = primary?.pinyin ?? ''
 

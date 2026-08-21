@@ -1,12 +1,10 @@
 import {
   buildCard,
   buildWordElement,
-  cardHeadwords,
   characterBreakdown,
   setCardTranslation,
 } from '../content/card'
 import type { LanguagePack, Lexicon, Match } from '../lang/pack'
-import { patternsForWord } from '../lang/zh/grammar/match'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
@@ -16,7 +14,6 @@ import { createWordHighlight } from './highlight'
 import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
-import { sentenceTextAt } from '../lang/zh/sentence'
 import type { SentenceTranslator } from './translator'
 import type { DefsLookup } from '../shared/dict-client'
 import type { ReaderMount } from './mount'
@@ -217,7 +214,7 @@ export function attachReader({
     const { useTraditional, showToneColors } = settings()
 
     // One round trip for the word and every one of its characters.
-    const found = await lookup(cardHeadwords(match.text))
+    const found = await lookup(pack.cardHeadwords(match.text))
     if (token !== pending) return // a later hover superseded this one
 
     removeCard()
@@ -235,13 +232,14 @@ export function attachReader({
         headword: match.text,
         displayedPinyin: match.pinyin,
         entries: found[match.text] ?? [],
-        breakdown: characterBreakdown(match.text, found, useTraditional),
+        breakdown: characterBreakdown(match.text, found, pack, useTraditional),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
-        patterns: wordList ? patternsForWord(wordList.segment(sentence), match.text) : [],
+        patterns: wordList ? pack.patternsForWord(wordList.segment(sentence), match.text) : [],
         known: known().has(match.text),
       },
       {
+        pack,
         useTraditional,
         toneColors: showToneColors,
         onMarkKnown: (next) => markKnown(match.text, next),
@@ -280,7 +278,7 @@ export function attachReader({
     const range = rangeOf(block, match.start, match.end)
     if (!range) return null
 
-    return { match, range, sentence: sentenceTextAt(block.text, index) }
+    return { match, range, sentence: pack.sentenceTextAt(block.text, index) }
   }
 
   const onPointerMove = (e: PointerEvent) => {
