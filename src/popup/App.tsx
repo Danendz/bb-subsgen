@@ -48,6 +48,7 @@ const STATUS_LABEL: Record<TabStatus, string> = {
   'no-track': 'No subtitle track on this video.',
   active: 'Active on this video.',
   'no-video': 'Open a Bilibili or YouTube video for subtitles.',
+  'no-dictionary': 'No dictionary installed for this language.',
 }
 
 async function currentTab(): Promise<chrome.tabs.Tab | undefined> {

@@ -18,7 +18,8 @@ import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
 import { hanWords } from '../../flashcards/capture'
 import { KNOWN_SET_KEY } from '../../flashcards/known'
-import { loadWords } from '../../lang/dict'
+import { EMPTY_LEXICON, parseWords } from '../../lang/dict'
+import { dictDb, getLexiconIn } from '../../dict/store'
 import { segment } from '../../lang/segment'
 import { lineWindow } from '../../llm/context'
 import { splitByKnown } from '../../llm/glossary'
@@ -36,6 +37,16 @@ import { loadSettings } from '../../shared/settings'
  * unreachable once should be tried again on the next card.
  */
 const tracks = new Map<string, Promise<Cue[]>>()
+
+/**
+ * Extension-origin caller, so it reads the store directly rather than asking
+ * the worker — see src/dict/store.ts. No dictionary installed resolves to the
+ * empty lexicon: an explanation with nothing to gloss is not a reason to fail.
+ */
+async function loadWords() {
+  const text = await getLexiconIn(await dictDb(), 'zh')
+  return text === null ? EMPTY_LEXICON : parseWords(text)
+}
 
 export function trackFor(videoId: string): Promise<Cue[]> {
   const existing = tracks.get(videoId)

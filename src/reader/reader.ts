@@ -37,8 +37,11 @@ export interface ReaderDeps {
   pageMode: PageMode
   lookup: DefsLookup
   translator: SentenceTranslator
-  /** Lazily resolved: the 4.5MB word list is only fetched once you actually look something up. */
-  words: () => Promise<Lexicon>
+  /**
+   * Lazily resolved: the 4.5MB word list is only asked for once you actually
+   * look something up. Null means no dictionary is installed for the language.
+   */
+  words: () => Promise<Lexicon | null>
   /** Read live, so settings changes take effect without a reload. */
   settings: () => Settings
   /** Words the reader should stop annotating, mirrored from the worker. */
@@ -73,6 +76,8 @@ export function attachReader({
   let pending = 0
   let frame = 0
   let wordList: Lexicon | null = null
+  /** Set once `words()` has resolved null — no dictionary installed for this language. */
+  let dictionaryMissing = false
 
   const modifierHeld = (e: MouseEvent | KeyboardEvent): boolean =>
     e[MODIFIER_PROPERTY[settings().readerModifier]]
@@ -140,6 +145,21 @@ export function attachReader({
     )
     card.style.left = `${left}px`
     card.style.top = `${top}px`
+  }
+
+  /**
+   * Shown in place of a word card when the language has no dictionary
+   * installed — the one place silence would read as a bug, since the modifier
+   * is you asking a question and getting nothing back.
+   */
+  const showDictionaryNotice = (anchor: Anchor) => {
+    if (open) return
+    const card = document.createElement('div')
+    card.className = 'dict-notice'
+    card.textContent = 'No dictionary installed — set one up from the extension popup.'
+    shadowRoot.appendChild(card)
+    open = { element: card, identity: { text: '', start: -1, source: 'page' }, anchor }
+    place(card, anchor)
   }
 
   /** Fills the card's translation line in, if it's still the card on screen. */
@@ -275,6 +295,10 @@ export function attachReader({
     const { clientX, clientY } = e
     frame = requestAnimationFrame(() => {
       frame = 0
+      if (dictionaryMissing) {
+        showDictionaryNotice({ left: clientX, top: clientY, right: clientX, bottom: clientY })
+        return
+      }
       const found = wordUnder(clientX, clientY)
       // 'keep' covers both "same word" and "no word here" — see lifecycle.ts.
       // The `!found` half is what makes pointing at a button a non-event.
@@ -304,7 +328,12 @@ export function attachReader({
     pageMode.activate()
     // Deferred until now, so a page you never look anything up on never pays
     // for the word list at all.
-    if (!wordList) void words().then((loaded) => (wordList = loaded))
+    if (!wordList && !dictionaryMissing) {
+      void words().then((loaded) => {
+        if (loaded) wordList = loaded
+        else dictionaryMissing = true
+      })
+    }
   }
 
   /** Hands the page back: its own cursors, links, and drag behaviour. */
@@ -521,6 +550,12 @@ export function attachReader({
     // other place it can first be required.
     const ready = wordList ? Promise.resolve(wordList) : words()
     void ready.then((loaded) => {
+      if (!loaded) {
+        dictionaryMissing = true
+        if (token !== pending) return
+        showDictionaryNotice(anchor)
+        return
+      }
       wordList = loaded
       if (token !== pending) return
       closeSelectionCard()

@@ -9,8 +9,8 @@ import { attachReader } from './reader'
 import { mountReader, type ReaderMount } from './mount'
 import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
-import { loadWords, dropLegacyPageDefsDb, type Lexicon } from '../lang/dict'
-import { lookupDefs } from '../shared/dict-client'
+import { dropLegacyPageDefsDb, type Lexicon } from '../lang/dict'
+import { loadLexicon, lookupDefs } from '../shared/dict-client'
 import { loadSettings, onSettingsChanged } from '../shared/settings'
 import { readerEnabledFor } from '../shared/reader-sites'
 import { watchKnownSet } from '../shared/flashcards-client'
@@ -35,10 +35,10 @@ async function main(): Promise<void> {
   let translator: SentenceTranslator | null = null
   let detach: (() => void) | null = null
 
-  // Lazy and memoized: 4.5MB is only fetched the first time you actually hold
+  // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
   // the modifier down, and never on a page you just read past.
-  let words: Promise<Lexicon> | null = null
-  const getWords = () => (words ??= loadWords())
+  let words: Promise<Lexicon | null> | null = null
+  const getWords = () => (words ??= loadLexicon('zh'))
 
   // Subscribed once for the page's lifetime rather than per attach: the set
   // changes rarely, and re-reading it every time the reader is toggled on for

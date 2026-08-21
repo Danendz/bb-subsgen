@@ -4,25 +4,32 @@
 // it is pure so the ordering can be argued with in tests rather than by typing
 // into the box and squinting.
 
-import { loadWords, type Lexicon } from './dict'
+import { parseWords, EMPTY_LEXICON, type Lexicon } from './dict'
+import { dictDb, getLexiconIn } from '../dict/store'
 import { isHan } from './segment'
 
 /**
- * The dictionary, fetched at most once per page.
+ * The dictionary, read at most once per page.
  *
- * `words.bin` is 4.5MB and parses to nearly 200,000 entries, so this is called
- * only when a query could actually match one — see `hasHan`. Anyone who never
- * searches for a new word never pays for it.
+ * Nearly 200,000 entries, so this is called only when a query could actually
+ * match one — see `hasHan`. Anyone who never searches for a new word never
+ * pays for it. This is an extension-origin caller (the flashcards app), so it
+ * reads the store directly rather than asking the worker for it — see
+ * src/dict/store.ts.
  *
  * A failed load is not cached: the memo is cleared so the next keystroke tries
- * again, rather than one transient fetch error disabling search for the life of
- * the page.
+ * again, rather than one transient error disabling search for the life of the
+ * page. No dictionary installed resolves to the empty lexicon rather than
+ * rejecting — a search page with nothing to search is not a failure.
  */
 let dictionary: Promise<Lexicon> | null = null
 
 export function loadDictionary(): Promise<Lexicon> {
   if (!dictionary) {
-    dictionary = loadWords().catch((e: unknown) => {
+    dictionary = (async () => {
+      const text = await getLexiconIn(await dictDb(), 'zh')
+      return text === null ? EMPTY_LEXICON : parseWords(text)
+    })().catch((e: unknown) => {
       dictionary = null
       throw e
     })

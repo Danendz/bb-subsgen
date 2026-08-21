@@ -1,13 +1,19 @@
-import { loadSettings, saveSettings, nextFontSize } from './shared/settings'
+import { loadSettings, onSettingsChanged, saveSettings, nextFontSize } from './shared/settings'
 import {
   isAsrMessage,
+  isDictChangedMessage,
+  isDictStatusMessage,
   isFlashcardsMessage,
+  isGetLexiconMessage,
   isGetPassStatusMessage,
   isGetTranscriptStatusMessage,
   isLlmMessage,
   isLookupDefsMessage,
   type AsrMessage,
+  type DictStatus,
+  type DictStatusResponse,
   type FlashcardsMessage,
+  type GetLexiconResponse,
   type LlmMessage,
   type LookupDefsResponse,
   type PassStatusResponse,
@@ -31,7 +37,8 @@ import {
   setChatBusy,
   startPass,
 } from './background/llm-translate'
-import { lookupDefs } from './dict/store'
+import { dictDb, getAllMeta, getLexiconIn, lookupDefs } from './dict/store'
+import { refreshBadge } from './background/badge'
 import {
   captureSentence,
   discoverWord,
@@ -51,6 +58,21 @@ chrome.commands.onCommand.addListener(async (command) => {
     await saveSettings({ quizMode: !settings.quizMode })
   }
 })
+
+/** What the popup and the setup wizard ask for: per enabled language, whether it's installed. */
+async function getDictStatus(): Promise<DictStatus[]> {
+  const [settings, db] = await Promise.all([loadSettings(), dictDb()])
+  const meta = await getAllMeta(db)
+  return settings.enabledLanguages.map((lang) => {
+    const installed = meta[lang]
+    return {
+      lang,
+      installed: installed !== undefined,
+      entryCount: installed?.entryCount ?? 0,
+      installedAt: installed?.installedAt ?? null,
+    }
+  })
+}
 
 function handleFlashcards(msg: FlashcardsMessage): Promise<void> {
   switch (msg.type) {
@@ -166,6 +188,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true
   }
 
+  if (isGetLexiconMessage(msg)) {
+    dictDb()
+      .then((db) => getLexiconIn(db, msg.lang))
+      .then(
+        (text) => sendResponse({ text } satisfies GetLexiconResponse),
+        (e) => {
+          console.warn('[bb-subsgen] lexicon fetch failed in worker', e)
+          sendResponse({ text: null } satisfies GetLexiconResponse)
+        },
+      )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
+  if (isDictStatusMessage(msg)) {
+    getDictStatus().then(
+      (languages) => sendResponse({ languages } satisfies DictStatusResponse),
+      (e) => {
+        console.warn('[bb-subsgen] dict status failed', e)
+        sendResponse({ languages: [] } satisfies DictStatusResponse)
+      },
+    )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
+  if (isDictChangedMessage(msg)) {
+    void refreshBadge()
+    return
+  }
+
   if (isFlashcardsMessage(msg)) {
     // Nothing awaits these — a failed capture must never surface in the page.
     handleFlashcards(msg).catch((e) => console.warn('[bb-subsgen] flashcards write failed', e))
@@ -218,3 +271,10 @@ chrome.runtime.onConnect.addListener((port) => {
 // without making every read pay for a database round trip.
 chrome.runtime.onStartup.addListener(() => void refreshKnownMirror())
 chrome.runtime.onInstalled.addListener(() => void refreshKnownMirror())
+
+// The badge reflects settings and installed dictionaries, neither of which the
+// worker is told about except by these three routes: a fresh start, a settings
+// write, and the wizard reporting an install or a delete.
+chrome.runtime.onStartup.addListener(() => void refreshBadge())
+chrome.runtime.onInstalled.addListener(() => void refreshBadge())
+onSettingsChanged(() => void refreshBadge())

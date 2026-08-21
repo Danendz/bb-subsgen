@@ -27,6 +27,15 @@ describe('translation defaults', () => {
   })
 })
 
+describe('enabledLanguages default', () => {
+  test('starts empty, even for an upgraded profile', () => {
+    // The packaged dictionary is gone (#20): an install that upgraded from a
+    // version that shipped one has nothing installed either, so it belongs in
+    // the setup wizard exactly like a fresh profile.
+    expect(DEFAULT_SETTINGS.enabledLanguages).toEqual([])
+  })
+})
+
 describe('control-bar avoidance defaults', () => {
   test('lifting above the player controls is on by default', () => {
     // At the default height the card sits directly under Bilibili's timeline,

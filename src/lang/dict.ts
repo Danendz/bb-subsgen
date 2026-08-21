@@ -28,18 +28,13 @@ export function parseWords(raw: string): Lexicon {
   return { words, phrases }
 }
 
-export async function loadWords(): Promise<Lexicon> {
-  const url = chrome.runtime.getURL('dict/words.bin')
-  const raw = await fetch(url).then((r) => r.text())
-  return parseWords(raw)
-}
-
-export interface CedictEntry {
-  simplified: string
-  traditional: string
-  pinyin: string
-  definitions: string[]
-}
+/**
+ * Re-exported from where it's now defined and parsed — see src/dict/cedict.ts.
+ * Kept under this name too because nearly every card renderer already imports
+ * it from here, and there is no reason to make them all point at `dict/` for a
+ * type alone.
+ */
+export type { CedictEntry } from '../dict/cedict'
 
 /**
  * Removes the definition store earlier versions wrote into the *page's* origin.

@@ -34,6 +34,17 @@ export const READER_MODIFIERS: ReadonlyArray<{ code: ReaderModifier; label: stri
 
 export interface Settings {
   enabled: boolean
+  /**
+   * Languages the setup wizard has been told you study, e.g. `['zh']`.
+   *
+   * Empty by default even for an existing profile: the packaged dictionary is
+   * gone (see #20), so an install that upgraded from a version that shipped one
+   * has nothing installed either, and belongs in the wizard exactly like a
+   * fresh profile does. The badge and the popup read this list against
+   * src/dict/store.ts's per-language `meta` to decide whether anything is
+   * actually ready to use.
+   */
+  enabledLanguages: string[]
   showPinyin: boolean
   showToneColors: boolean
   fontSize: number // px, hanzi row
@@ -180,6 +191,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
+  // Empty: nothing is installed until the wizard says so. See the doc comment
+  // on the field above.
+  enabledLanguages: [],
   showPinyin: true,
   showToneColors: true,
   fontSize: 32,

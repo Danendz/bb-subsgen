@@ -12,13 +12,25 @@ import { buildSession, queueCounts, type QueueSession } from '../flashcards/queu
 import { hanWords, unknownIn } from '../flashcards/capture'
 import { rankMap } from '../background/flashcards-store'
 import { segment } from '../lang/segment'
-import { loadWords } from '../lang/dict'
+import { EMPTY_LEXICON, parseWords } from '../lang/dict'
+import { dictDb, getLexiconIn } from '../dict/store'
 import { loadSettings, saveSettings } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
 import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
+
+/**
+ * Extension-origin caller, so it reads the store directly rather than asking
+ * the worker for it — see src/dict/store.ts. No dictionary installed resolves
+ * to the empty lexicon: a deck with nothing to segment against is not a
+ * reason to fail the whole screen.
+ */
+async function loadWords() {
+  const text = await getLexiconIn(await dictDb(), 'zh')
+  return text === null ? EMPTY_LEXICON : parseWords(text)
+}
 
 export function Review() {
   const load = useCallback(async () => {

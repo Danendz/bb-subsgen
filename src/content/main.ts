@@ -24,7 +24,8 @@ import { sliceAudio } from '../offscreen/audio-transfer'
 import { looksLikeTranscript, type Cue } from '../media/cue'
 import { segment, type Token } from '../lang/segment'
 import { findPatterns } from '../lang/grammar/match'
-import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
+import { dropLegacyPageDefsDb } from '../lang/dict'
+import { loadLexicon } from '../shared/dict-client'
 import { lookupDefs } from '../shared/dict-client'
 import {
   captureSentence,
@@ -207,19 +208,20 @@ async function main() {
   }
 
   /**
-   * The dictionary, fetched the first time a video actually needs it.
+   * The dictionary, asked for the first time a video actually needs it.
    *
    * Deferred rather than loaded up front because this content script now runs on
    * every page of a site, not only on the video pages: YouTube navigates from its
    * homepage into `/watch` without a document load, and Chrome does not re-inject
-   * a content script for that — so the script has to already be there. Loading
-   * 4.5MB of lexicon on a page that turns out to be a search results list would
-   * be the price of that, and it is avoidable.
+   * a content script for that — so the script has to already be there. Asking the
+   * worker for 4.5MB of lexicon on a page that turns out to be a search results
+   * list would be the price of that, and it is avoidable.
    *
-   * Memoised on the promise so two videos in quick succession share one fetch.
+   * Memoised on the promise so two videos in quick succession share one request.
+   * Null means no dictionary is installed for `zh`.
    */
-  let lexicon: Promise<Awaited<ReturnType<typeof loadWords>>> | null = null
-  const loadLexicon = () => (lexicon ??= loadWords())
+  let lexicon: Promise<Awaited<ReturnType<typeof loadLexicon>>> | null = null
+  const getLexicon = () => (lexicon ??= loadLexicon('zh'))
 
   const initialSettings = await loadSettings()
   let settings = initialSettings
@@ -469,7 +471,12 @@ async function main() {
     const resolved = loaded.video
     const { videoId, duration } = resolved
     // Only now, once there is a video that will actually use it.
-    const words = await loadLexicon()
+    const words = await getLexicon()
+    if (!words) {
+      status = 'no-dictionary'
+      console.log('[bb-subsgen] no dictionary installed for zh')
+      return
+    }
     const videoInfo = { title: resolved.title, description: resolved.description }
 
     /**
