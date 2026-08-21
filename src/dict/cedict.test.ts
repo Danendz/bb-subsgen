@@ -22,6 +22,24 @@ describe('parseCedictLine', () => {
   test('normalizes u: to ü, the CC-CEDICT escape for characters outside plain ASCII', () => {
     expect(parseCedictLine('女 女 [nu:3] /woman/female/')?.pinyin).toBe('nü3')
   })
+
+  test('reads a line that still has its CR — the download is split on LF alone', () => {
+    // MDBG ships CRLF: 124,911 lines and 124,911 CR bytes, with no terminator
+    // on the last one. install.ts splits the stream on '\n', so every line but
+    // that last arrives with a trailing '\r', and the anchored LINE_RE rejected
+    // all of them — an install that reported success with an entryCount of 1
+    // and left the overlay with no pinyin and no glosses.
+    expect(parseCedictLine('喜歡 喜欢 [xi3 huan5] /to like/to be fond of/\r')).toEqual({
+      traditional: '喜歡',
+      simplified: '喜欢',
+      pinyin: 'xi3 huan5',
+      definitions: ['to like', 'to be fond of'],
+    })
+  })
+
+  test('skips the blank line a CRLF split leaves behind', () => {
+    expect(parseCedictLine('\r')).toBeNull()
+  })
 })
 
 describe('groupByHeadword', () => {

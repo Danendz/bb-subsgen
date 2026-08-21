@@ -24,8 +24,20 @@ function normalizePinyin(raw: string): string {
   return raw.replaceAll('u:', 'ü').replaceAll('U:', 'Ü')
 }
 
-/** Parses one CC-CEDICT line. Null for a comment or a line that doesn't match. */
-export function parseCedictLine(line: string): CedictEntry | null {
+/**
+ * Parses one CC-CEDICT line. Null for a comment or a line that doesn't match.
+ *
+ * The CR is dropped here rather than by the caller because CRLF is what
+ * CC-CEDICT is published as — 124,911 lines and 124,911 CR bytes, with no
+ * terminator on the last one. install.ts splits the download on '\n' as it
+ * streams, so every line but that last arrives with its CR still attached, and
+ * `LINE_RE` is anchored: `$` will not match ahead of one. Leaving it on
+ * rejected all 124,910 of them and let only the unterminated final line
+ * through, which is an install that reports success with an `entryCount` of 1
+ * and an overlay with no pinyin and no glosses.
+ */
+export function parseCedictLine(raw: string): CedictEntry | null {
+  const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
   if (!line || line.startsWith('#')) return null
   const match = LINE_RE.exec(line)
   if (!match) return null
