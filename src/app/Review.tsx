@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from 'preact/hooks'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards/queries'
 import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
-import { hanWords, unknownIn } from '../flashcards/capture'
+import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankMap } from '../background/flashcards-store'
 import { packFor } from '../lang/packs'
 import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
@@ -78,7 +78,7 @@ export function Review() {
 
   const unknownCount = useCallback(
     (item: Item) =>
-      data?.words ? unknownIn(hanWords(data.words.segment(item.text)), data.known).length : 0,
+      data?.words ? unknownIn(vocabularyIn(data.words.segment(item.text)), data.known).length : 0,
     [data],
   )
 

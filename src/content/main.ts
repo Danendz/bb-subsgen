@@ -33,7 +33,7 @@ import {
   recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
-import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
+import { vocabularyIn, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
 import { packFor } from '../lang/packs'
 import type { Context } from '../flashcards/types'
 import {
@@ -932,7 +932,7 @@ async function main() {
         captured = false
         if (lastIndex < 0) return
 
-        const seen = hanWords(currentTokens)
+        const seen = vocabularyIn(currentTokens)
         buffer.line(seen)
 
         const { text } = cues[lastIndex]
@@ -1134,7 +1134,7 @@ async function main() {
         cues: cues.map((cue) => ({
           start: cue.start,
           text: cue.text,
-          words: cue.text.trim() ? hanWords(words.segment(cue.text)) : [],
+          words: cue.text.trim() ? vocabularyIn(words.segment(cue.text)) : [],
         })),
       })
     }

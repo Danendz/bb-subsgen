@@ -3,7 +3,7 @@ import {
   coverageOf,
   fraction,
   graduationOrder,
-  hanWords,
+  vocabularyIn,
   isCapturableText,
   selectionTarget,
   shouldCaptureLine,
@@ -12,16 +12,35 @@ import {
 import type { Token } from '../lang/pack'
 import { chinesePack } from '../lang/zh/pack'
 
-const token = (text: string, pinyin: string | null = null): Token => ({ text, pinyin })
+const token = (text: string, kind: Token['kind'] = 'content'): Token => ({
+  text,
+  pinyin: null,
+  kind,
+})
 
-describe('hanWords', () => {
-  test('keeps only the Chinese tokens', () => {
-    const tokens = [token('我'), token('喜欢'), token('，'), token('OK'), token('学习')]
-    expect(hanWords(tokens)).toEqual(['我', '喜欢', '学习'])
+describe('vocabularyIn', () => {
+  test('keeps only what the segmenter cut as a word', () => {
+    // The point of reading `kind` rather than testing the characters: whether a
+    // token is vocabulary was decided while the line was cut, and 'OK' inside a
+    // Chinese subtitle is a pass-through even though it is not punctuation.
+    const tokens = [
+      token('我'),
+      token('喜欢'),
+      token('，', 'other'),
+      token('OK', 'other'),
+      token('学习'),
+    ]
+    expect(vocabularyIn(tokens)).toEqual(['我', '喜欢', '学习'])
   })
 
   test('drops punctuation, spaces and empty tokens', () => {
-    expect(hanWords([token('。'), token(' '), token(''), token('!')])).toEqual([])
+    const inert = [
+      token('。', 'other'),
+      token(' ', 'other'),
+      token('', 'other'),
+      token('!', 'other'),
+    ]
+    expect(vocabularyIn(inert)).toEqual([])
   })
 })
 

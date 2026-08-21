@@ -16,7 +16,7 @@ import { fetchSubtitles } from '../../bilibili/subtitles'
 import type { Cue } from '../../media/cue'
 import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
-import { hanWords } from '../../flashcards/capture'
+import { vocabularyIn } from '../../flashcards/capture'
 import { KNOWN_SET_KEY } from '../../flashcards/known'
 import { packFor } from '../../lang/packs'
 import { dictDb, getLexiconIn } from '../../dict/store'
@@ -140,7 +140,7 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   try {
     const lang = resolveStudyLang(await loadSettings())
     const [lexicon, known] = await Promise.all([loadWords(lang), knownSet()])
-    const words = lexicon ? hanWords(lexicon.segment(req.line)) : []
+    const words = lexicon ? vocabularyIn(lexicon.segment(req.line)) : []
     const defs = await lookupDefs(lang, words)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)
 

@@ -18,10 +18,10 @@ describe('segment', () => {
     const tokens = segment('我喜欢学中文', words)
 
     expect(tokens).toEqual([
-      { text: '我', pinyin: 'wo3' },
-      { text: '喜欢', pinyin: 'xi3 huan5' },
-      { text: '学', pinyin: 'xue2' },
-      { text: '中文', pinyin: 'zhong1 wen2' },
+      { text: '我', pinyin: 'wo3', kind: 'function' },
+      { text: '喜欢', pinyin: 'xi3 huan5', kind: 'content' },
+      { text: '学', pinyin: 'xue2', kind: 'content' },
+      { text: '中文', pinyin: 'zhong1 wen2', kind: 'content' },
     ])
   })
 
@@ -34,8 +34,12 @@ describe('segment', () => {
       为: 'wei4',
     })
 
-    expect(segment('银行', words)).toEqual([{ text: '银行', pinyin: 'yin2 hang2' }])
-    expect(segment('行为', words)).toEqual([{ text: '行为', pinyin: 'xing2 wei2' }])
+    expect(segment('银行', words)).toEqual([
+      { text: '银行', pinyin: 'yin2 hang2', kind: 'content' },
+    ])
+    expect(segment('行为', words)).toEqual([
+      { text: '行为', pinyin: 'xing2 wei2', kind: 'content' },
+    ])
   })
 
   test('passes non-hanzi tokens through as inert (pinyin: null)', () => {
@@ -45,9 +49,14 @@ describe('segment', () => {
 
     expect(tokens.map((t) => t.text).join('')).toBe('BV1234 你好!')
     const hanziToken = tokens.find((t) => t.text === '你好')
-    expect(hanziToken).toEqual({ text: '你好', pinyin: 'ni3 hao3' })
+    expect(hanziToken).toEqual({ text: '你好', pinyin: 'ni3 hao3', kind: 'content' })
     for (const t of tokens) {
-      if (t.text !== '你好') expect(t.pinyin).toBeNull()
+      if (t.text === '你好') continue
+      expect(t.pinyin).toBeNull()
+      // The half nothing downstream would notice being wrong: a Latin run or a
+      // space emitted as 'content' dims nothing and breaks no test, but tells
+      // every renderer on a mixed line that there is a word here to define.
+      expect(t.kind).toBe('other')
     }
   })
 
@@ -57,8 +66,8 @@ describe('segment', () => {
     const tokens = segment('我们', words)
 
     expect(tokens).toEqual([
-      { text: '我', pinyin: 'wo3' },
-      { text: '们', pinyin: null },
+      { text: '我', pinyin: 'wo3', kind: 'function' },
+      { text: '们', pinyin: null, kind: 'content' },
     ])
   })
 
@@ -75,8 +84,8 @@ describe('segment', () => {
     })
 
     expect(segment('那时间', words)).toEqual([
-      { text: '那', pinyin: 'na4' },
-      { text: '时间', pinyin: 'shi2 jian1' },
+      { text: '那', pinyin: 'na4', kind: 'function' },
+      { text: '时间', pinyin: 'shi2 jian1', kind: 'content' },
     ])
   })
 
@@ -98,9 +107,9 @@ describe('segment', () => {
     // it, so the reading rules correct it to the structural particle on the way
     // out. That is the whole point of splitting the span.
     expect(segment('过得很快', words)).toEqual([
-      { text: '过', pinyin: 'guo4' },
-      { text: '得', pinyin: 'de5' },
-      { text: '很快', pinyin: 'hen3 kuai4' },
+      { text: '过', pinyin: 'guo4', kind: 'function' },
+      { text: '得', pinyin: 'de5', kind: 'function' },
+      { text: '很快', pinyin: 'hen3 kuai4', kind: 'content' },
     ])
   })
 
@@ -149,9 +158,9 @@ describe('segment', () => {
     const words = dict({ 我: 'wo3', 得: 'de5', 走: 'zou3' })
 
     expect(segment('我得走', words)).toEqual([
-      { text: '我', pinyin: 'wo3' },
-      { text: '得', pinyin: 'dei3' },
-      { text: '走', pinyin: 'zou3' },
+      { text: '我', pinyin: 'wo3', kind: 'function' },
+      { text: '得', pinyin: 'dei3', kind: 'function' },
+      { text: '走', pinyin: 'zou3', kind: 'content' },
     ])
   })
 

@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import { applyReadingRules } from './reading'
 import type { Token } from '../pack'
+import { isFunctionWord } from './grammar/function-words'
 
 function tokens(...pairs: [string, string | null][]): Token[] {
-  return pairs.map(([text, pinyin]) => ({ text, pinyin }))
+  return pairs.map(([text, pinyin]) => ({
+    text,
+    pinyin,
+    kind: pinyin === null ? 'other' : isFunctionWord(text) ? 'function' : 'content',
+  }))
 }
 
 const readings = (result: Token[]) => result.map((t) => t.pinyin)

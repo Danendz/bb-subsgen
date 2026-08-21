@@ -97,7 +97,13 @@ function cheapestParse(run: string, index: WordIndex): Token[] {
   const tokens: Token[] = []
   for (let end = run.length; end > 0; end -= take[end]) {
     const text = run.slice(end - take[end], end)
-    tokens.push({ text, pinyin: words.get(text) ?? null })
+    // The same test `costOf` already ran to price the cut, kept rather than
+    // re-run downstream: what a word is doing is the segmenter's answer.
+    tokens.push({
+      text,
+      pinyin: words.get(text) ?? null,
+      kind: isFunctionWord(text) ? 'function' : 'content',
+    })
   }
   return tokens.reverse()
 }
@@ -120,7 +126,7 @@ export function segment(text: string, index: WordIndex): Token[] {
       hanziRun += piece
     } else {
       flushHanziRun()
-      tokens.push({ text: piece, pinyin: null })
+      tokens.push({ text: piece, pinyin: null, kind: 'other' })
     }
   }
   flushHanziRun()

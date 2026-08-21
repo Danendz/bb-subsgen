@@ -180,17 +180,17 @@ describe('dimming function words', () => {
   const style = { showPinyin: true, showToneColors: true }
 
   test('marks a structural particle so it can be told from vocabulary', () => {
-    const el = buildWordElement({ text: '得', pinyin: 'de5' }, style)
+    const el = buildWordElement({ text: '得', pinyin: 'de5', kind: 'function' }, style)
     expect(el.classList.contains('function')).toBe(true)
   })
 
   test('leaves ordinary vocabulary unmarked', () => {
-    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1' }, style)
+    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1', kind: 'content' }, style)
     expect(el.classList.contains('function')).toBe(false)
   })
 
   test('does not mark punctuation, which is not a word at all', () => {
-    const el = buildWordElement({ text: '。', pinyin: null }, style)
+    const el = buildWordElement({ text: '。', pinyin: null, kind: 'other' }, style)
     expect(el.classList.contains('function')).toBe(false)
   })
 })

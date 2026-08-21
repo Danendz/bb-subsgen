@@ -5,7 +5,6 @@
 import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/zh/tone'
 import { parseDefinitions } from '../lang/zh/definitions'
 import { rankEntries } from '../lang/zh/entries'
-import { isFunctionWord } from '../lang/zh/grammar/function-words'
 import type { Pattern } from '../lang/zh/grammar/patterns'
 import type { Token } from '../lang/pack'
 import { isHan } from '../lang/zh/segment'
@@ -423,7 +422,7 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   word.className = 'word'
   // Structure reads dimmer than vocabulary. Costs no height, which is the whole
   // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
-  if (isFunctionWord(token.text)) word.classList.add('function')
+  if (token.kind === 'function') word.classList.add('function')
   word.dataset.text = token.text
   // Lets the hover card show pinyin even when CC-CEDICT has no entry.
   if (token.pinyin) word.dataset.pinyin = token.pinyin

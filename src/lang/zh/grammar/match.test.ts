@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { findPatterns, patternsForWord } from './match'
 import { PATTERNS } from './patterns'
 import type { Token } from '../../pack'
+import { isFunctionWord } from './function-words'
 
 /**
  * Tokens as `segment` would hand them over.
@@ -13,7 +14,10 @@ import type { Token } from '../../pack'
 function toks(spec: string): Token[] {
   return spec.split(' ').map((piece) => {
     const [text, pinyin] = piece.split('/')
-    return { text, pinyin: pinyin ?? null }
+    // `kind` is derived the way the segmenter derives it, so a fixture cannot
+    // quietly disagree with a real cut about what a word is doing.
+    const kind = pinyin === undefined ? 'other' : isFunctionWord(text) ? 'function' : 'content'
+    return { text, pinyin: pinyin ?? null, kind }
   })
 }
 

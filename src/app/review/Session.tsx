@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { applyReview } from '../../background/flashcards-store'
-import { hanWords } from '../../flashcards/capture'
+import { vocabularyIn } from '../../flashcards/capture'
 import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
@@ -177,7 +177,7 @@ export function Session({
     () => [
       ...new Set([
         ...(current?.kind === 'word' ? [current.text] : []),
-        ...hanWords(words.segment(line)),
+        ...vocabularyIn(words.segment(line)),
       ]),
     ],
     [current?.id, line, words],
@@ -199,7 +199,7 @@ export function Session({
     const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
     const tokens = words.segment(exampleText)
     const target =
-      current.kind === 'sentence' ? chooseTarget(hanWords(tokens), known, current.target) : null
+      current.kind === 'sentence' ? chooseTarget(vocabularyIn(tokens), known, current.target) : null
 
     const exercise = exerciseFor(current, mode, {
       canSpeak: canSpeak(),

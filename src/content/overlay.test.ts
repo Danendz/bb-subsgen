@@ -4,8 +4,8 @@ import { renderCue, setNotice, setTranslation, translationWithheld, type CueView
 import type { Token } from '../lang/pack'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
 
-const zh = (text: string): Token => ({ text, pinyin: 'x1' })
-const other = (text: string): Token => ({ text, pinyin: null })
+const zh = (text: string): Token => ({ text, pinyin: 'x1', kind: 'content' })
+const other = (text: string): Token => ({ text, pinyin: null, kind: 'other' })
 
 function view(partial: Partial<CueView> & Pick<CueView, 'tokens'>): CueView {
   return {

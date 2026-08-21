@@ -6,7 +6,7 @@
 // question — do you know the words, and do you know the order — without
 // charging for the input method.
 
-import { hanWords } from './capture'
+import { vocabularyIn } from './capture'
 import type { Token } from '../lang/pack'
 
 /**
@@ -62,7 +62,7 @@ export interface Bank {
  * offered, and only the words are checked.
  */
 export function answerOf(tokens: Token[]): string[] {
-  return hanWords(tokens)
+  return vocabularyIn(tokens)
 }
 
 /**

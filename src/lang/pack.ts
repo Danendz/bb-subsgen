@@ -24,6 +24,16 @@
 export interface Token {
   text: string
   pinyin: string | null
+  /**
+   * What the segmenter decided this was, set as it cut rather than looked up
+   * again by whoever renders it.
+   *
+   * `'function'` is a word doing grammatical work rather than carrying meaning,
+   * which both card renderers dim. `'other'` is the pass-through — punctuation,
+   * Latin, digits — and is what tells a renderer there is nothing here to
+   * define, without it having to know what the script looks like.
+   */
+  kind: 'content' | 'function' | 'other'
 }
 
 /** A dictionary word found in running text, with where it sits. */

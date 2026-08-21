@@ -8,7 +8,7 @@ import {
 import type { LanguagePack, Lexicon, Match } from '../lang/pack'
 import { patternsForWord } from '../lang/zh/grammar/match'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
-import { hanWords, selectionTarget, unknownIn } from '../flashcards/capture'
+import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
 import { blockAncestor, createBlockCache, indexOf, rangeOf, rootElement } from './block'
 import { caretAt } from './caret'
@@ -494,7 +494,7 @@ export function attachReader({
         target.text,
         context,
         undefined,
-        unknownIn(hanWords(list.segment(target.text)), known()),
+        unknownIn(vocabularyIn(list.segment(target.text)), known()),
       )
     }
   }

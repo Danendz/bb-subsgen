@@ -3,15 +3,14 @@
 // than by measurement is how a capture system ends up burying you.
 
 import type { Token } from '../lang/pack'
-import { isHan } from '../lang/zh/segment'
 import type { LanguagePack, Lexicon } from '../lang/pack'
 
 /** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
 
 /** The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary. */
-export function hanWords(tokens: Token[]): string[] {
-  return tokens.map((t) => t.text).filter((text) => text.length > 0 && isHan(text[0]))
+export function vocabularyIn(tokens: Token[]): string[] {
+  return tokens.filter((t) => t.kind !== 'other' && t.text.length > 0).map((t) => t.text)
 }
 
 export function unknownIn(words: string[], known: ReadonlySet<string>): string[] {
