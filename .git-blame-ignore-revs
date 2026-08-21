@@ -1,0 +1,10 @@
+# Commits that changed formatting and nothing else. `git blame` should look
+# straight through them to whoever actually wrote the line.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub reads this file by name without any configuration.
+
+# Reformat the tree with Prettier, and nothing else
+287014ce6fc2d8c1f71358cde8ca2da1513be53b

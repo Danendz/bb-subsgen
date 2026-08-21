@@ -87,9 +87,20 @@ npm install
 npm run build:dict   # regenerate public/dict/{words.bin,defs.json} from tools/data/cedict_ts.u8
 npm run dev
 npm test
+npm run format     # Prettier; CI checks this with `npm run format:check`
 ```
 
 Load `dist/` as an unpacked extension via `chrome://extensions`.
+
+The tree was reformatted with Prettier in one commit, which `git blame` will
+otherwise attribute every touched line to. Look past it with:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Conventions for this codebase are written down in `CLAUDE.md` and
+`.claude/rules/` — worth reading before a first change, agent or not.
 
 ## Attribution
 
