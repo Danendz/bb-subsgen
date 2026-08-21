@@ -18,6 +18,7 @@ import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
 import { matchAt, type Match } from '../lang/zh/match'
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
+import type { LanguagePack } from '../lang/pack'
 import { sentenceTextAt } from '../lang/zh/sentence'
 import type { SentenceTranslator } from './translator'
 import type { DefsLookup } from '../shared/dict-client'
@@ -33,6 +34,8 @@ const MODIFIER_PROPERTY: Record<ReaderModifier, 'shiftKey' | 'altKey' | 'ctrlKey
 
 export interface ReaderDeps {
   mount: ReaderMount
+  /** The language being read, as everything below has to ask it rather than assume it. */
+  pack: LanguagePack
   /** Force-selectable page text, switched on for as long as the modifier is held. */
   pageMode: PageMode
   lookup: DefsLookup
@@ -57,6 +60,7 @@ interface OpenCard {
 
 export function attachReader({
   mount,
+  pack,
   pageMode,
   lookup,
   translator,
@@ -67,7 +71,7 @@ export function attachReader({
   const { shadowRoot } = mount
   const highlight = createWordHighlight()
   const blockCache = createBlockCache()
-  const guard = new ClickGuard()
+  const guard = new ClickGuard(pack)
 
   let held = false
   let dragging = false
@@ -479,7 +483,7 @@ export function attachReader({
    * drag 的 and 我们 back in.
    */
   const captureSelection = (selected: string, list: Lexicon) => {
-    const target = selectionTarget(selected, list.words)
+    const target = selectionTarget(selected, list.words, pack)
     if (!target) return
 
     const context = pageContext(target.text)

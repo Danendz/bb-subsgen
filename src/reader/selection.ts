@@ -1,28 +1,30 @@
-import { isHan } from '../lang/zh/segment'
+import type { LanguagePack } from '../lang/pack'
 
 /** How far the pointer must travel before a mouseup counts as a drag, not a click. */
 const DRAG_THRESHOLD_PX = 4
-
-export function containsHan(text: string): boolean {
-  return Array.from(text).some(isHan)
-}
 
 /**
  * Decides when a drag-selection should swallow the click that follows it.
  *
  * Chrome fires `click` whenever mousedown and mouseup land in the same element
  * — including when you dragged to select text in between. Inside an `<a>` that
- * means selecting Chinese to look it up would navigate away. A capture-phase
+ * means selecting text to look it up would navigate away. A capture-phase
  * listener consults this to suppress exactly that one click.
  *
  * Kept as a state machine with no DOM in it so the arming rules can be tested
- * directly: it must arm only for a real drag over Han text, and must disarm
- * after a single click so ordinary clicking is never affected.
+ * directly: it must arm only for a real drag over text in the studied script, and must
+ * disarm after a single click so ordinary clicking is never affected.
  */
 export class ClickGuard {
   private origin: { x: number; y: number } | null = null
   private before = ''
   private armed = false
+  private readonly pack: LanguagePack
+
+  /** Takes a pack rather than a script test: what is worth looking up is the language's answer. */
+  constructor(pack: LanguagePack) {
+    this.pack = pack
+  }
 
   /** `selectedText` is what was already selected when the press landed. */
   pointerDown(x: number, y: number, selectedText: string): void {
@@ -47,7 +49,7 @@ export class ClickGuard {
    * Requiring one of the two is what keeps an ordinary click from arming. That
    * matters most over a `user-select: none` control: clicking one does not
    * collapse the selection the way clicking text does, so the selection is
-   * still there at mouseup and "some Han text is selected" alone would suppress
+   * still there at mouseup and "something is selected" alone would suppress
    * the click and leave the button dead.
    */
   pointerUp(x: number, y: number, selectedText: string): boolean {
@@ -59,7 +61,7 @@ export class ClickGuard {
       Math.abs(x - origin.x) > DRAG_THRESHOLD_PX || Math.abs(y - origin.y) > DRAG_THRESHOLD_PX
     const changed = selectedText !== this.before
     if (!moved && !changed) return false
-    if (!containsHan(selectedText)) return false
+    if (!this.pack.containsScript(selectedText)) return false
 
     this.armed = true
     return true

@@ -10,6 +10,7 @@ import {
   unknownIn,
 } from './capture'
 import type { Token } from '../lang/zh/segment'
+import { chinesePack } from '../lang/zh/pack'
 
 const token = (text: string, pinyin: string | null = null): Token => ({ text, pinyin })
 
@@ -47,13 +48,13 @@ describe('shouldCaptureLine', () => {
 
 describe('isCapturableText', () => {
   test('rejects text with no Chinese in it', () => {
-    expect(isCapturableText('hello world')).toBe(false)
-    expect(isCapturableText('   ')).toBe(false)
+    expect(isCapturableText('hello world', chinesePack)).toBe(false)
+    expect(isCapturableText('   ', chinesePack)).toBe(false)
   })
 
   test('rejects a run longer than a sentence', () => {
-    expect(isCapturableText('学'.repeat(221))).toBe(false)
-    expect(isCapturableText('学'.repeat(220))).toBe(true)
+    expect(isCapturableText('学'.repeat(221), chinesePack)).toBe(false)
+    expect(isCapturableText('学'.repeat(220), chinesePack)).toBe(true)
   })
 })
 
@@ -65,22 +66,25 @@ describe('selectionTarget', () => {
   ])
 
   test('a single dictionary headword is a word', () => {
-    expect(selectionTarget('选择', words)).toEqual({ kind: 'word', text: '选择' })
+    expect(selectionTarget('选择', words, chinesePack)).toEqual({ kind: 'word', text: '选择' })
   })
 
   test('anything the dictionary does not hold is a sentence', () => {
     // The awkward middle: two words in a row is not a headword, so it is a
     // sentence rather than being forced into the word deck by length alone.
-    expect(selectionTarget('我学习', words)).toEqual({ kind: 'sentence', text: '我学习' })
+    expect(selectionTarget('我学习', words, chinesePack)).toEqual({
+      kind: 'sentence',
+      text: '我学习',
+    })
   })
 
   test('trims before deciding, so a sloppy drag still reads as one word', () => {
-    expect(selectionTarget('  学习 \n', words)).toEqual({ kind: 'word', text: '学习' })
+    expect(selectionTarget('  学习 \n', words, chinesePack)).toEqual({ kind: 'word', text: '学习' })
   })
 
   test('rejects a selection with nothing to look up', () => {
-    expect(selectionTarget('hello', words)).toBeNull()
-    expect(selectionTarget('', words)).toBeNull()
+    expect(selectionTarget('hello', words, chinesePack)).toBeNull()
+    expect(selectionTarget('', words, chinesePack)).toBeNull()
   })
 })
 

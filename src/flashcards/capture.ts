@@ -3,6 +3,7 @@
 // than by measurement is how a capture system ends up burying you.
 
 import { isHan, type Token } from '../lang/zh/segment'
+import type { LanguagePack } from '../lang/pack'
 
 /** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
@@ -31,11 +32,11 @@ export function shouldCaptureLine(words: string[], known: ReadonlySet<string>): 
   return unknownIn(words, known).length > 0
 }
 
-/** Whether a line is short enough, and Chinese enough, to be a card at all. */
-export function isCapturableText(text: string): boolean {
+/** Whether a line is short enough, and enough of the studied script, to be a card at all. */
+export function isCapturableText(text: string, pack: LanguagePack): boolean {
   const trimmed = text.trim()
   if (!trimmed || trimmed.length > MAX_LINE_LENGTH) return false
-  return Array.from(trimmed).some(isHan)
+  return pack.containsScript(trimmed)
 }
 
 export type SelectionTarget =
@@ -49,9 +50,13 @@ export type SelectionTarget =
  * the user to classify their own selection, and it uses the same word set that
  * already drives segmentation.
  */
-export function selectionTarget(selected: string, words: Map<string, string>): SelectionTarget {
+export function selectionTarget(
+  selected: string,
+  words: Map<string, string>,
+  pack: LanguagePack,
+): SelectionTarget {
   const text = selected.trim()
-  if (!isCapturableText(text)) return null
+  if (!isCapturableText(text, pack)) return null
   if (words.has(text)) return { kind: 'word', text }
   return { kind: 'sentence', text }
 }

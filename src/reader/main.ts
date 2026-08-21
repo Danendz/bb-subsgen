@@ -11,6 +11,7 @@ import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
 import type { Lexicon } from '../lang/zh/lexicon'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
+import { packFor } from '../lang/packs'
 import { loadLexicon, lookupDefs } from '../shared/dict-client'
 import { loadSettings, onSettingsChanged, resolveStudyLang } from '../shared/settings'
 import { readerEnabledFor } from '../shared/reader-sites'
@@ -40,6 +41,15 @@ async function main(): Promise<void> {
   // below is memoized: a mid-page change would leave the segmenter on one
   // language and the definitions on another.
   const lang = resolveStudyLang(settings)
+
+  // No pack means no segmenter and no script test, which is every question the
+  // reader would ask — so it never attaches at all, rather than attaching and
+  // finding nothing anywhere.
+  const pack = packFor(lang)
+  if (!pack) {
+    console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
+    return
+  }
 
   // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
   // the modifier down, and never on a page you just read past.
@@ -71,6 +81,7 @@ async function main(): Promise<void> {
     // styling back on the same path that removes the listeners driving it.
     detach = attachReader({
       mount,
+      pack,
       pageMode: createPageMode(),
       // Partially applied — see `DefsLookup` in shared/dict-client.ts.
       lookup: (headwords) => lookupDefs(lang, headwords),

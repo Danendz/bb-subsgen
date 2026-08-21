@@ -55,6 +55,20 @@ implementation — the segmenter, the tone and reading rules, the CC-CEDICT entr
 grammar pattern table, the sentence terminators and the hover match. Everything directly under
 `src/lang/` is language-neutral.
 
+Three files carry the split, modelled on `Site` / `siteFor` in `src/media/`:
+
+- `pack.ts` — the `LanguagePack` interface and the vocabulary that goes with it. Imports no
+  implementation.
+- `packs.ts` — `PACKS` and `packFor(code)`, which is null for a code with no pack. Separate from
+  `pack.ts` for the reason `sites.ts` is separate from `site.ts`: so that everything needing only
+  the shape does not pull in every language.
+- `zh/pack.ts` — `chinesePack`, assembled from the modules beside it.
+
+`PACKS` and `DICT_SOURCES` (`src/dict/sources.ts`) are keyed by the same codes and neither imports
+the other — otherwise the popup and the badge, which only ever ask where a dictionary is
+downloaded from, would transitively import a segmenter. `src/lang/packs.test.ts` asserts their key
+sets agree, which is the part that has to stay true.
+
 ## `src/dict/`
 
 The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of

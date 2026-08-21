@@ -34,6 +34,7 @@ import {
   watchKnownSet,
 } from '../shared/flashcards-client'
 import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
+import { packFor } from '../lang/packs'
 import type { Context } from '../flashcards/types'
 import {
   createTranslator,
@@ -221,6 +222,16 @@ async function main() {
    * that reloads the lexicon happens anyway.
    */
   const lang = resolveStudyLang(initialSettings)
+
+  // Resolved beside the language rather than at the points that ask it
+  // questions. Without a pack there is no segmenter, no script test and nothing
+  // the overlay could put over a subtitle — an unknown language code is not a
+  // degraded overlay, it is no overlay.
+  const pack = packFor(lang)
+  if (!pack) {
+    console.warn('[bb-subsgen] no language pack for', lang, '— doing nothing')
+    return
+  }
 
   /**
    * The dictionary, asked for the first time a video actually needs it.
@@ -486,7 +497,7 @@ async function main() {
     const words = await getLexicon()
     if (!words) {
       status = 'no-dictionary'
-      console.log('[bb-subsgen] no dictionary installed for zh')
+      console.log('[bb-subsgen] no dictionary installed for', lang)
       return
     }
     const videoInfo = { title: resolved.title, description: resolved.description }
@@ -925,7 +936,7 @@ async function main() {
         buffer.line(seen)
 
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
+        if (!isCapturableText(text, pack) || !shouldCaptureLine(seen, known)) return
         captureSentence(
           text,
           contextFor(lastIndex),
@@ -952,7 +963,7 @@ async function main() {
       const captureCurrentLine = () => {
         if (captured || lastIndex < 0) return
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text)) return
+        if (!isCapturableText(text, pack)) return
         captureSentence(text, contextFor(lastIndex), undefined, [], patternsInLine())
         captured = true
       }
