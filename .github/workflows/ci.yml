@@ -59,14 +59,6 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build the dictionary
-        # public/dict is generated rather than committed, and the manifest
-        # declares dict/words.bin as an asset — so crxjs refuses to bundle
-        # without it, and a checkout has to make it before it can build. Four
-        # tenths of a second from a source that is in the repository, which is
-        # cheaper than caching it would be.
-        run: npm run build:dict
-
       - name: Build
         # The bundle is checked as well as the tests: crxjs assembles the
         # manifest and the content scripts at build time, and a broken entry
@@ -78,7 +70,8 @@ jobs:
         with:
           name: extension-${{ github.sha }}
           path: dist
-          # Loadable unpacked, dictionary included, which is most of its ~35MB.
+          # Loadable unpacked — no dictionary bundled; that comes from the
+          # setup wizard's first-run download, not the build (#20).
           #
           # A week is long enough to review a pull request with and short enough
           # not to accumulate. The build is reproducible from the commit anyway.
