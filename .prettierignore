@@ -1,0 +1,13 @@
+# Build output and generated data.
+dist
+public/dict
+
+# The CC-CEDICT source, ~4MB of fixed-format lines that are not ours to reflow.
+tools/data
+
+package-lock.json
+
+# Prose is hard-wrapped at ~80 columns by hand, matching the commit bodies and
+# the module headers. Prettier's markdown printer would reflow it to its own
+# width and fight every future edit.
+*.md
