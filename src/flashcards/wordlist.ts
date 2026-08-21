@@ -72,7 +72,10 @@ function looksBinary(text: string): boolean {
 function cell(raw: string): string {
   // Minimal CSV handling: these files quote rarely, and never with embedded
   // delimiters in the columns we read.
-  return raw.trim().replace(/^"(.*)"$/s, '$1').trim()
+  return raw
+    .trim()
+    .replace(/^"(.*)"$/s, '$1')
+    .trim()
 }
 
 /** Keeps the first occurrence, which in a sorted list is also the best rank. */

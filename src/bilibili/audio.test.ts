@@ -44,7 +44,9 @@ describe('pickAudioStream', () => {
   })
 
   test('accepts the snake_case spelling some responses use', () => {
-    expect(pickAudioStream([{ base_url: 'https://cdn/a', bandwidth: 1 }])?.url).toBe('https://cdn/a')
+    expect(pickAudioStream([{ base_url: 'https://cdn/a', bandwidth: 1 }])?.url).toBe(
+      'https://cdn/a',
+    )
   })
 
   test('ignores renditions with no URL on them', () => {

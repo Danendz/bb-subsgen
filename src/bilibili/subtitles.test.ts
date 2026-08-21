@@ -3,9 +3,7 @@ import { normalizeCue, pickBestSubtitleTrack, trackQuery } from './subtitles'
 
 describe('trackQuery', () => {
   test('names an ordinary video with bvid', () => {
-    const query = new URLSearchParams(
-      trackQuery({ aid: 12345, cid: 678, videoId: 'BV1bVuo6AESP' }),
-    )
+    const query = new URLSearchParams(trackQuery({ aid: 12345, cid: 678, videoId: 'BV1bVuo6AESP' }))
     expect(query.get('bvid')).toBe('BV1bVuo6AESP')
     expect(query.get('ep_id')).toBeNull()
     expect(query.get('aid')).toBe('12345')
@@ -38,9 +36,7 @@ describe('pickBestSubtitleTrack', () => {
   })
 
   test('ignores tracks with no subtitle_url', () => {
-    const track = pickBestSubtitleTrack([
-      { lan: 'zh-Hans', lan_doc: '中文', subtitle_url: '' },
-    ])
+    const track = pickBestSubtitleTrack([{ lan: 'zh-Hans', lan_doc: '中文', subtitle_url: '' }])
     expect(track).toBeNull()
   })
 

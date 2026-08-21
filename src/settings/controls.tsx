@@ -68,7 +68,11 @@ export function Slider({
   return (
     <label class="row">
       <span class="grow">
-        {label} <span class="value">{value}{suffix}</span>
+        {label}{' '}
+        <span class="value">
+          {value}
+          {suffix}
+        </span>
       </span>
       <input
         type="range"

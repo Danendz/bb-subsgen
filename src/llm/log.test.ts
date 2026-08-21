@@ -67,9 +67,7 @@ describe('formatLogEntry', () => {
   })
 
   test('puts detail on its own line so a body stays readable', () => {
-    expect(formatLogEntry({ ...base, detail: 'body' })).toBe(
-      `${formatLogEntry(base)}\nbody`,
-    )
+    expect(formatLogEntry({ ...base, detail: 'body' })).toBe(`${formatLogEntry(base)}\nbody`)
   })
 })
 

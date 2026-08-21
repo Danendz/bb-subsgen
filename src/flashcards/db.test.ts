@@ -116,7 +116,14 @@ describe('the v2 upgrade', () => {
     const name = `migrate-${Math.random()}`
     await seed(name, {
       items: [
-        item({ id: 'w:学习', kind: 'word', text: '学习', state: 'review', interval: 7, introducedAt: 1 }),
+        item({
+          id: 'w:学习',
+          kind: 'word',
+          text: '学习',
+          state: 'review',
+          interval: 7,
+          introducedAt: 1,
+        }),
         item({ id: 'w:我', kind: 'word', text: '我', state: 'known' }),
         item({ id: 'w:新', kind: 'word', text: '新', state: 'new' }),
       ],
@@ -133,11 +140,7 @@ describe('the v2 upgrade', () => {
 describe('the v3 upgrade', () => {
   test('moves per-video words onto the new key, keeping their counts', async () => {
     const name = `migrate-${Math.random()}`
-    await seed(
-      name,
-      { videoWords: [{ bvid: 'BV1xx411c7mD', headword: '憔悴', count: 4 }] },
-      2,
-    )
+    await seed(name, { videoWords: [{ bvid: 'BV1xx411c7mD', headword: '憔悴', count: 4 }] }, 2)
 
     const db = await openFlashcardsDb(name)
     expect(await readAll(db, STORES.videoWords)).toEqual([
@@ -162,10 +165,7 @@ describe('the v3 upgrade', () => {
     )
 
     const db = await openFlashcardsDb(name)
-    const index = db
-      .transaction(STORES.videoWords)
-      .objectStore(STORES.videoWords)
-      .index('by-video')
+    const index = db.transaction(STORES.videoWords).objectStore(STORES.videoWords).index('by-video')
     const rows = await request<Array<{ headword: string }>>(
       index.getAll(IDBKeyRange.only('BV1xx411c7mD')),
     )
@@ -253,7 +253,18 @@ describe('the v3 upgrade', () => {
     const name = `migrate-${Math.random()}`
     await seed(
       name,
-      { signals: [{ at: 1700000000000, bvid: 'BV1xx411c7mD', start: 42.5, ms: 6200, hidden: true, captured: true }] },
+      {
+        signals: [
+          {
+            at: 1700000000000,
+            bvid: 'BV1xx411c7mD',
+            start: 42.5,
+            ms: 6200,
+            hidden: true,
+            captured: true,
+          },
+        ],
+      },
       2,
     )
 

@@ -30,7 +30,11 @@ describe('planBatches', () => {
   })
 
   test('leaves blank cues out', () => {
-    expect(planBatches(['一', '', '   ', '四']).flat().map((l) => l.zh)).toEqual(['一', '四'])
+    expect(
+      planBatches(['一', '', '   ', '四'])
+        .flat()
+        .map((l) => l.zh),
+    ).toEqual(['一', '四'])
   })
 
   test('a track of nothing plans nothing', () => {

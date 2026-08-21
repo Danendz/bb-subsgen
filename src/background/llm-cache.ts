@@ -50,7 +50,9 @@ export async function readTrackIn(
   )) as CachedLine[]
 
   return new Map(
-    rows.filter((row) => row.lang === lang && row.model === model).map((row) => [row.start, row.text]),
+    rows
+      .filter((row) => row.lang === lang && row.model === model)
+      .map((row) => [row.start, row.text]),
   )
 }
 

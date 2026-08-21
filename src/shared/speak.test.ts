@@ -86,9 +86,7 @@ describe('pickVoice', () => {
 
   test('a chosen voice that has failed falls back rather than staying silent', () => {
     const failed = new Set(['Google 普通话（中国大陆）'])
-    expect(pickVoice(MACOS, 'Google 普通话（中国大陆）', failed)?.name).toBe(
-      'Google 國語（臺灣）',
-    )
+    expect(pickVoice(MACOS, 'Google 普通话（中国大陆）', failed)?.name).toBe('Google 國語（臺灣）')
   })
 
   test('a novelty voice is still better than no audio', () => {
@@ -104,7 +102,8 @@ describe('pickVoice', () => {
   })
 
   test('ignores non-Chinese voices rather than ranking them', () => {
-    expect(pickVoice([english, { name: 'Tingting', lang: 'zh-CN', localService: true }])?.name)
-      .toBe('Tingting')
+    expect(
+      pickVoice([english, { name: 'Tingting', lang: 'zh-CN', localService: true }])?.name,
+    ).toBe('Tingting')
   })
 })

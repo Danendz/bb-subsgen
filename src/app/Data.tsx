@@ -60,7 +60,12 @@ interface PendingList {
 function describe(list: ParsedList): string {
   const { detected } = list
   if (detected.format === 'json') return 'JSON'
-  const shape = detected.delimiter === '\t' ? 'tab-separated' : detected.delimiter === ',' ? 'comma-separated' : 'one word per line'
+  const shape =
+    detected.delimiter === '\t'
+      ? 'tab-separated'
+      : detected.delimiter === ','
+        ? 'comma-separated'
+        : 'one word per line'
   const header = detected.headerSkipped ? ', header skipped' : ''
   const column = detected.wordColumn ? `, words in column ${detected.wordColumn + 1}` : ''
   return `${shape}${header}${column}`
@@ -347,9 +352,9 @@ export function Data() {
           <div class="grow">
             <strong>Export</strong>
             <div class="muted small">
-              One JSON file with every card, the full review log, exposure counts and video
-              history. Dwell samples and word lists are left out — the first is calibration for
-              this machine, the second you load per browser.
+              One JSON file with every card, the full review log, exposure counts and video history.
+              Dwell samples and word lists are left out — the first is calibration for this machine,
+              the second you load per browser.
             </div>
           </div>
           <button onClick={() => void download()}>Download</button>
@@ -362,8 +367,8 @@ export function Data() {
             <strong>Import</strong>
             <div class="muted small">
               Merged, not replaced. Review logs from both sides are combined and the schedule is
-              recomputed from them, so studying you did in another browser still counts. Counts
-              add up and videos merge by id.
+              recomputed from them, so studying you did in another browser still counts. Counts add
+              up and videos merge by id.
             </div>
           </div>
           <input
@@ -385,8 +390,8 @@ export function Data() {
             {pending.conflicts.length} word{pending.conflicts.length === 1 ? '' : 's'} disagree
           </strong>
           <p class="muted small">
-            These are marked known on one side and not the other. Everything else merges on its
-            own — only a declaration has no evidence to settle it.
+            These are marked known on one side and not the other. Everything else merges on its own
+            — only a declaration has no evidence to settle it.
           </p>
           <p class="small">
             {pending.conflicts
@@ -423,8 +428,8 @@ export function Data() {
           <div class="grow">
             <strong>Clear everything</strong>
             <div class="muted small">
-              Deletes all cards, reviews and counts. Word lists are kept. Export first — there is
-              no undo.
+              Deletes all cards, reviews and counts. Word lists are kept. Export first — there is no
+              undo.
             </div>
           </div>
           <button onClick={() => void clearEverything()}>Clear</button>

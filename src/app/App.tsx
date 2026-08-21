@@ -27,7 +27,13 @@ function Nav({ route }: { route: string }) {
           // Active for anything below the tab, so a video's own page keeps
           // Videos lit rather than dropping the highlight entirely.
           class={
-            tab.route === '/' ? (route === '/' ? 'on' : '') : route.startsWith(tab.route) ? 'on' : ''
+            tab.route === '/'
+              ? route === '/'
+                ? 'on'
+                : ''
+              : route.startsWith(tab.route)
+                ? 'on'
+                : ''
           }
           onClick={(e) => {
             e.preventDefault()

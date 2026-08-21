@@ -32,12 +32,12 @@ describe('applyReadingRules', () => {
 
   // 了 in V不了 / V得了 is liao3 — "cannot finish", not the aspect marker.
   test('reads 了 as liao3 in the potential complement', () => {
-    expect(readings(applyReadingRules(tokens(['吃', 'chi1'], ['不', 'bu4'], ['了', 'le5'])))).toEqual(
-      ['chi1', 'bu4', 'liao3'],
-    )
-    expect(readings(applyReadingRules(tokens(['受', 'shou4'], ['得', 'de5'], ['了', 'le5'])))).toEqual(
-      ['shou4', 'de5', 'liao3'],
-    )
+    expect(
+      readings(applyReadingRules(tokens(['吃', 'chi1'], ['不', 'bu4'], ['了', 'le5']))),
+    ).toEqual(['chi1', 'bu4', 'liao3'])
+    expect(
+      readings(applyReadingRules(tokens(['受', 'shou4'], ['得', 'de5'], ['了', 'le5']))),
+    ).toEqual(['shou4', 'de5', 'liao3'])
   })
 
   test('leaves 了 as the aspect marker everywhere else', () => {

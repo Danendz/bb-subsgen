@@ -69,7 +69,13 @@ export interface PlanOptions {
  * worth a request of its own. Expressed as ranges, those three would each need
  * their own special case and would have to agree about the others.
  */
-function boundaries(duration: number, span: number, pad: number, lead: number, playhead: number): number[] {
+function boundaries(
+  duration: number,
+  span: number,
+  pad: number,
+  lead: number,
+  playhead: number,
+): number[] {
   const points = new Set<number>([0])
   for (let at = span; at < duration; at += span) points.add(at)
 
@@ -160,7 +166,10 @@ export function chunkFor(
  * outside the work outstanding. Adjacent stretches merge on the way out, so ten
  * finished chunks report as one span rather than ten.
  */
-export function coverageExcept(pending: Iterable<Chunk>, duration: number): Array<[number, number]> {
+export function coverageExcept(
+  pending: Iterable<Chunk>,
+  duration: number,
+): Array<[number, number]> {
   const holes = [...pending].sort((a, b) => a.start - b.start)
   const covered: Array<[number, number]> = []
 

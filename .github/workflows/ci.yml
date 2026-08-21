@@ -45,6 +45,12 @@ jobs:
         # reason to have one.
         run: npm ci
 
+      - name: Format
+        # First because it is the cheapest thing that can fail, and because a
+        # reformatted diff is noise in the review of every check after it.
+        # `--check` rather than `--write`: CI reports, it does not commit.
+        run: npm run format:check
+
       - name: Typecheck
         # Separately from the build, which runs `tsc` too, so a type error is
         # reported as a type error rather than as a build that did not finish.

@@ -66,7 +66,12 @@ export interface DecodedWav {
 }
 
 const ascii = (view: DataView, at: number) =>
-  String.fromCharCode(view.getUint8(at), view.getUint8(at + 1), view.getUint8(at + 2), view.getUint8(at + 3))
+  String.fromCharCode(
+    view.getUint8(at),
+    view.getUint8(at + 1),
+    view.getUint8(at + 2),
+    view.getUint8(at + 3),
+  )
 
 /**
  * Reads 16-bit PCM out of a WAV container, or null if it isn't one.

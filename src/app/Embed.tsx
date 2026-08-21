@@ -83,10 +83,7 @@ export function Embed() {
       {failed ? (
         <p class="panel small">{failed}</p>
       ) : chatId ? (
-        <ChatPanel
-          chatId={chatId}
-          autoAsk={explainQuestion(word)}
-        />
+        <ChatPanel chatId={chatId} autoAsk={explainQuestion(word)} />
       ) : (
         <p class="panel muted small">Reading the scene…</p>
       )}

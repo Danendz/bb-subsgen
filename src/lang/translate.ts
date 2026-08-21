@@ -46,9 +46,7 @@ export function isTranslatorSupported(): boolean {
   return typeof globalThis.Translator?.create === 'function'
 }
 
-export async function translatorAvailability(
-  target: TranslationLang,
-): Promise<Availability> {
+export async function translatorAvailability(target: TranslationLang): Promise<Availability> {
   if (!isTranslatorSupported()) return 'unavailable'
   try {
     return await globalThis.Translator!.availability(pairFor(target))

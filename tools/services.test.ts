@@ -3,11 +3,7 @@ import { servicesFrom, splitCommand } from './services.ts'
 
 describe('splitCommand', () => {
   test('splits on whitespace', () => {
-    expect(splitCommand('whisper-server --port 8080')).toEqual([
-      'whisper-server',
-      '--port',
-      '8080',
-    ])
+    expect(splitCommand('whisper-server --port 8080')).toEqual(['whisper-server', '--port', '8080'])
   })
 
   test('keeps a quoted path with spaces in one piece', () => {

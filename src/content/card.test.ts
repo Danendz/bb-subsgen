@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import { buildCard, buildWordElement, cardHeadwords, characterBreakdown, setCardTranslation } from './card'
+import {
+  buildCard,
+  buildWordElement,
+  cardHeadwords,
+  characterBreakdown,
+  setCardTranslation,
+} from './card'
 import type { CedictEntry } from '../lang/dict'
 import { PATTERNS } from '../lang/grammar/patterns'
 
@@ -118,9 +124,7 @@ describe('buildCard', () => {
     expect(sentence?.textContent).toBe('')
 
     setCardTranslation(card, 'Learning Chinese is fun.')
-    expect(card.querySelector('.popup-sentence')?.textContent).toBe(
-      'Learning Chinese is fun.',
-    )
+    expect(card.querySelector('.popup-sentence')?.textContent).toBe('Learning Chinese is fun.')
   })
 
   test('still renders pinyin and the sentence slot when no definition exists', () => {
@@ -138,7 +142,11 @@ describe('the structure section', () => {
 
   test('names the pattern, shows its shape, and explains what it does', () => {
     const card = buildCard(
-      { headword: '得', entries: [entry({ simplified: '得', definitions: ['structural particle'] })], patterns: [complement] },
+      {
+        headword: '得',
+        entries: [entry({ simplified: '得', definitions: ['structural particle'] })],
+        patterns: [complement],
+      },
       opts,
     )
 
@@ -156,7 +164,11 @@ describe('the structure section', () => {
   test('lists every pattern the word belongs to', () => {
     const final = PATTERNS.find((p) => p.id === 'sentence-final-a')!
     const card = buildCard(
-      { headword: '啊', entries: [entry({ simplified: '啊', definitions: ['particle'] })], patterns: [complement, final] },
+      {
+        headword: '啊',
+        entries: [entry({ simplified: '啊', definitions: ['particle'] })],
+        patterns: [complement, final],
+      },
       opts,
     )
 

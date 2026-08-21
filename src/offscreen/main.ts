@@ -200,7 +200,9 @@ async function fetchAudioDirectly(
     return { bytes: await resp.arrayBuffer() }
   } catch (e) {
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
-    return { error: `Could not reach the audio helper: ${e instanceof Error ? e.message : String(e)}` }
+    return {
+      error: `Could not reach the audio helper: ${e instanceof Error ? e.message : String(e)}`,
+    }
   }
 }
 

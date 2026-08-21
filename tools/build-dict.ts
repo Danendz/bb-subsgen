@@ -21,7 +21,6 @@ interface CedictEntry {
 const SRC = path.join(import.meta.dirname, 'data/cedict_ts.u8')
 const OUT_DIR = path.join(import.meta.dirname, '../public/dict')
 
-
 const LINE_RE = /^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+\/(.+)\/$/
 
 function normalizePinyin(raw: string): string {
@@ -98,4 +97,3 @@ writeFileSync(path.join(OUT_DIR, 'words.bin'), buildWords(byHeadword))
 writeFileSync(path.join(OUT_DIR, 'defs.json'), JSON.stringify(buildDefs(byHeadword)))
 
 console.log(`Parsed ${entries.length} CC-CEDICT entries`)
-

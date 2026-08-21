@@ -514,11 +514,7 @@ export function attachReader({
     if (!guard.pointerUp(e.clientX, e.clientY, text)) return
     if (!selection?.rangeCount) return
 
-    const anchor = anchorFrom(
-      selection.getRangeAt(0).getBoundingClientRect(),
-      e.clientX,
-      e.clientY,
-    )
+    const anchor = anchorFrom(selection.getRangeAt(0).getBoundingClientRect(), e.clientX, e.clientY)
     const token = ++pending
 
     // The selection card needs the word list for its pinyin, so this is the

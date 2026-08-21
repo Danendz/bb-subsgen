@@ -29,9 +29,7 @@ export const CARD_MARGIN = 8
  * width is still worth keeping — it carries the right line.
  */
 export function anchorFrom(rect: Anchor, pointerX: number, pointerY: number): Anchor {
-  const empty =
-    rect.right - rect.left <= 0 &&
-    rect.bottom - rect.top <= 0
+  const empty = rect.right - rect.left <= 0 && rect.bottom - rect.top <= 0
   if (!empty) return rect
 
   return { left: pointerX, top: pointerY, right: pointerX, bottom: pointerY }

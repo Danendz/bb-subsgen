@@ -68,7 +68,9 @@
   --hanzi: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -82,7 +84,9 @@ body {
   background-attachment: fixed;
 }
 
-a { color: var(--link); }
+a {
+  color: var(--link);
+}
 
 .shell {
   max-width: 900px;
@@ -117,7 +121,9 @@ nav a {
   font: 500 13px var(--display);
   transition: color 0.15s;
 }
-nav a:hover { color: var(--text); }
+nav a:hover {
+  color: var(--text);
+}
 nav a.on {
   color: var(--text);
   border-bottom-color: var(--action);
@@ -131,7 +137,9 @@ nav a.on {
   border-radius: var(--r);
   background: var(--raised);
 }
-.panel + .panel { margin-top: 12px; }
+.panel + .panel {
+  margin-top: 12px;
+}
 
 .stats {
   display: grid;
@@ -141,7 +149,9 @@ nav a.on {
 }
 /* The stacking margin is for panels in a column; inside a grid the gap already
    does that job and the margin just pushes every panel but the first down. */
-.stats .panel + .panel { margin-top: 0; }
+.stats .panel + .panel {
+  margin-top: 0;
+}
 .stat .n {
   display: block;
   font: 600 30px/1.1 var(--display);
@@ -159,10 +169,17 @@ nav a.on {
   padding: 10px 0;
   border-bottom: 1px solid var(--edge);
 }
-.row:last-child { border-bottom: none; }
-.row .grow { flex: 1; min-width: 0; }
+.row:last-child {
+  border-bottom: none;
+}
+.row .grow {
+  flex: 1;
+  min-width: 0;
+}
 
-.hanzi { font: 600 17px var(--hanzi); }
+.hanzi {
+  font: 600 17px var(--hanzi);
+}
 .gloss {
   color: var(--text-3);
   font-size: 13px;
@@ -170,8 +187,12 @@ nav a.on {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.muted { color: var(--text-3); }
-.small { font-size: 12px; }
+.muted {
+  color: var(--text-3);
+}
+.small {
+  font-size: 12px;
+}
 
 .line-zh {
   font: 15px/1.7 var(--hanzi);
@@ -184,12 +205,24 @@ nav a.on {
   font-size: 13px;
   white-space: nowrap;
 }
-.pinyin .syl + .syl { margin-left: 0.3em; }
-.t1 { color: var(--tone-1); }
-.t2 { color: var(--tone-2); }
-.t3 { color: var(--tone-3); }
-.t4 { color: var(--tone-4); }
-.t5 { color: var(--tone-5); }
+.pinyin .syl + .syl {
+  margin-left: 0.3em;
+}
+.t1 {
+  color: var(--tone-1);
+}
+.t2 {
+  color: var(--tone-2);
+}
+.t3 {
+  color: var(--tone-3);
+}
+.t4 {
+  color: var(--tone-4);
+}
+.t5 {
+  color: var(--tone-5);
+}
 
 /* Controls ------------------------------------------------------------------ */
 
@@ -202,9 +235,14 @@ button {
   border-radius: var(--r-sm);
   padding: 8px 14px;
   cursor: pointer;
-  transition: background 0.12s, transform 0.06s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    transform 0.06s,
+    border-color 0.12s;
 }
-button:hover:not(:disabled) { background: #291f33; }
+button:hover:not(:disabled) {
+  background: #291f33;
+}
 
 /* Pressing something ought to move it. The lip shrinks by exactly what the
    button drops, so the outer edge stays put and only the face travels. */
@@ -212,7 +250,10 @@ button:active:not(:disabled) {
   transform: translateY(calc(var(--lip) - 2px));
   border-bottom-width: 2px;
 }
-button:disabled { opacity: 0.4; cursor: default; }
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 button.primary {
   background: var(--action);
@@ -220,7 +261,9 @@ button.primary {
   border-color: var(--action);
   border-bottom-color: var(--action-deep);
 }
-button.primary:hover:not(:disabled) { background: #fc85a7; }
+button.primary:hover:not(:disabled) {
+  background: #fc85a7;
+}
 
 button.big {
   font-size: 17px;
@@ -236,8 +279,13 @@ button.ghost {
   padding: 6px 12px;
   font-size: 13px;
 }
-button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--edge-lit); }
-button.ghost:active:not(:disabled) { transform: none; }
+button.ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--edge-lit);
+}
+button.ghost:active:not(:disabled) {
+  transform: none;
+}
 
 button.link-btn {
   background: none;
@@ -248,10 +296,18 @@ button.link-btn {
   padding: 6px;
   margin-top: 12px;
 }
-button.link-btn:hover { color: var(--text); background: none; }
-button.link-btn:active { transform: none; }
+button.link-btn:hover {
+  color: var(--text);
+  background: none;
+}
+button.link-btn:active {
+  transform: none;
+}
 
-.icon-btn { padding: 5px 10px; font-size: 13px; }
+.icon-btn {
+  padding: 5px 10px;
+  font-size: 13px;
+}
 
 button.on {
   color: var(--right);
@@ -281,7 +337,9 @@ a:focus-visible {
   align-items: center;
   margin-bottom: 14px;
 }
-.toolbar .grow { flex: 1; }
+.toolbar .grow {
+  flex: 1;
+}
 
 /* Progress bars (overview, videos) ------------------------------------------ */
 
@@ -297,8 +355,12 @@ a:focus-visible {
   border-radius: var(--pill);
   background: var(--link);
 }
-.bar.good > i { background: var(--right); }
-.bar.warn > i { background: var(--warn); }
+.bar.good > i {
+  background: var(--right);
+}
+.bar.warn > i {
+  background: var(--warn);
+}
 
 .hsk-row {
   display: grid;
@@ -317,7 +379,9 @@ a:focus-visible {
   border: 1px dashed var(--edge);
   border-radius: var(--r);
 }
-.empty p { margin: 0 0 6px; }
+.empty p {
+  margin: 0 0 6px;
+}
 
 .tag {
   display: inline-block;
@@ -327,8 +391,12 @@ a:focus-visible {
   color: var(--text-3);
   font: 500 11px var(--display);
 }
-.tag.known { color: var(--right); }
-.tag.pool { color: var(--warn); }
+.tag.known {
+  color: var(--right);
+}
+.tag.pool {
+  color: var(--warn);
+}
 
 /* Review: the start screen -------------------------------------------------- */
 
@@ -345,7 +413,9 @@ a:focus-visible {
   color: var(--warn);
 }
 
-.setup-panel { padding: 14px 18px; }
+.setup-panel {
+  padding: 14px 18px;
+}
 
 .setup-summary {
   display: flex;
@@ -366,7 +436,11 @@ a:focus-visible {
   display: grid;
   gap: 20px;
 }
-.setup-group { border: none; margin: 0; padding: 0; }
+.setup-group {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
 .setup-group legend {
   padding: 0 0 10px;
   font: 500 12px var(--display);
@@ -380,7 +454,9 @@ a:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
 }
-.choices.row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.choices.row {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
 
 .choice {
   display: flex;
@@ -391,15 +467,22 @@ a:focus-visible {
   padding: 11px 14px;
   background: var(--inset);
 }
-.choice-label { font: 500 14px var(--display); }
-.choice-hint { font: 12px var(--body); color: var(--text-3); }
+.choice-label {
+  font: 500 14px var(--display);
+}
+.choice-hint {
+  font: 12px var(--body);
+  color: var(--text-3);
+}
 .choice.on {
   background: color-mix(in srgb, var(--action) 16%, var(--inset));
   border-color: var(--action);
   border-bottom-color: var(--action-deep);
   color: var(--text);
 }
-.choice.on .choice-hint { color: var(--text-2); }
+.choice.on .choice-hint {
+  color: var(--text-2);
+}
 
 .size-readout {
   display: inline-block;
@@ -417,13 +500,17 @@ a:focus-visible {
   width: 100%;
   accent-color: var(--action);
 }
-.setup-note { margin: 8px 0 0; }
+.setup-note {
+  margin: 8px 0 0;
+}
 
 .start {
   margin-top: 22px;
   text-align: center;
 }
-.start p { margin: 10px 0 0; }
+.start p {
+  margin: 10px 0 0;
+}
 
 /* Review: the session ------------------------------------------------------- */
 
@@ -448,11 +535,21 @@ a:focus-visible {
   background: var(--inset);
   transition: background 0.35s ease-out;
 }
-.tonebar .seg.t1 { background: var(--tone-1); }
-.tonebar .seg.t2 { background: var(--tone-2); }
-.tonebar .seg.t3 { background: var(--tone-3); }
-.tonebar .seg.t4 { background: var(--tone-4); }
-.tonebar .seg.t5 { background: var(--tone-5); }
+.tonebar .seg.t1 {
+  background: var(--tone-1);
+}
+.tonebar .seg.t2 {
+  background: var(--tone-2);
+}
+.tonebar .seg.t3 {
+  background: var(--tone-3);
+}
+.tonebar .seg.t4 {
+  background: var(--tone-4);
+}
+.tonebar .seg.t5 {
+  background: var(--tone-5);
+}
 
 .combo {
   font: 500 13px var(--display);
@@ -460,7 +557,9 @@ a:focus-visible {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.combo.hot { color: var(--warn); }
+.combo.hot {
+  color: var(--warn);
+}
 
 .card {
   min-height: 300px;
@@ -473,8 +572,12 @@ a:focus-visible {
   border-width: 2px;
   transition: border-color 0.2s;
 }
-.card.right { border-color: var(--right); }
-.card.wrong { border-color: var(--wrong); }
+.card.right {
+  border-color: var(--right);
+}
+.card.wrong {
+  border-color: var(--wrong);
+}
 
 .task {
   margin: 0 0 22px;
@@ -484,8 +587,12 @@ a:focus-visible {
   color: var(--text-3);
 }
 
-.prompt { margin-bottom: 22px; }
-.prompt p { margin: 0 0 12px; }
+.prompt {
+  margin-bottom: 22px;
+}
+.prompt p {
+  margin: 0 0 12px;
+}
 
 .hanzi-xl {
   font: 600 clamp(40px, 9vw, 60px) / 1.25 var(--hanzi);
@@ -522,7 +629,10 @@ button.speak.big {
 
 /* The word bank ------------------------------------------------------------- */
 
-.bank { width: 100%; max-width: 520px; }
+.bank {
+  width: 100%;
+  max-width: 520px;
+}
 
 .bank-line {
   display: flex;
@@ -571,11 +681,19 @@ button.speak.big {
 }
 /* The line you built is the thing being marked, so it has to stay readable
    after the bank locks. */
-.tile.placed:disabled { opacity: 1; }
+.tile.placed:disabled {
+  opacity: 1;
+}
 
 @keyframes place {
-  from { transform: translateY(6px) scale(0.94); opacity: 0.4; }
-  to { transform: none; opacity: 1; }
+  from {
+    transform: translateY(6px) scale(0.94);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 .answer-input {
@@ -595,17 +713,29 @@ button.speak.big {
 }
 
 @keyframes rise {
-  from { transform: translateY(8px); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 .verdict {
   margin: 0 0 14px;
   font: 600 17px var(--display);
 }
-.verdict.ok { color: var(--right); }
-.verdict.no { color: var(--wrong); }
-.verdict:empty { display: none; }
+.verdict.ok {
+  color: var(--right);
+}
+.verdict.no {
+  color: var(--wrong);
+}
+.verdict:empty {
+  display: none;
+}
 
 .answer-hanzi {
   margin: 0 0 6px;
@@ -669,7 +799,9 @@ button.speak.big {
   text-align: left;
   max-width: 520px;
 }
-.context p { margin: 0; }
+.context p {
+  margin: 0;
+}
 
 /* A line, word by word ------------------------------------------------------ */
 
@@ -690,10 +822,16 @@ button.speak.big {
   padding: 0 2px;
   border-radius: 6px;
 }
-.line-word.askable { cursor: help; }
+.line-word.askable {
+  cursor: help;
+}
 .line-word.askable:hover,
-.line-word.askable:focus-visible { background: var(--edge); }
-.line-word.punct { align-self: flex-end; }
+.line-word.askable:focus-visible {
+  background: var(--edge);
+}
+.line-word.punct {
+  align-self: flex-end;
+}
 
 /* Subordinate to the characters — at equal size the two rows blur into one run. */
 .line-word .ruby {
@@ -703,7 +841,9 @@ button.speak.big {
 }
 /* Withheld, not removed: a line of mixed known and unknown words has to keep
    its characters on one baseline, or reading it becomes the puzzle. */
-.line-word .ruby.withheld { visibility: hidden; }
+.line-word .ruby.withheld {
+  visibility: hidden;
+}
 
 /* The word this card is about, inside its example. Deliberately not the .blank
    treatment: that rule already means "the word that is missing", and one mark
@@ -716,8 +856,12 @@ button.speak.big {
 /* Structure, dimmed the same way the video overlay dims it, so a line reads as
    vocabulary against grammar in both places. Loses to .marked on purpose: if the
    card is about 的, the card's own word has to stay the loudest thing on screen. */
-.line-word .zh.structural { color: var(--muted); }
-.line-word .zh.structural.marked { color: var(--action); }
+.line-word .zh.structural {
+  color: var(--muted);
+}
+.line-word .zh.structural.marked {
+  color: var(--action);
+}
 
 /* Asked for, never volunteered — which is why this is the only place a meaning
    appears on a question. CSS-driven so hover, tap and keyboard focus all reach
@@ -741,7 +885,9 @@ button.speak.big {
   white-space: normal;
 }
 .line-word.askable:hover > .word-tip,
-.line-word.askable:focus-visible > .word-tip { display: block; }
+.line-word.askable:focus-visible > .word-tip {
+  display: block;
+}
 
 .tip-head {
   display: flex;
@@ -749,7 +895,9 @@ button.speak.big {
   gap: 7px;
   margin-bottom: 4px;
 }
-.tip-word { font: 600 17px var(--hanzi); }
+.tip-word {
+  font: 600 17px var(--hanzi);
+}
 .tip-gloss {
   display: block;
   font: 400 13px/1.45 var(--body);
@@ -764,20 +912,32 @@ button.speak.big {
   gap: 10px;
   margin: 16px 0 4px;
 }
-.pips { display: inline-flex; gap: 4px; }
+.pips {
+  display: inline-flex;
+  gap: 4px;
+}
 .pip {
   width: 22px;
   height: 5px;
   border-radius: var(--pill);
   background: var(--edge);
 }
-.pip.lit { background: var(--right); }
+.pip.lit {
+  background: var(--right);
+}
 /* A rung just lost reads as a warning rather than as progress. */
-.pips.lost .pip.lit { background: var(--warn); }
+.pips.lost .pip.lit {
+  background: var(--warn);
+}
 
 /* In a list of a few hundred rows the same meter has to be much quieter. */
-.pips.compact { gap: 2px; }
-.pips.compact .pip { width: 8px; height: 4px; }
+.pips.compact {
+  gap: 2px;
+}
+.pips.compact .pip {
+  width: 8px;
+  height: 4px;
+}
 
 .actions {
   display: flex;
@@ -785,7 +945,12 @@ button.speak.big {
   justify-content: center;
   margin-top: 18px;
 }
-.actions button { flex: 1; max-width: 260px; padding: 14px; font-size: 16px; }
+.actions button {
+  flex: 1;
+  max-width: 260px;
+  padding: 14px;
+  font-size: 16px;
+}
 
 button.right-btn {
   background: var(--right);
@@ -793,7 +958,9 @@ button.right-btn {
   border-color: var(--right);
   border-bottom-color: #4a9b6c;
 }
-button.right-btn:hover:not(:disabled) { background: #94e8b8; }
+button.right-btn:hover:not(:disabled) {
+  background: #94e8b8;
+}
 
 button.wrong-btn {
   background: var(--inset);
@@ -810,7 +977,10 @@ button.wrong-btn {
   margin: 0 0 22px;
   font: 600 26px var(--display);
 }
-.done .tonebar { margin: 0 auto 24px; max-width: 420px; }
+.done .tonebar {
+  margin: 0 auto 24px;
+  max-width: 420px;
+}
 
 .summary {
   display: flex;
@@ -837,7 +1007,10 @@ button.wrong-btn {
   border-radius: var(--r-sm);
   background: var(--inset);
 }
-.preview .line-zh { margin: 6px 0; font-size: 20px; }
+.preview .line-zh {
+  margin: 6px 0;
+  font-size: 20px;
+}
 
 details.help {
   margin-top: 14px;
@@ -849,9 +1022,17 @@ details.help summary {
   color: var(--text-3);
   font: 500 13px var(--display);
 }
-details.help summary:hover { color: var(--text); }
-details.help h4 { margin: 16px 0 4px; font-size: 13px; }
-details.help p { margin: 0 0 8px; font-size: 13px; }
+details.help summary:hover {
+  color: var(--text);
+}
+details.help h4 {
+  margin: 16px 0 4px;
+  font-size: 13px;
+}
+details.help p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
 
 /* The one thing a user can get wrong invisibly, so it does not read as prose. */
 .callout {
@@ -889,7 +1070,9 @@ details.help pre {
   font-size: 12px;
   line-height: 1.5;
 }
-details.help code { font-size: 12px; }
+details.help code {
+  font-size: 12px;
+}
 
 /* Chat --------------------------------------------------------------------- */
 
@@ -901,8 +1084,14 @@ details.help code { font-size: 12px; }
   gap: 12px;
   align-items: start;
 }
-.chat-list { max-height: 70vh; overflow-y: auto; }
-.chat-row.on { background: var(--inset); border-radius: var(--r-sm); }
+.chat-list {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.chat-row.on {
+  background: var(--inset);
+  border-radius: var(--r-sm);
+}
 
 /* A row you press, not a link you follow: no underline, and none of the
    standalone spacing `.link-btn` carries. */
@@ -916,8 +1105,13 @@ details.help code { font-size: 12px; }
   text-align: left;
   min-width: 0;
 }
-.row-btn:hover:not(:disabled) { background: none; color: var(--text); }
-.row-btn:active:not(:disabled) { transform: none; }
+.row-btn:hover:not(:disabled) {
+  background: none;
+  color: var(--text);
+}
+.row-btn:active:not(:disabled) {
+  transform: none;
+}
 
 .chat-row .row-btn {
   display: flex;
@@ -933,8 +1127,14 @@ details.help code { font-size: 12px; }
   white-space: nowrap;
 }
 
-.chat-open { padding: 0; }
-.chat { display: flex; flex-direction: column; height: 70vh; }
+.chat-open {
+  padding: 0;
+}
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+}
 .chat-head {
   display: flex;
   align-items: center;
@@ -942,12 +1142,26 @@ details.help code { font-size: 12px; }
   padding: 8px 12px;
   border-bottom: 1px solid var(--edge);
 }
-.chat-head .model { flex: 1; min-width: 0; }
+.chat-head .model {
+  flex: 1;
+  min-width: 0;
+}
 
-.transcript { flex: 1; overflow-y: auto; padding: 12px 14px; }
-.turn { margin-bottom: 14px; line-height: 1.55; }
-.turn p { margin: 0 0 8px; }
-.turn p:last-child { margin-bottom: 0; }
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.turn {
+  margin-bottom: 14px;
+  line-height: 1.55;
+}
+.turn p {
+  margin: 0 0 8px;
+}
+.turn p:last-child {
+  margin-bottom: 0;
+}
 /* Your own turns are set apart rather than bubbled: an explanation is the thing
    being read, and a column of alternating bubbles fights it for attention. */
 .turn.user {
@@ -980,7 +1194,10 @@ details.help code { font-size: 12px; }
   border: 1px solid var(--edge);
   border-radius: var(--r-sm);
 }
-.composer textarea:focus-visible { outline: 2px solid var(--edge-lit); outline-offset: 1px; }
+.composer textarea:focus-visible {
+  outline: 2px solid var(--edge-lit);
+  outline-offset: 1px;
+}
 
 select.model {
   padding: 4px 6px;
@@ -1015,8 +1232,14 @@ select.model {
   animation: drawer-in 160ms ease-out;
 }
 @keyframes drawer-in {
-  from { transform: translateX(16px); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 .drawer-head {
   display: flex;
@@ -1025,22 +1248,44 @@ select.model {
   padding: 12px 14px;
   border-bottom: 1px solid var(--edge);
 }
-.drawer-head a { color: var(--link); }
+.drawer-head a {
+  color: var(--link);
+}
 /* The panel fills the drawer rather than keeping the tab's fixed height. */
-.drawer .chat { flex: 1; height: auto; min-height: 0; }
+.drawer .chat {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
 
 /* The same panel, framed inside a video. There is no shell around it: the frame
    itself is the drawer, and the page it sits in supplies the backdrop. */
-.embed { display: flex; flex-direction: column; height: 100vh; }
-.embed .chat { flex: 1; height: auto; min-height: 0; }
-.embed .panel { margin: 12px; }
+.embed {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.embed .chat {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.embed .panel {
+  margin: 12px;
+}
 /* The composer is the one thing a 420px frame cannot afford to lose. */
-.embed .transcript { min-height: 0; }
+.embed .transcript {
+  min-height: 0;
+}
 
 /* What the model was shown, on demand — the first question when an answer looks
    wrong is what it was actually looking at. */
-.passage { margin-bottom: 14px; }
-.passage summary { cursor: pointer; }
+.passage {
+  margin-bottom: 14px;
+}
+.passage summary {
+  cursor: pointer;
+}
 .passage-lines {
   margin-top: 6px;
   padding: 8px 10px;
@@ -1048,13 +1293,24 @@ select.model {
   background: var(--inset);
   font: 14px/1.7 var(--hanzi);
 }
-.passage-lines p { margin: 0; }
-.passage-line { color: var(--text); font-weight: 600; }
+.passage-lines p {
+  margin: 0;
+}
+.passage-line {
+  color: var(--text);
+  font-weight: 600;
+}
 
 /* Model log ----------------------------------------------------------------- */
 
-.log { max-height: 420px; overflow-y: auto; margin-top: 4px; }
-.log-row + .log-row { border-top: 1px solid var(--edge); }
+.log {
+  max-height: 420px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.log-row + .log-row {
+  border-top: 1px solid var(--edge);
+}
 .log-head {
   display: flex;
   align-items: baseline;
@@ -1063,14 +1319,30 @@ select.model {
   padding: 5px 4px;
   font-size: 12px;
 }
-.log-time { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.log-time {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
 /* The message is the column that gets the leftover room, and is clipped rather
    than wrapped so a hundred rows stay scannable. */
-.log-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-level.warn { color: var(--warn); }
-.log-level.error { color: var(--wrong); }
-.log-level.debug { color: var(--text-3); }
-.log-detail { padding: 2px 4px 10px; }
+.log-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-level.warn {
+  color: var(--warn);
+}
+.log-level.error {
+  color: var(--wrong);
+}
+.log-level.debug {
+  color: var(--text-3);
+}
+.log-detail {
+  padding: 2px 4px 10px;
+}
 .log-detail pre {
   max-height: 260px;
   overflow: auto;
@@ -1097,7 +1369,9 @@ select.model {
   border-radius: var(--r);
   background: var(--raised);
 }
-.settings-group + .settings-group { margin-top: 12px; }
+.settings-group + .settings-group {
+  margin-top: 12px;
+}
 .settings-group > h2 {
   font: 600 16px var(--display);
   margin: 0;
@@ -1123,19 +1397,53 @@ select.model {
 }
 /* An address, not a search box: `input[type=text]` is full-width by default and
    would push the label off the row. */
-.settings-group input.url { width: 220px; flex: none; }
-.settings-group input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--action); }
-.settings-group .toolbar { margin: 12px 0 0; }
+.settings-group input.url {
+  width: 220px;
+  flex: none;
+}
+.settings-group input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--action);
+}
+.settings-group .toolbar {
+  margin: 12px 0 0;
+}
 
-.value { color: var(--text-3); font-variant-numeric: tabular-nums; }
-.hint { color: var(--text-3); font-size: 12px; margin: 10px 0 0; }
+.value {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.hint {
+  color: var(--text-3);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
 /* Still legible, still there, and not reachable until the thing above it is on. */
-.disabled { opacity: 0.4; pointer-events: none; }
-.divider { border: 0; border-top: 1px solid var(--edge); margin: 12px 0 0; }
+.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.divider {
+  border: 0;
+  border-top: 1px solid var(--edge);
+  margin: 12px 0 0;
+}
 
-.presets { display: flex; gap: 8px; padding: 12px 0 2px; }
-.presets .preset { flex: 1; font-size: 13px; padding: 6px 10px; }
-.connect { width: 100%; margin-top: 12px; }
+.presets {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 2px;
+}
+.presets .preset {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.connect {
+  width: 100%;
+  margin-top: 12px;
+}
 .status {
   margin: 10px 0 0;
   padding: 8px 10px;
@@ -1143,24 +1451,49 @@ select.model {
   background: var(--inset);
   font-size: 12px;
 }
-.status-ok { color: var(--right); }
-.status-bad { color: var(--warn); }
-.status-busy { color: var(--text-3); }
+.status-ok {
+  color: var(--right);
+}
+.status-bad {
+  color: var(--warn);
+}
+.status-busy {
+  color: var(--text-3);
+}
 
 /* ---------------------------------------------------------------------------- */
 
 @media (max-width: 560px) {
-  .shell { padding: 20px 16px 60px; }
+  .shell {
+    padding: 20px 16px 60px;
+  }
   /* The list stacks above the conversation rather than squeezing beside it. */
-  .chat-layout { grid-template-columns: 1fr; }
-  .chat-list { max-height: 180px; }
-  .card { min-height: 240px; padding: 24px 16px; }
-  .actions { flex-direction: column-reverse; }
-  .actions button { max-width: none; }
-  .hud { flex-wrap: wrap; }
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+  .chat-list {
+    max-height: 180px;
+  }
+  .card {
+    min-height: 240px;
+    padding: 24px 16px;
+  }
+  .actions {
+    flex-direction: column-reverse;
+  }
+  .actions button {
+    max-width: none;
+  }
+  .hud {
+    flex-wrap: wrap;
+  }
   /* Too narrow to sit between the button and the counter, so it takes its own
      row underneath them. */
-  .tonebar { order: 3; flex-basis: 100%; margin-top: 4px; }
+  .tonebar {
+    order: 3;
+    flex-basis: 100%;
+    margin-top: 4px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1171,5 +1504,7 @@ select.model {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  button:active:not(:disabled) { transform: none; }
+  button:active:not(:disabled) {
+    transform: none;
+  }
 }

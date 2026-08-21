@@ -55,7 +55,12 @@ describe('rankEntries', () => {
   test('prefers the traditional form when reading traditional text', () => {
     const entries: CedictEntry[] = [
       { traditional: '龍', simplified: '龙', pinyin: 'long2', definitions: ['dragon'] },
-      { traditional: '竜', simplified: '龙', pinyin: 'long2', definitions: ['variant of 龍[long2]'] },
+      {
+        traditional: '竜',
+        simplified: '龙',
+        pinyin: 'long2',
+        definitions: ['variant of 龍[long2]'],
+      },
     ]
     const [primary] = rankEntries(entries, '龍', 'long2', true)
     expect(primary.definitions[0]).toBe('dragon')
@@ -103,10 +108,30 @@ describe('rankEntries', () => {
 
 // 啊 as CC-CEDICT actually publishes it, in file order.
 const A: CedictEntry[] = [
-  { traditional: '啊', simplified: '啊', pinyin: 'a1', definitions: ['interjection of surprise', 'Ah!', 'Oh!'] },
-  { traditional: '啊', simplified: '啊', pinyin: 'a2', definitions: ['interjection expressing doubt', 'Eh?'] },
-  { traditional: '啊', simplified: '啊', pinyin: 'a3', definitions: ['interjection of surprise or doubt', 'My!'] },
-  { traditional: '啊', simplified: '啊', pinyin: 'a4', definitions: ['grunt of agreement', 'uhm', 'Ah, OK', "Oh, it's you!"] },
+  {
+    traditional: '啊',
+    simplified: '啊',
+    pinyin: 'a1',
+    definitions: ['interjection of surprise', 'Ah!', 'Oh!'],
+  },
+  {
+    traditional: '啊',
+    simplified: '啊',
+    pinyin: 'a2',
+    definitions: ['interjection expressing doubt', 'Eh?'],
+  },
+  {
+    traditional: '啊',
+    simplified: '啊',
+    pinyin: 'a3',
+    definitions: ['interjection of surprise or doubt', 'My!'],
+  },
+  {
+    traditional: '啊',
+    simplified: '啊',
+    pinyin: 'a4',
+    definitions: ['grunt of agreement', 'uhm', 'Ah, OK', "Oh, it's you!"],
+  },
   {
     traditional: '啊',
     simplified: '啊',
@@ -181,7 +206,7 @@ describe('excludeFromSegmentation', () => {
   // extension deliberately ships no frequency list, so the handful of headwords
   // in this position are named outright.
   test('excludes real words that are much more often two words', () => {
-    const woqu = entry('wo3 qu4', "(slang) what the ...!; oh my god!")
+    const woqu = entry('wo3 qu4', '(slang) what the ...!; oh my god!')
     expect(excludeFromSegmentation(woqu, '我去')).toBe(true)
   })
 

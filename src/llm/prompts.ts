@@ -48,11 +48,7 @@ export function contextBlock(context: ChatContext): string {
 
   if (context.sourceTitle) parts.push(`From: ${context.sourceTitle}`)
 
-  const passage = [
-    ...context.before,
-    `>> ${context.line}`,
-    ...context.after,
-  ].join('\n')
+  const passage = [...context.before, `>> ${context.line}`, ...context.after].join('\n')
 
   parts.push(
     'Here is the passage. The line marked >> is the one being asked about; the rest is context only.',
@@ -68,9 +64,10 @@ export function contextBlock(context: ChatContext): string {
   // the known list stops it spending the answer re-teaching 是 and 了.
   if (context.newWords?.length) {
     parts.push(
-      ['Dictionary entries for the words in that line the learner has not learned yet:', ...context.newWords.map(glossLine)].join(
-        '\n',
-      ),
+      [
+        'Dictionary entries for the words in that line the learner has not learned yet:',
+        ...context.newWords.map(glossLine),
+      ].join('\n'),
     )
   }
 

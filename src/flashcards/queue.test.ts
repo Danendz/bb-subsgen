@@ -26,7 +26,8 @@ const sentence = (text: string, extra: Partial<Item> = {}) =>
   make({ id: `s:${text}`, kind: 'sentence', text, state: 'pool', ...extra })
 
 /** Everything unknown unless the test says otherwise. */
-const unknownCount = (item: Item) => (item.text.match(/\d+/)?.[0] ? Number(item.text.match(/\d+/)![0]) : 1)
+const unknownCount = (item: Item) =>
+  item.text.match(/\d+/)?.[0] ? Number(item.text.match(/\d+/)![0]) : 1
 
 /** Ranks live outside the card now, exactly as an uploaded list does. */
 const RANKS = new Map<string, number>()
@@ -98,7 +99,11 @@ describe('buildQueue', () => {
   test('words met earlier today do not hold the rest back', () => {
     const items = [
       ...Array.from({ length: 8 }, (_, i) =>
-        word(`旧${i}`, { introducedAt: startOfDay(NOW) + 3600_000, state: 'review', due: NOW + DAY_MS }),
+        word(`旧${i}`, {
+          introducedAt: startOfDay(NOW) + 3600_000,
+          state: 'review',
+          due: NOW + DAY_MS,
+        }),
       ),
       ...Array.from({ length: 10 }, (_, i) => word(`新${i}`)),
     ]
@@ -138,7 +143,9 @@ describe('buildQueue', () => {
       word('待见'),
     ]
     expect(
-      buildQueue({ items, now: NOW, newSentencesPerDay: 0, unknownCount, rankOf }).map((i) => i.text),
+      buildQueue({ items, now: NOW, newSentencesPerDay: 0, unknownCount, rankOf }).map(
+        (i) => i.text,
+      ),
     ).toEqual(['待见'])
   })
 
@@ -283,7 +290,13 @@ describe('include', () => {
   ]
 
   test('words only leaves sentences out entirely', () => {
-    const queue = buildQueue({ items: mixed(), now: NOW, ...limits, unknownCount, include: 'words' })
+    const queue = buildQueue({
+      items: mixed(),
+      now: NOW,
+      ...limits,
+      unknownCount,
+      include: 'words',
+    })
     expect(queue.every((item) => item.kind === 'word')).toBe(true)
     expect(queue.map((i) => i.text)).toEqual(['复习', '新词'])
   })
@@ -341,7 +354,9 @@ describe('limit', () => {
     )
 
   test('caps the session at the requested number of cards', () => {
-    expect(buildQueue({ items: backlog(), now: NOW, ...limits, unknownCount, limit: 5 })).toHaveLength(5)
+    expect(
+      buildQueue({ items: backlog(), now: NOW, ...limits, unknownCount, limit: 5 }),
+    ).toHaveLength(5)
   })
 
   test('keeps the top of the queue, not a sample of it', () => {
@@ -431,7 +446,9 @@ describe('practice', () => {
   })
 
   test('never serves a due card twice', () => {
-    const items = [word('复习', { state: 'review', interval: 7, introducedAt: 0, due: NOW - DAY_MS })]
+    const items = [
+      word('复习', { state: 'review', interval: 7, introducedAt: 0, due: NOW - DAY_MS }),
+    ]
     expect(buildQueue({ items, now: NOW, ...limits, unknownCount, limit: 10 })).toHaveLength(1)
   })
 
@@ -471,8 +488,18 @@ describe('practice', () => {
   })
 
   test('the filter narrows what can be practised too', () => {
-    const items = [settled('练习'), sentence('句子', { state: 'review', interval: 7, introducedAt: 0, due: NOW + 7 * DAY_MS })]
-    const queue = buildQueue({ items, now: NOW, ...limits, unknownCount, include: 'words', limit: 10 })
+    const items = [
+      settled('练习'),
+      sentence('句子', { state: 'review', interval: 7, introducedAt: 0, due: NOW + 7 * DAY_MS }),
+    ]
+    const queue = buildQueue({
+      items,
+      now: NOW,
+      ...limits,
+      unknownCount,
+      include: 'words',
+      limit: 10,
+    })
     expect(queue.map((i) => i.text)).toEqual(['练习'])
   })
 
@@ -491,7 +518,14 @@ describe('practice', () => {
 
 describe('grammar intake', () => {
   const pattern = (id: string, over: Partial<Item> = {}): Item =>
-    make({ id: `g:${id}`, kind: 'grammar', patternId: id, text: 'V + 得 + how', state: 'pool', ...over })
+    make({
+      id: `g:${id}`,
+      kind: 'grammar',
+      patternId: id,
+      text: 'V + 得 + how',
+      state: 'pool',
+      ...over,
+    })
 
   const ids = (session: QueueSession) => session.cards.map((c) => c.id)
 

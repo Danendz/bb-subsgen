@@ -55,12 +55,7 @@ describe('toDiacritic', () => {
   })
 
   test('converts a full multi-syllable word, space-joined', () => {
-    expect(
-      'xi3 huan5'
-        .split(' ')
-        .map(toDiacritic)
-        .join(''),
-    ).toBe('xǐhuan')
+    expect('xi3 huan5'.split(' ').map(toDiacritic).join('')).toBe('xǐhuan')
   })
 })
 

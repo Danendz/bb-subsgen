@@ -39,9 +39,7 @@ export function isCapturableText(text: string): boolean {
 }
 
 export type SelectionTarget =
-  | { kind: 'word'; text: string }
-  | { kind: 'sentence'; text: string }
-  | null
+  { kind: 'word'; text: string } | { kind: 'sentence'; text: string } | null
 
 /**
  * What a reader selection should become.

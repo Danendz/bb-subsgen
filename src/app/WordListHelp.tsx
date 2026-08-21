@@ -17,8 +17,8 @@ const SOURCES = [
       <>
         Film and TV subtitles — the closest match to what is actually spoken on Bilibili. Take{' '}
         <strong>subtlexch131210.zip</strong>: it is the only one described as UTF-8. Unzip it and
-        upload the file inside. States no licence, only a request to cite the paper, so treat it
-        as yours to use rather than yours to share.
+        upload the file inside. States no licence, only a request to cite the paper, so treat it as
+        yours to use rather than yours to share.
       </>
     ),
   },
@@ -30,8 +30,8 @@ const SOURCES = [
     note: (
       <>
         A clean licence, the same one CC-CEDICT uses. Frozen since 2024, when its author stopped
-        updating it because AI-generated text had polluted the web corpus — for word frequency
-        that is arguably a feature.
+        updating it because AI-generated text had polluted the web corpus — for word frequency that
+        is arguably a feature.
       </>
     ),
   },
@@ -62,23 +62,23 @@ export function WordListHelp() {
       <summary>Where to get a list, and what it should look like</summary>
 
       <p>
-        bb-subsgen ships no word list. Every usable one belongs to somebody, so you supply your
-        own — which also means nothing here is uploaded anywhere. The file is read in your
-        browser and stays in it.
+        bb-subsgen ships no word list. Every usable one belongs to somebody, so you supply your own
+        — which also means nothing here is uploaded anywhere. The file is read in your browser and
+        stays in it.
       </p>
 
       <h4>What the uploader accepts</h4>
       <p>
-        One word per line, or any tab- or comma-separated file with a column of Chinese in it, or
-        a JSON array. A header row is detected and skipped, and the word column is found wherever
-        it sits.
+        One word per line, or any tab- or comma-separated file with a column of Chinese in it, or a
+        JSON array. A header row is detected and skipped, and the word column is found wherever it
+        sits.
       </p>
       <p class="callout">
         A frequency list is ranked by <strong>the order words appear in the file</strong>, most
         common first. Any number in the file is ignored, because the same number means opposite
-        things in different lists — a rank counts up as words get rarer, a raw count counts down.
-        So check the preview before importing: it should start 的, 一, 是. If it starts 爱, 爱好,
-        八 the file is in alphabetical order and needs sorting by frequency first.
+        things in different lists — a rank counts up as words get rarer, a raw count counts down. So
+        check the preview before importing: it should start 的, 一, 是. If it starts 爱, 爱好, 八
+        the file is in alphabetical order and needs sorting by frequency first.
       </p>
       <p>
         An HSK list needs a column of levels from 1 to 9 alongside the words. Those are read as
@@ -128,8 +128,8 @@ export function WordListHelp() {
       </p>
       <pre>{HSK_SNIPPET}</pre>
       <p class="small muted">
-        Needs <code>curl</code> and <code>jq</code>, and produces a two-column{' '}
-        <code>hsk.tsv</code> of about 11,000 words to upload.
+        Needs <code>curl</code> and <code>jq</code>, and produces a two-column <code>hsk.tsv</code>{' '}
+        of about 11,000 words to upload.
       </p>
     </details>
   )

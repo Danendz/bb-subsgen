@@ -97,8 +97,7 @@ export function readPlayurl(payload: {
   if (payload.code !== 0) return null
 
   const body = (payload.result ?? payload.data) as
-    | { dash?: { audio?: unknown }; timelength?: unknown }
-    | undefined
+    { dash?: { audio?: unknown }; timelength?: unknown } | undefined
   if (!body) return null
 
   const stream = pickAudioStream(body.dash?.audio)

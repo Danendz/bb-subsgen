@@ -36,10 +36,7 @@ export type HoverOutcome = 'keep' | 'replace'
  * *not* a reason to close: the only things that dismiss a card are releasing
  * the modifier, Escape, scrolling, or landing on a different word.
  */
-export function hoverOutcome(
-  open: CardIdentity | null,
-  found: Match | null,
-): HoverOutcome {
+export function hoverOutcome(open: CardIdentity | null, found: Match | null): HoverOutcome {
   if (!found) return 'keep'
   // Page matches only — a card opened from the selection card is never "the
   // same" as the word now under the pointer, since it needs a different anchor.

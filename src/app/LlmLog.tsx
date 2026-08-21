@@ -91,14 +91,22 @@ export function LlmLog() {
       </div>
 
       <div class="toolbar">
-        <select class="model" value={level} onChange={(e) => setLevel(e.currentTarget.value as LlmLogLevel)}>
+        <select
+          class="model"
+          value={level}
+          onChange={(e) => setLevel(e.currentTarget.value as LlmLogLevel)}
+        >
           {LEVELS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
-        <select class="model" value={kind} onChange={(e) => setKind(e.currentTarget.value as LlmLogKind)}>
+        <select
+          class="model"
+          value={kind}
+          onChange={(e) => setKind(e.currentTarget.value as LlmLogKind)}
+        >
           {KINDS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

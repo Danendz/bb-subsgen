@@ -72,8 +72,7 @@ beforeEach(async () => {
   vi.stubGlobal('chrome', {
     storage: {
       session: {
-        get: (key: string) =>
-          Promise.resolve(session.has(key) ? { [key]: session.get(key) } : {}),
+        get: (key: string) => Promise.resolve(session.has(key) ? { [key]: session.get(key) } : {}),
         set: (items: Record<string, unknown>) => {
           for (const [key, value] of Object.entries(items)) session.set(key, value)
           return Promise.resolve()
@@ -142,9 +141,7 @@ describe('a duplicate request', () => {
     await startTranscription(TAB, request())
     await startTranscription(TAB, request({ videoId: 'ep335911' }))
 
-    expect(onBus).toContainEqual(
-      expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }),
-    )
+    expect(onBus).toContainEqual(expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }))
     expect(onBus).toContainEqual(expect.objectContaining({ videoId: 'ep335911' }))
   })
 
@@ -153,9 +150,7 @@ describe('a duplicate request', () => {
     await startTranscription(TAB, request())
     await startTranscription(TAB, request({ model: 'belle-whisper-zh' }))
 
-    expect(onBus).toContainEqual(
-      expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }),
-    )
+    expect(onBus).toContainEqual(expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }))
   })
 })
 
@@ -281,11 +276,19 @@ describe('routing what the offscreen document reports', () => {
       done: 2,
       total: 11,
       cues: [],
-      covered: [[0, 60], [1800, 2100]],
+      covered: [
+        [0, 60],
+        [1800, 2100],
+      ],
     })
     await settle()
 
-    expect(toTab[0].message).toMatchObject({ covered: [[0, 60], [1800, 2100]] })
+    expect(toTab[0].message).toMatchObject({
+      covered: [
+        [0, 60],
+        [1800, 2100],
+      ],
+    })
   })
 
   test('drops a superseded run’s chunk, still landing', async () => {
@@ -374,9 +377,7 @@ describe('watchAsrTab', () => {
     })
     await settle()
     expect(toTab).toEqual([])
-    expect(onBus).toContainEqual(
-      expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }),
-    )
+    expect(onBus).toContainEqual(expect.objectContaining({ type: 'bb-subsgen:offscreen-cancel' }))
   })
 
   test('leaves another tab’s run alone', async () => {
@@ -428,8 +429,7 @@ async function stopWithGap() {
 }
 
 /** The instruction the offscreen document was last given. */
-const transcribeRequest = () =>
-  onBus.find((msg) => msg.type === 'bb-subsgen:offscreen-transcribe')
+const transcribeRequest = () => onBus.find((msg) => msg.type === 'bb-subsgen:offscreen-transcribe')
 
 describe('picking up where a run gave up', () => {
   test('seeds the next start with what the last run managed', async () => {

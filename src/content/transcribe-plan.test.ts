@@ -32,7 +32,9 @@ describe('when a run starts', () => {
   })
 
   test('never where this video was already declined', () => {
-    expect(planTranscription(situation({ confidence: 'likely', refused: true })).start).toBe('never')
+    expect(planTranscription(situation({ confidence: 'likely', refused: true })).start).toBe(
+      'never',
+    )
   })
 
   test('an approval outranks a refusal of the same video', () => {
@@ -86,6 +88,8 @@ describe('whether a run is under way at load', () => {
   })
 
   test('not running where the published track is used', () => {
-    expect(planTranscription(situation({ confidence: 'certain', usable: true })).running).toBe(false)
+    expect(planTranscription(situation({ confidence: 'certain', usable: true })).running).toBe(
+      false,
+    )
   })
 })

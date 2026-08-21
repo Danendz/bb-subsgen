@@ -110,7 +110,11 @@ describe('confidenceOf', () => {
       'likely',
     )
     expect(
-      confidenceOf({ title: 'Empresses in the Palace Ep 1', author: '中国电视剧精选', captionTracks: [] }),
+      confidenceOf({
+        title: 'Empresses in the Palace Ep 1',
+        author: '中国电视剧精选',
+        captionTracks: [],
+      }),
     ).toBe('likely')
   })
 

@@ -47,7 +47,16 @@ describe('parseTranscription', () => {
 
   test('reads SRT', () => {
     const cues = parseTranscription(
-      ['1', '00:00:01,200 --> 00:00:03,400', '新疆很大。', '', '2', '00:00:03,400 --> 00:00:06,000', '天山在这里。', ''].join('\n'),
+      [
+        '1',
+        '00:00:01,200 --> 00:00:03,400',
+        '新疆很大。',
+        '',
+        '2',
+        '00:00:03,400 --> 00:00:06,000',
+        '天山在这里。',
+        '',
+      ].join('\n'),
     )
     expect(cues).toEqual([
       { start: 1.2, end: 3.4, text: '新疆很大。' },
@@ -203,7 +212,9 @@ describe('parseTranscription, looping', () => {
   test('keeps a line someone genuinely said twice', () => {
     // Both of these are real, from the same episode, and neither is a loop.
     expect(parseTranscription(tiled(repeated('我有一点走不动的', 2), 1, 167))).toHaveLength(2)
-    expect(parseTranscription(tiled(repeated('你从美国都回来一百八十天了', 2), 2, 301))).toHaveLength(2)
+    expect(
+      parseTranscription(tiled(repeated('你从美国都回来一百八十天了', 2), 2, 301)),
+    ).toHaveLength(2)
   })
 
   test('keeps a short line repeated three times in a hurry', () => {
@@ -281,7 +292,9 @@ describe('describeSegments', () => {
   test('says so rather than inventing a number the server did not send', () => {
     // speaches and the rest send neither field, and a plausible-looking 0.00
     // there would read as "certainly speech" — the opposite of "not measured".
-    const report = describeSegments(JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }))
+    const report = describeSegments(
+      JSON.stringify({ segments: [{ start: 1, end: 2, text: '新疆很大。' }] }),
+    )
     expect(report).toContain('ns     ?')
     expect(report).toContain('lp     ?')
   })
@@ -319,7 +332,9 @@ describe('shiftBy', () => {
 /** A fetch that answers each call with the next body in the list. */
 function fetchReturning(...bodies: string[]): typeof fetch {
   let at = 0
-  return vi.fn(async () => new Response(bodies[at++] ?? '', { status: 200 })) as unknown as typeof fetch
+  return vi.fn(
+    async () => new Response(bodies[at++] ?? '', { status: 200 }),
+  ) as unknown as typeof fetch
 }
 
 const options = {
@@ -476,7 +491,9 @@ describe('isRetryable', () => {
   test('retries a server that could not be reached', () => {
     // The common one, and the one worth waiting for: whisper restarted, or is
     // still loading its model.
-    expect(isRetryable(connectionError('http://localhost:8080/v1', new Error('refused')))).toBe(true)
+    expect(isRetryable(connectionError('http://localhost:8080/v1', new Error('refused')))).toBe(
+      true,
+    )
   })
 
   test('retries the server failing rather than declining', () => {
@@ -504,8 +521,7 @@ describe('isRetryable', () => {
 })
 
 describe('transcribeWithRetry', () => {
-  const segments = (text: string) =>
-    JSON.stringify({ segments: [{ start: 0, end: 2, text }] })
+  const segments = (text: string) => JSON.stringify({ segments: [{ start: 0, end: 2, text }] })
 
   /** A server that fails the first `failures` times, then answers. */
   function server(failures: number, status?: number) {
@@ -524,9 +540,7 @@ describe('transcribeWithRetry', () => {
   }
 
   /** Never actually waits; the backoff is seconds long by design. */
-  const wait = vi.fn<(ms: number, signal?: AbortSignal) => Promise<void>>(() =>
-    Promise.resolve(),
-  )
+  const wait = vi.fn<(ms: number, signal?: AbortSignal) => Promise<void>>(() => Promise.resolve())
 
   const attempt = (fetchImpl: typeof fetch) =>
     transcribeWithRetry({

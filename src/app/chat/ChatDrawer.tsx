@@ -23,13 +23,7 @@ export interface ChatDrawerProps {
  * position, streak and timers, and the hash router would unmount all of it.
  * Asking a question about a card must not cost you the card.
  */
-export function ChatDrawer({
-  chatId,
-  autoAsk,
-  onClose,
-  fullHref,
-  fullTarget,
-}: ChatDrawerProps) {
+export function ChatDrawer({ chatId, autoAsk, onClose, fullHref, fullTarget }: ChatDrawerProps) {
   // Escape closes, as it does everywhere else a panel covers the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

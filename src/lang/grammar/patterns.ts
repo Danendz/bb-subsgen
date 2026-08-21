@@ -261,7 +261,8 @@ export const PATTERNS: readonly Pattern[] = [
     id: 'ruguo-jiu',
     name: 'If / then',
     skeleton: '如果 … 就 …',
-    explanation: 'A condition and what follows from it. 就 marks the second half as the consequence.',
+    explanation:
+      'A condition and what follows from it. 就 marks the second half as the consequence.',
     hsk: 3,
     rule: { anchor: '就', requires: ['如果'], after: ['any'], extent: 'clause' },
     example: '如果/ru2guo3 下雨/xia4yu3 就/jiu4 回家/hui2jia1',

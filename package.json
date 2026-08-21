@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "build:dict": "node --experimental-strip-types tools/build-dict.ts",
     "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "ytdlp": "node --experimental-strip-types tools/ytdlp-server.ts",
     "services": "node --experimental-strip-types tools/services.ts"
   },
@@ -17,6 +19,7 @@
     "@types/chrome": "^0.2.5",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
+    "prettier": "3.9.6",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"

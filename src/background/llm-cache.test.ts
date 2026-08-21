@@ -66,7 +66,10 @@ describe('the translation cache', () => {
   })
 
   test('reports what it is holding', async () => {
-    await writeLinesIn(db, KEY, [{ start: 0, text: 'a' }, { start: 1, text: 'b' }])
+    await writeLinesIn(db, KEY, [
+      { start: 0, text: 'a' },
+      { start: 1, text: 'b' },
+    ])
     await writeLinesIn(db, { ...KEY, videoId: 'BV2' }, [{ start: 0, text: 'c' }])
 
     expect(await cacheSizeIn(db)).toEqual({ videos: 2, lines: 3 })
@@ -100,7 +103,10 @@ describe('eviction', () => {
 
     await writeLinesIn(db, { ...KEY, videoId: 'oldest' }, [{ start: 0, text: 'a' }])
     await writeLinesIn(db, { ...KEY, videoId: 'middle' }, [{ start: 0, text: 'b' }])
-    await writeLinesIn(db, { ...KEY, videoId: 'newest' }, [{ start: 0, text: 'c' }, { start: 1, text: 'd' }])
+    await writeLinesIn(db, { ...KEY, videoId: 'newest' }, [
+      { start: 0, text: 'c' },
+      { start: 1, text: 'd' },
+    ])
 
     expect(await evictIn(db, 2)).toBe(1)
     vi.restoreAllMocks()

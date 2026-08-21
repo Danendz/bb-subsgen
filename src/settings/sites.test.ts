@@ -11,9 +11,7 @@ describe('originFromInput', () => {
   })
 
   test('drops everything after the origin', () => {
-    expect(originFromInput('https://zhihu.com/question/123?sort=new#top')).toBe(
-      'https://zhihu.com',
-    )
+    expect(originFromInput('https://zhihu.com/question/123?sort=new#top')).toBe('https://zhihu.com')
   })
 
   test('keeps a port, because Chrome treats it as a different origin', () => {
@@ -51,11 +49,9 @@ describe('hostLabel', () => {
 
 describe('sortedSites', () => {
   test('orders by name, not by when it was granted', () => {
-    expect(sortedSites(['https://zhihu.com', 'https://baidu.com', 'https://www.bilibili.com'])).toEqual([
-      'https://baidu.com',
-      'https://www.bilibili.com',
-      'https://zhihu.com',
-    ])
+    expect(
+      sortedSites(['https://zhihu.com', 'https://baidu.com', 'https://www.bilibili.com']),
+    ).toEqual(['https://baidu.com', 'https://www.bilibili.com', 'https://zhihu.com'])
   })
 
   test('leaves the caller’s array alone', () => {
