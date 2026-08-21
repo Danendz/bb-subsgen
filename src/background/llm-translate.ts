@@ -28,7 +28,7 @@ import { extractJson } from '../llm/reply'
 import { newRequestId } from '../llm/types'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import type { TranslationLang } from '../shared/settings'
-import { lookupDefs } from './defs-store'
+import { lookupDefs } from '../dict/store'
 import { evict, readTrack, writeLines } from './llm-cache'
 
 /** A cue as the pass needs it: what to translate, and how to key what comes back. */

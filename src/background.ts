@@ -31,7 +31,7 @@ import {
   setChatBusy,
   startPass,
 } from './background/llm-translate'
-import { lookupDefs } from './background/defs-store'
+import { lookupDefs } from './dict/store'
 import {
   captureSentence,
   discoverWord,
