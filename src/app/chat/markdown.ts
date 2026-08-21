@@ -25,9 +25,7 @@ export function inlineSpans(line: string): Span[] {
     if (start > at) spans.push({ kind: 'text', text: line.slice(at, start) })
 
     const [whole, bold, code] = match
-    spans.push(
-      bold !== undefined ? { kind: 'bold', text: bold } : { kind: 'code', text: code },
-    )
+    spans.push(bold !== undefined ? { kind: 'bold', text: bold } : { kind: 'code', text: code })
     at = start + whole.length
   }
 

@@ -37,8 +37,8 @@ export function Overview() {
       <div class="empty">
         <p>Nothing collected yet.</p>
         <p class="small">
-          Watch a subtitled Bilibili video, or hold the reader key on a page you have enabled,
-          and the words you look up will land here.
+          Watch a subtitled Bilibili video, or hold the reader key on a page you have enabled, and
+          the words you look up will land here.
         </p>
       </div>
     )
@@ -49,7 +49,9 @@ export function Overview() {
   // 120k headwords are mostly proper nouns and technical terms, so measuring
   // against them would report a fraction of a percent forever.
   const ranked = ranks.filter((r) => r.rank !== undefined)
-  const discovered = ranked.filter((r) => items.some((i) => i.kind === 'word' && i.text === r.headword))
+  const discovered = ranked.filter((r) =>
+    items.some((i) => i.kind === 'word' && i.text === r.headword),
+  )
 
   return (
     <>
@@ -98,9 +100,9 @@ export function Overview() {
 
       {!ranks.length && (
         <div class="panel muted small">
-          No word list loaded, so new cards are introduced in the order you found them and there
-          is no denominator to measure progress against. Load one from{' '}
-          <a href="#/data">Data</a> — it explains where to get one.
+          No word list loaded, so new cards are introduced in the order you found them and there is
+          no denominator to measure progress against. Load one from <a href="#/data">Data</a> — it
+          explains where to get one.
         </div>
       )}
     </>

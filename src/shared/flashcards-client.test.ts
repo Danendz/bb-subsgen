@@ -59,9 +59,7 @@ describe('createExposureBuffer', () => {
     expect(batches()).toEqual([])
 
     vi.advanceTimersByTime(15_000)
-    expect(batches()).toEqual([
-      { video, lines: 2, words: { 我: 2, 喜欢: 1 } },
-    ])
+    expect(batches()).toEqual([{ video, lines: 2, words: { 我: 2, 喜欢: 1 } }])
     buffer.stop()
   })
 

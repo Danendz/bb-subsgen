@@ -9,7 +9,7 @@ describe('sentenceAt', () => {
   })
 
   test('includes the terminator that ends the sentence', () => {
-    expect(text.slice(...Object.values(sentenceAt(text, 3)) as [number, number])).toBe(
+    expect(text.slice(...(Object.values(sentenceAt(text, 3)) as [number, number]))).toBe(
       '他在北京大学学习。',
     )
   })

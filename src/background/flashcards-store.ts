@@ -217,9 +217,7 @@ export async function captureSentenceIn(
   // Deduped: a line repeating a word is one card, and two `upsert`s on the same
   // key in one transaction both read before either writes.
   for (const word of new Set(words)) {
-    upsert<Item>(store, wordId(word), (existing) =>
-      discoveredWord(existing, word, now, context),
-    )
+    upsert<Item>(store, wordId(word), (existing) => discoveredWord(existing, word, now, context))
   }
   // Same transaction as the line and its words. A pattern is only ever met *in*
   // a line, so splitting them would let a line land without the structure it
@@ -367,13 +365,7 @@ export async function exportBackupIn(db: IDBDatabase): Promise<Backup> {
  * history is already inside what's being written.
  */
 export async function restoreIn(db: IDBDatabase, backup: Backup): Promise<void> {
-  const stores = [
-    STORES.items,
-    STORES.reviews,
-    STORES.exposures,
-    STORES.videoWords,
-    STORES.videos,
-  ]
+  const stores = [STORES.items, STORES.reviews, STORES.exposures, STORES.videoWords, STORES.videos]
   const tx = db.transaction(stores, 'readwrite')
 
   for (const store of stores) tx.objectStore(store).clear()
@@ -413,7 +405,8 @@ export async function replaceWordListIn(
   const kept = new Map<string, Rank>()
   for (const row of existing) {
     // Only what the other list contributed survives this upload.
-    if (row[other] !== undefined) kept.set(row.headword, { headword: row.headword, [other]: row[other] })
+    if (row[other] !== undefined)
+      kept.set(row.headword, { headword: row.headword, [other]: row[other] })
   }
   for (const { headword, value } of rows) {
     const row = kept.get(headword) ?? { headword }

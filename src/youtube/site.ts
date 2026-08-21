@@ -102,7 +102,10 @@ export function helperAudioUrl(baseUrl: string, videoId: string): string {
   return `${normalizeHelperUrl(baseUrl)}/audio?v=${encodeURIComponent(bareId(videoId))}`
 }
 
-async function audioSourceFor(response: PlayerResponse, videoId: string): Promise<AudioSource | null> {
+async function audioSourceFor(
+  response: PlayerResponse,
+  videoId: string,
+): Promise<AudioSource | null> {
   if (response.isLive) {
     console.log('[bb-subsgen] live stream — there is no finished audio track to transcribe')
     return null

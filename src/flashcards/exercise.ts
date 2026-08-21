@@ -64,7 +64,11 @@ const ROTATION: ReadonlyArray<Exclude<StudyMode, 'mixed'>> = ['remember', 'type'
  * three times running. Because the cards in any one session sit at different
  * rep counts, that still gives a varied session.
  */
-export function modeFor(item: Pick<Item, 'reps'>, mode: StudyMode, canSpeak: boolean): Exclude<StudyMode, 'mixed'> {
+export function modeFor(
+  item: Pick<Item, 'reps'>,
+  mode: StudyMode,
+  canSpeak: boolean,
+): Exclude<StudyMode, 'mixed'> {
   const available = canSpeak ? ROTATION : ROTATION.filter((m) => m !== 'audio')
   if (mode !== 'mixed') return mode === 'audio' && !canSpeak ? 'remember' : mode
   return available[item.reps % available.length]
@@ -95,8 +99,10 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
   }
 
   if (item.kind === 'word') {
-    if (resolved === 'type') return { style: 'type', cue: 'gloss', response: 'text', autoSpeak: false }
-    if (resolved === 'audio') return { style: 'audio', cue: 'audio', response: 'text', autoSpeak: true }
+    if (resolved === 'type')
+      return { style: 'type', cue: 'gloss', response: 'text', autoSpeak: false }
+    if (resolved === 'audio')
+      return { style: 'audio', cue: 'audio', response: 'text', autoSpeak: true }
     return { style: 'recognise', cue: 'hanzi', response: 'reveal', autoSpeak: false }
   }
 

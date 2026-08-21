@@ -3,7 +3,9 @@ import { pickNext, runTranslationPass } from './translations'
 import type { TranslatorLike } from '../lang/translate'
 
 /** Records the order texts were handed to translate(), and echoes a marker. */
-function recordingTranslator(onCall?: (text: string) => void): TranslatorLike & { calls: string[] } {
+function recordingTranslator(
+  onCall?: (text: string) => void,
+): TranslatorLike & { calls: string[] } {
   const calls: string[] = []
   return {
     calls,

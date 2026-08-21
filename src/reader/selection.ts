@@ -55,8 +55,8 @@ export class ClickGuard {
     this.origin = null
     if (!origin) return false
 
-    const moved = Math.abs(x - origin.x) > DRAG_THRESHOLD_PX ||
-      Math.abs(y - origin.y) > DRAG_THRESHOLD_PX
+    const moved =
+      Math.abs(x - origin.x) > DRAG_THRESHOLD_PX || Math.abs(y - origin.y) > DRAG_THRESHOLD_PX
     const changed = selectedText !== this.before
     if (!moved && !changed) return false
     if (!containsHan(selectedText)) return false

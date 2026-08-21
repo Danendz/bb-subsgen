@@ -59,9 +59,7 @@ describe('translationWithheld', () => {
 
   test('shows it while any word is still unknown', () => {
     expect(
-      translationWithheld(
-        view({ tokens: [zh('我'), zh('憔悴')], known: new Set(['我']) }),
-      ),
+      translationWithheld(view({ tokens: [zh('我'), zh('憔悴')], known: new Set(['我']) })),
     ).toBe(false)
   })
 
@@ -113,7 +111,11 @@ describe('marking the model’s translations', () => {
   test('a line with no translation yet is unmarked', () => {
     const { root, settings } = host()
 
-    renderCue(root, view({ tokens: [zh('我')], translation: '', translationSource: null }), settings)
+    renderCue(
+      root,
+      view({ tokens: [zh('我')], translation: '', translationSource: null }),
+      settings,
+    )
 
     expect(translationEl(root).classList.contains('ai')).toBe(false)
   })
@@ -133,7 +135,11 @@ describe('marking the model’s translations', () => {
   // arrives as one tier and is filled in by the other.
   test('a late model translation brings its mark with it', () => {
     const { root, settings } = host()
-    renderCue(root, view({ tokens: [zh('我')], translation: '', translationSource: null }), settings)
+    renderCue(
+      root,
+      view({ tokens: [zh('我')], translation: '', translationSource: null }),
+      settings,
+    )
 
     setTranslation(root, 'The better one.', 'llm')
 

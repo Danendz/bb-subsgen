@@ -18,7 +18,8 @@ function make(partial: Partial<Item> & Pick<Item, 'kind' | 'text'>): Item {
 }
 
 const word = (extra: Partial<Item> = {}) => make({ kind: 'word', text: '学习', ...extra })
-const line = (extra: Partial<Item> = {}) => make({ kind: 'sentence', text: '我今天很累。', ...extra })
+const line = (extra: Partial<Item> = {}) =>
+  make({ kind: 'sentence', text: '我今天很累。', ...extra })
 
 const pattern = (extra: Partial<Item> = {}) =>
   make({ kind: 'grammar', text: 'V + 得 + how', patternId: 'de-complement', ...extra })

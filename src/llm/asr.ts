@@ -201,11 +201,7 @@ export interface TranscribeOptions {
   log?: LlmLogger
 }
 
-async function post(
-  opts: TranscribeOptions,
-  format: string,
-  requestId: string,
-): Promise<string> {
+async function post(opts: TranscribeOptions, format: string, requestId: string): Promise<string> {
   const base = normalizeBaseUrl(opts.baseUrl)
   const fetchImpl = opts.fetchImpl ?? fetch
   const log = opts.log ?? noLog
@@ -402,7 +398,7 @@ export function collapseLoops(
 ): Cue[] {
   const kept: Cue[] = []
 
-  for (let at = 0; at < cues.length; ) {
+  for (let at = 0; at < cues.length;) {
     let past = at + 1
     while (past < cues.length && cues[past].text === cues[at].text) past++
 
@@ -593,9 +589,10 @@ function parseTimedText(body: string): Cue[] | null {
   let sawTiming = false
 
   for (let at = 0; at < lines.length; at++) {
-    const timing = /(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})/.exec(
-      lines[at],
-    )
+    const timing =
+      /(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})/.exec(
+        lines[at],
+      )
     if (!timing) continue
     sawTiming = true
 

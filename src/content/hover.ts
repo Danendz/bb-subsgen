@@ -182,7 +182,10 @@ export function attachHover({
     // Centre on the word, then clamp so it can't hang off the player edge.
     const wordCentre = wordRect.left - hostRect.left + wordRect.width / 2
     const maxLeft = hostRect.width - popupWidth - POPUP_MARGIN
-    const left = Math.min(Math.max(wordCentre - popupWidth / 2, POPUP_MARGIN), Math.max(maxLeft, POPUP_MARGIN))
+    const left = Math.min(
+      Math.max(wordCentre - popupWidth / 2, POPUP_MARGIN),
+      Math.max(maxLeft, POPUP_MARGIN),
+    )
     popup.style.left = `${left}px`
 
     // Above the word by default; flip below when the subtitle sits high

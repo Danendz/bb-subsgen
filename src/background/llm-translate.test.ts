@@ -71,7 +71,10 @@ beforeEach(() => {
 
   globalThis.chrome = {
     tabs: {
-      sendMessage: async (_tabId: number, msg: { lines: Array<{ start: number; text: string }> }) => {
+      sendMessage: async (
+        _tabId: number,
+        msg: { lines: Array<{ start: number; text: string }> },
+      ) => {
         posted.push(...msg.lines)
       },
     },
@@ -170,7 +173,12 @@ describe('startPass', () => {
 
   // A second viewing must cost nothing.
   test('reports cached lines without asking for them again', async () => {
-    vi.mocked(readTrack).mockResolvedValue(new Map([[0, 'cached 0'], [2, 'cached 1']]))
+    vi.mocked(readTrack).mockResolvedValue(
+      new Map([
+        [0, 'cached 0'],
+        [2, 'cached 1'],
+      ]),
+    )
 
     await startPass(request({ cues: cues(2) }))
 
@@ -285,7 +293,12 @@ describe('startPass', () => {
 
     // A re-watch should show a full bar at once rather than climbing from zero.
     test('counts cached lines before anything is asked for', async () => {
-      vi.mocked(readTrack).mockResolvedValue(new Map([[0, 'cached 0'], [2, 'cached 2']]))
+      vi.mocked(readTrack).mockResolvedValue(
+        new Map([
+          [0, 'cached 0'],
+          [2, 'cached 2'],
+        ]),
+      )
       let first: number | undefined
       const inner = globalThis.fetch
       globalThis.fetch = ((url: string, init: RequestInit) => {
@@ -337,9 +350,7 @@ describe('startPass', () => {
     })
 
     test('cancels when the tab has moved to a different video', async () => {
-      await midPass(75, () =>
-        cancelPassIfNavigatedAway(TAB, 'https://www.bilibili.com/video/BV2/'),
-      )
+      await midPass(75, () => cancelPassIfNavigatedAway(TAB, 'https://www.bilibili.com/video/BV2/'))
 
       expect(sent).toHaveLength(1)
     })

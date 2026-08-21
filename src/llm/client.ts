@@ -271,7 +271,9 @@ async function post(opts: ChatOptions, stream: boolean, requestId: string): Prom
 function logReply(opts: ChatOptions, requestId: string, reply: LlmReply, ms: number): void {
   const log = opts.log ?? noLog
   const rate =
-    reply.usage && ms > 0 ? ` at ${((reply.usage.completionTokens / ms) * 1000).toFixed(1)} tok/s` : ''
+    reply.usage && ms > 0
+      ? ` at ${((reply.usage.completionTokens / ms) * 1000).toFixed(1)} tok/s`
+      : ''
   const truncated = reply.finishReason === 'length'
 
   log({

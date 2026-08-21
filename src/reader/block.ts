@@ -63,8 +63,7 @@ const SKIPPED_TAGS = new Set([
 ])
 
 /** Our own UI, and the native subtitles the player overlay already replaces. */
-const SKIPPED_SELECTOR =
-  '#bb-subsgen-host, #bb-subsgen-reader-host, .bpx-player-subtitle-wrap'
+const SKIPPED_SELECTOR = '#bb-subsgen-host, #bb-subsgen-reader-host, .bpx-player-subtitle-wrap'
 
 function isSkipped(el: Element): boolean {
   if (SKIPPED_TAGS.has(el.tagName)) return true

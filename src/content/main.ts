@@ -418,9 +418,7 @@ async function main() {
   })
 
   /** Subscribes to batches from the worker, and returns the unsubscribe. */
-  const onLlmTranslations = (
-    handle: (msg: LlmTranslationsMessage) => void,
-  ): (() => void) => {
+  const onLlmTranslations = (handle: (msg: LlmTranslationsMessage) => void): (() => void) => {
     const listener = (msg: unknown) => {
       if (isLlmTranslationsMessage(msg)) handle(msg)
     }
@@ -1263,7 +1261,6 @@ async function main() {
       stopCues?.()
     }
   }
-
 
   watchVideoChange(site.parseVideoId, loadCurrentVideo)
   onSettingsChanged((next) => {

@@ -80,9 +80,7 @@ describe('permissionPatternFor', () => {
   })
 
   test('one grant therefore covers every port on the host', () => {
-    expect(permissionPatternFor('localhost:1234')).toBe(
-      permissionPatternFor('localhost:11434'),
-    )
+    expect(permissionPatternFor('localhost:1234')).toBe(permissionPatternFor('localhost:11434'))
   })
 
   test('keeps https for a model server that is not local', () => {
@@ -100,9 +98,9 @@ describe('permissionPatternFor', () => {
 
 describe('listModels', () => {
   test('returns the ids, sorted', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ data: [{ id: 'qwen3-8b' }, { id: 'gemma-27b' }] }),
-    )
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: [{ id: 'qwen3-8b' }, { id: 'gemma-27b' }] }))
 
     expect(await listModels({ baseUrl: BASE, fetchImpl })).toEqual(['gemma-27b', 'qwen3-8b'])
     expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost:1234/v1/models')
@@ -131,7 +129,12 @@ describe('listModels', () => {
       status: 503,
       body: 'nope',
     })
-    expect(entries[0]).toMatchObject({ level: 'error', kind: 'models', status: 503, detail: 'nope' })
+    expect(entries[0]).toMatchObject({
+      level: 'error',
+      kind: 'models',
+      status: 503,
+      detail: 'nope',
+    })
   })
 
   // The single most likely failure: the server simply is not running.
@@ -203,9 +206,11 @@ describe('chatCompletion', () => {
   })
 
   test('warns rather than informs when the reply was cut off at the token limit', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ choices: [{ message: { content: 'cut' }, finish_reason: 'length' }] }),
-    )
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ choices: [{ message: { content: 'cut' }, finish_reason: 'length' }] }),
+      )
     const { entries, log } = collector()
 
     await chatCompletion({ baseUrl: BASE, model: 'm', messages: [], fetchImpl, log })
@@ -221,9 +226,7 @@ describe('chatCompletion', () => {
     const answer = '{"lines": [{"id": 0, "zh": "我很好", "en": "I am well."}]}'
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
-        choices: [
-          { message: { content: '', reasoning_content: answer }, finish_reason: 'stop' },
-        ],
+        choices: [{ message: { content: '', reasoning_content: answer }, finish_reason: 'stop' }],
       }),
     )
 
@@ -263,7 +266,8 @@ describe('chatCompletion', () => {
 })
 
 describe('streamChatCompletion', () => {
-  const frame = (delta: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`
+  const frame = (delta: string) =>
+    `data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`
 
   test('assembles the deltas and reports each one in order', async () => {
     const fetchImpl = vi
@@ -287,9 +291,7 @@ describe('streamChatCompletion', () => {
   // Chunk boundaries are set by the network, not by event boundaries.
   test('survives a frame split across two network chunks', async () => {
     const whole = frame('好')
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(sseResponse([whole.slice(0, 20), whole.slice(20)]))
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([whole.slice(0, 20), whole.slice(20)]))
     const seen: string[] = []
 
     await streamChatCompletion({
@@ -304,14 +306,16 @@ describe('streamChatCompletion', () => {
   })
 
   test('picks up finish_reason and the trailing usage frame', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      sseResponse([
-        frame('hi'),
-        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
-        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 2 } })}\n\n`,
-        'data: [DONE]\n\n',
-      ]),
-    )
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame('hi'),
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 2 } })}\n\n`,
+          'data: [DONE]\n\n',
+        ]),
+      )
 
     const reply = await streamChatCompletion({
       baseUrl: BASE,
@@ -350,13 +354,15 @@ describe('streamChatCompletion', () => {
   })
 
   test('drops streamed reasoning once real content arrives', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      sseResponse([
-        `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking' } }] })}\n\n`,
-        frame('the answer'),
-        'data: [DONE]\n\n',
-      ]),
-    )
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking' } }] })}\n\n`,
+          frame('the answer'),
+          'data: [DONE]\n\n',
+        ]),
+      )
     const seen: string[] = []
 
     const reply = await streamChatCompletion({
@@ -391,12 +397,14 @@ describe('streamChatCompletion', () => {
   })
 
   test('reports tokens per second once usage is known', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      sseResponse([
-        frame('hi'),
-        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 40 } })}\n\n`,
-      ]),
-    )
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame('hi'),
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 40 } })}\n\n`,
+        ]),
+      )
     const { entries, log } = collector()
     // The whole exchange takes under a millisecond here, and a rate needs a
     // duration to divide by.

@@ -268,10 +268,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<void> {
 }
 
 export function onSettingsChanged(callback: (settings: Settings) => void): () => void {
-  const listener = (
-    changes: { [key: string]: chrome.storage.StorageChange },
-    areaName: string,
-  ) => {
+  const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName !== 'sync' || !changes[STORAGE_KEY]) return
     const saved = changes[STORAGE_KEY].newValue as Partial<Settings> | undefined
     callback({ ...DEFAULT_SETTINGS, ...saved })

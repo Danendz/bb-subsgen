@@ -31,8 +31,7 @@ function createShadowHost(container: HTMLElement): ShadowRoot {
 
   const host = document.createElement('div')
   host.id = HOST_ID
-  host.style.cssText =
-    'position:absolute; inset:0; pointer-events:none; z-index:999;'
+  host.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:999;'
   container.appendChild(host)
   return host.attachShadow({ mode: 'open' })
 }

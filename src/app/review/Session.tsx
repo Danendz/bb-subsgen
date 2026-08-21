@@ -197,9 +197,7 @@ export function Session({
     const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
     const tokens = segment(exampleText, words)
     const target =
-      current.kind === 'sentence'
-        ? chooseTarget(hanWords(tokens), known, current.target)
-        : null
+      current.kind === 'sentence' ? chooseTarget(hanWords(tokens), known, current.target) : null
 
     const exercise = exerciseFor(current, mode, {
       canSpeak: canSpeak(),
@@ -226,8 +224,7 @@ export function Session({
     // its context, not in `text`, so there is nothing here to match against.
     // Spans are dropped here: the reveal names the structures, it does not
     // underline them, so one entry per distinct pattern is what it wants.
-    const patterns =
-      current.kind === 'sentence' ? distinctPatterns(findPatterns(tokens)) : []
+    const patterns = current.kind === 'sentence' ? distinctPatterns(findPatterns(tokens)) : []
 
     return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
   }, [current?.id, current?.reps, words, known, distractorPool, mode])
@@ -612,11 +609,12 @@ export function Session({
             {pinyin && <Pinyin pinyin={pinyin} />}
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
-            {current.kind === 'word' ? (
-              exercise.cue !== 'gloss' && <p class="meaning">{gloss || 'No definition found'}</p>
-            ) : current.kind === 'sentence' ? (
-              exercise.cue !== 'translation' && translation && <p class="meaning">{translation}</p>
-            ) : null}
+            {current.kind === 'word'
+              ? exercise.cue !== 'gloss' && <p class="meaning">{gloss || 'No definition found'}</p>
+              : current.kind === 'sentence'
+                ? exercise.cue !== 'translation' &&
+                  translation && <p class="meaning">{translation}</p>
+                : null}
 
             {/* Why the line means what it means. Only on the answer side, and
                 only for a line — a single word has no structure to explain, and

@@ -72,16 +72,15 @@ function included(items: Item[], include: StudyInclude): Item[] {
 /** Cards waiting because they came due, oldest first. */
 function due(items: Item[], now: number): Item[] {
   return items
-    .filter(
-      (item) => (item.state === 'learning' || item.state === 'review') && item.due <= now,
-    )
+    .filter((item) => (item.state === 'learning' || item.state === 'review') && item.due <= now)
     .sort((a, b) => a.due - b.due)
 }
 
 function introducedToday(items: Item[], now: number, kind: Item['kind']): number {
   const midnight = startOfDay(now)
   return items.filter(
-    (item) => item.kind === kind && item.introducedAt !== undefined && item.introducedAt >= midnight,
+    (item) =>
+      item.kind === kind && item.introducedAt !== undefined && item.introducedAt >= midnight,
   ).length
 }
 
@@ -113,18 +112,18 @@ function newWords(
   if (limit <= 0) return []
   const rank = (item: Item) => rankOf(item.text) ?? Number.MAX_SAFE_INTEGER
 
-  return items
-    // Both halves are load-bearing. `state` excludes anything already started or
-    // declared known; `introducedAt` is the belt to that braces, since it is the
-    // field the rest of the queue treats as the record of a first review.
-    .filter((item) => item.kind === 'word' && item.state === 'new' && !item.introducedAt)
-    .sort(
-      (a, b) =>
-        rank(a) - rank(b) ||
-        seenCount(b.text) - seenCount(a.text) ||
-        a.createdAt - b.createdAt,
-    )
-    .slice(0, limit)
+  return (
+    items
+      // Both halves are load-bearing. `state` excludes anything already started or
+      // declared known; `introducedAt` is the belt to that braces, since it is the
+      // field the rest of the queue treats as the record of a first review.
+      .filter((item) => item.kind === 'word' && item.state === 'new' && !item.introducedAt)
+      .sort(
+        (a, b) =>
+          rank(a) - rank(b) || seenCount(b.text) - seenCount(a.text) || a.createdAt - b.createdAt,
+      )
+      .slice(0, limit)
+  )
 }
 
 /**
@@ -331,8 +330,7 @@ export function queueCounts(input: QueueInput): QueueCounts {
     newGrammar: newGrammar(items, newSentencesPerDay - introducedToday(items, now, 'grammar'))
       .length,
     pooled: items.filter(
-      (item) =>
-        (item.kind === 'sentence' || item.kind === 'grammar') && item.state === 'pool',
+      (item) => (item.kind === 'sentence' || item.kind === 'grammar') && item.state === 'pool',
     ).length,
     // Uncapped, like everything else here: this is the size of the eligible set,
     // which is what tells the screen whether a session can be offered at all.

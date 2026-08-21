@@ -53,14 +53,11 @@ function parseClassifierList(list: string, useTraditional: boolean): Classifier[
  * ending in a tone digit.
  */
 function prettifyReferences(text: string, useTraditional: boolean): string {
-  const withReadings = text.replace(
-    REFERENCE_RE,
-    (_match, traditional, simplified, pinyin) => {
-      const word = traditional ? (useTraditional ? traditional : simplified) : simplified
-      const reading = toDiacriticPhrase(pinyin)
-      return word ? `${word} (${reading})` : `(${reading})`
-    },
-  )
+  const withReadings = text.replace(REFERENCE_RE, (_match, traditional, simplified, pinyin) => {
+    const word = traditional ? (useTraditional ? traditional : simplified) : simplified
+    const reading = toDiacriticPhrase(pinyin)
+    return word ? `${word} (${reading})` : `(${reading})`
+  })
   // Whatever pairs remain carried no reading of their own.
   return withReadings.replace(BARE_PAIR_RE, (_match, traditional, simplified) =>
     useTraditional ? traditional : simplified,

@@ -162,11 +162,7 @@ export async function openExplainChat(req: ExplainRequest): Promise<string> {
     requestId: newRequestId(),
     model: settings.llmChatModel,
     message: `Opened an explanation with ${context.before.length + context.after.length} lines of context`,
-    detail: [
-      ...context.before,
-      `>> ${context.line}`,
-      ...context.after,
-    ].join('\n'),
+    detail: [...context.before, `>> ${context.line}`, ...context.after].join('\n'),
   })
 
   return chat.id

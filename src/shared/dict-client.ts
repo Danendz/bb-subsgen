@@ -23,9 +23,7 @@ export const lookupDefs: DefsLookup = async (headwords) => {
     headwords,
   }
   try {
-    const response = (await chrome.runtime.sendMessage(message)) as
-      | LookupDefsResponse
-      | undefined
+    const response = (await chrome.runtime.sendMessage(message)) as LookupDefsResponse | undefined
     return response?.entries ?? empty(headwords)
   } catch (e) {
     console.warn('[bb-subsgen] definition lookup failed', e)

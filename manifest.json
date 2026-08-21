@@ -3,11 +3,7 @@
   "name": "bb-subsgen",
   "version": "0.0.1",
   "description": "Hover pinyin + CC-CEDICT glosses over Chinese text, on Bilibili subtitles and any site you opt into.",
-  "permissions": [
-    "storage",
-    "scripting",
-    "offscreen"
-  ],
+  "permissions": ["storage", "scripting", "offscreen"],
   "host_permissions": [
     "https://*.bilibili.com/*",
     "https://*.hdslb.com/*",
@@ -16,9 +12,7 @@
     "https://*.akamaized.net/*",
     "https://www.youtube.com/*"
   ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
@@ -30,18 +24,12 @@
         "https://www.bilibili.com/bangumi/play/*",
         "https://www.youtube.com/*"
       ],
-      "js": [
-        "src/content/main.ts"
-      ],
+      "js": ["src/content/main.ts"],
       "run_at": "document_start"
     },
     {
-      "matches": [
-        "https://www.bilibili.com/*"
-      ],
-      "js": [
-        "src/reader/main.ts"
-      ],
+      "matches": ["https://www.bilibili.com/*"],
+      "js": ["src/reader/main.ts"],
       "run_at": "document_idle"
     }
   ],
@@ -50,22 +38,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "dict/words.bin"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "resources": ["dict/words.bin"],
+      "matches": ["<all_urls>"]
     },
     {
-      "resources": [
-        "src/app/index.html",
-        "assets/*"
-      ],
-      "matches": [
-        "https://*.bilibili.com/*",
-        "https://www.youtube.com/*"
-      ]
+      "resources": ["src/app/index.html", "assets/*"],
+      "matches": ["https://*.bilibili.com/*", "https://www.youtube.com/*"]
     }
   ],
   "commands": {

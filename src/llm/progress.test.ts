@@ -93,9 +93,9 @@ describe('transcriptProgressView', () => {
   })
 
   test('pluralises the stretches', () => {
-    expect(
-      transcriptProgressView({ ...running, done: 7, failed: 3, running: false }).count,
-    ).toBe('3 stretches missing')
+    expect(transcriptProgressView({ ...running, done: 7, failed: 3, running: false }).count).toBe(
+      '3 stretches missing',
+    )
   })
 
   test('covers a run that never produced anything', () => {

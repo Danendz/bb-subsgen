@@ -360,7 +360,8 @@ export function SpeechSection({ settings, update }: SectionProps) {
         answered
           ? {
               tone: 'ok',
-              message: 'Reachable. This server lists no models — type the name it was started with.',
+              message:
+                'Reachable. This server lists no models — type the name it was started with.',
             }
           : { tone: 'bad', message: e instanceof Error ? e.message : String(e) },
       )
@@ -459,10 +460,10 @@ export function SpeechSection({ settings, update }: SectionProps) {
         </label>
 
         <Hint>
-          Most of bangumi ships without subtitles, and this transcribes the audio so those
-          episodes can still be read. It runs once per episode and the result is cached, so a
-          rewatch costs nothing. Start a server with <code>tools/asr-server.sh</code> in the
-          extension's repository — it is a separate program from the chat model above.
+          Most of bangumi ships without subtitles, and this transcribes the audio so those episodes
+          can still be read. It runs once per episode and the result is cached, so a rewatch costs
+          nothing. Start a server with <code>tools/asr-server.sh</code> in the extension's
+          repository — it is a separate program from the chat model above.
         </Hint>
 
         {/* A second address, and unavoidably so. Bilibili hands out a plain URL
@@ -488,16 +489,14 @@ export function SpeechSection({ settings, update }: SectionProps) {
         <button class="connect" onClick={() => void connectHelper()}>
           Connect
         </button>
-        {helperStatus && (
-          <p class={`status status-${helperStatus.tone}`}>{helperStatus.message}</p>
-        )}
+        {helperStatus && <p class={`status status-${helperStatus.tone}`}>{helperStatus.message}</p>}
 
         <Hint>
-          Only needed for YouTube. It serves a video's audio to the extension, because YouTube
-          no longer publishes an address the browser can fetch one from. Run it with{' '}
-          <code>npm run ytdlp</code> in the extension's repository, or{' '}
-          <code>npm run services</code> to start it alongside the speech server above. Needs{' '}
-          <code>yt-dlp</code> and <code>ffmpeg</code> installed.
+          Only needed for YouTube. It serves a video's audio to the extension, because YouTube no
+          longer publishes an address the browser can fetch one from. Run it with{' '}
+          <code>npm run ytdlp</code> in the extension's repository, or <code>npm run services</code>{' '}
+          to start it alongside the speech server above. Needs <code>yt-dlp</code> and{' '}
+          <code>ffmpeg</code> installed.
         </Hint>
       </div>
     </Section>

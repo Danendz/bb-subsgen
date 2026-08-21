@@ -48,8 +48,10 @@ const word = (left: number, top: number): Anchor => ({
 
 /** Whether a placed card would cover any part of its anchor. */
 function covers(anchor: Anchor, box: Box, placement: { left: number; top: number }): boolean {
-  const w = Math.min(anchor.right, placement.left + box.width) - Math.max(anchor.left, placement.left)
-  const h = Math.min(anchor.bottom, placement.top + box.height) - Math.max(anchor.top, placement.top)
+  const w =
+    Math.min(anchor.right, placement.left + box.width) - Math.max(anchor.left, placement.left)
+  const h =
+    Math.min(anchor.bottom, placement.top + box.height) - Math.max(anchor.top, placement.top)
   return w > 0 && h > 0
 }
 

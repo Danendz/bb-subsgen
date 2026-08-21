@@ -29,11 +29,7 @@ const MAX_WORD_LENGTH = 8
  * Falls back to the single character so a word the dictionary misses still
  * gets a card with whatever reading is known.
  */
-export function matchAt(
-  text: string,
-  index: number,
-  words: Map<string, string>,
-): Match | null {
+export function matchAt(text: string, index: number, words: Map<string, string>): Match | null {
   const char = text[index]
   if (!char || !isHan(char)) return null
 

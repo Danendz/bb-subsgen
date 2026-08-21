@@ -22,7 +22,9 @@ const found = (spec: string) => findPatterns(toks(spec)).map((m) => m.pattern.id
 describe('findPatterns', () => {
   test('finds the degree complement in the line from the screenshot', () => {
     // 那 时间 过 得 很 快 啊
-    const matches = findPatterns(toks('那/na4 时间/shi2jian1 过/guo4 得/de5 很/hen3 快/kuai4 啊/a5'))
+    const matches = findPatterns(
+      toks('那/na4 时间/shi2jian1 过/guo4 得/de5 很/hen3 快/kuai4 啊/a5'),
+    )
 
     expect(matches.map((m) => m.pattern.id)).toContain('de-complement')
     expect(matches.map((m) => m.pattern.id)).toContain('sentence-final-a')
@@ -117,7 +119,9 @@ describe('the pattern table', () => {
     for (const pattern of PATTERNS) {
       expect(pattern.name, pattern.id).toBeTruthy()
       expect(pattern.skeleton, pattern.id).toBeTruthy()
-      expect(pattern.explanation.length, `${pattern.id} explanation is too thin`).toBeGreaterThan(20)
+      expect(pattern.explanation.length, `${pattern.id} explanation is too thin`).toBeGreaterThan(
+        20,
+      )
     }
   })
 

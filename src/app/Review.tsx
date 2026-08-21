@@ -158,7 +158,8 @@ export function Review() {
     <>
       {data.streak > 0 && (
         <p class="streak">
-          <span aria-hidden="true">🔥</span> {data.streak} day{data.streak === 1 ? '' : 's'} in a row
+          <span aria-hidden="true">🔥</span> {data.streak} day{data.streak === 1 ? '' : 's'} in a
+          row
         </p>
       )}
 

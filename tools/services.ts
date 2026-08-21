@@ -86,7 +86,9 @@ function run(services: Service[]): void {
     label(service.name, child.stdout)
     label(service.name, child.stderr)
 
-    child.on('error', (e: Error) => console.error(`[${service.name}] could not start: ${e.message}`))
+    child.on('error', (e: Error) =>
+      console.error(`[${service.name}] could not start: ${e.message}`),
+    )
     child.on('exit', (code: number | null) => {
       console.log(`[${service.name}] exited (${code ?? 'signal'})`)
       // One service falling over should not silently leave the others half

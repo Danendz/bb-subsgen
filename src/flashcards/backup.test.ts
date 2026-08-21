@@ -55,12 +55,26 @@ describe('upgrade', () => {
     const upgraded = upgrade(
       v1({
         videos: [
-          { bvid: 'BV1xx', title: '航拍中国', url: 'https://x', firstWatched: 1, lastWatched: 2, lines: 9 },
+          {
+            bvid: 'BV1xx',
+            title: '航拍中国',
+            url: 'https://x',
+            firstWatched: 1,
+            lastWatched: 2,
+            lines: 9,
+          },
         ],
       }),
     )
     expect(upgraded.videos).toEqual([
-      { videoId: 'BV1xx', title: '航拍中国', url: 'https://x', firstWatched: 1, lastWatched: 2, lines: 9 },
+      {
+        videoId: 'BV1xx',
+        title: '航拍中国',
+        url: 'https://x',
+        firstWatched: 1,
+        lastWatched: 2,
+        lines: 9,
+      },
     ])
   })
 
@@ -131,10 +145,7 @@ describe('replay', () => {
   })
 
   test('introducedAt comes from the earliest review, whatever order they arrive in', () => {
-    const rebuilt = replay(word('学习'), [
-      review('学习', DAY0 + DAY_MS),
-      review('学习', DAY0),
-    ])
+    const rebuilt = replay(word('学习'), [review('学习', DAY0 + DAY_MS), review('学习', DAY0)])
     expect(rebuilt.introducedAt).toBe(DAY0)
   })
 
@@ -179,10 +190,7 @@ describe('replay', () => {
     test('introducedAt comes from the first review that moved the card', () => {
       // A card is introduced by being scheduled; being drilled is not the same
       // event, and the daily intake limits count these.
-      const rebuilt = replay(word('学习'), [
-        drill('学习', DAY0),
-        review('学习', DAY0 + DAY_MS),
-      ])
+      const rebuilt = replay(word('学习'), [drill('学习', DAY0), review('学习', DAY0 + DAY_MS)])
       expect(rebuilt.introducedAt).toBe(DAY0 + DAY_MS)
     })
 
@@ -283,7 +291,14 @@ describe('merge', () => {
   })
 
   test('merges videos by id and adds up the lines watched', () => {
-    const video = { videoId: 'BV1', title: 'A', url: 'u', firstWatched: 200, lastWatched: 300, lines: 40 }
+    const video = {
+      videoId: 'BV1',
+      title: 'A',
+      url: 'u',
+      firstWatched: 200,
+      lastWatched: 300,
+      lines: 40,
+    }
     const merged = merge(
       backup({ videos: [video] }),
       backup({ videos: [{ ...video, firstWatched: 100, lastWatched: 150, lines: 10 }] }),

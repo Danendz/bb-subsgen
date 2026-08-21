@@ -29,7 +29,9 @@ export function useModels(): string[] {
   useEffect(() => {
     if (!modelsOnce) {
       modelsOnce = loadSettings()
-        .then((s) => (s.llmEnabled && s.llmBaseUrl ? listModels({ baseUrl: s.llmBaseUrl, log }) : []))
+        .then((s) =>
+          s.llmEnabled && s.llmBaseUrl ? listModels({ baseUrl: s.llmBaseUrl, log }) : [],
+        )
         .catch((e: unknown) => {
           // Never cache a failure, or a server started late stays invisible
           // until the page is reloaded.

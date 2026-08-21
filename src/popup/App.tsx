@@ -7,7 +7,12 @@
 // and the reader switch for the site you are actually on.
 
 import { useEffect, useState } from 'preact/hooks'
-import { disableReaderFor, enableReaderFor, originOf, readerEnabledFor } from '../shared/reader-sites'
+import {
+  disableReaderFor,
+  enableReaderFor,
+  originOf,
+  readerEnabledFor,
+} from '../shared/reader-sites'
 import { Hint, Section, Toggle } from '../settings/controls'
 import {
   LanguageSection,
@@ -188,13 +193,7 @@ async function fetchTranscriptStatus(tabId: number | undefined): Promise<Transcr
  * earns its place beside the overlay's own bar by covering what the overlay
  * cannot: the notice dismissed, the tab in the background, the video fullscreen.
  */
-function AsrProgress({
-  tabId,
-  videoId,
-}: {
-  tabId: number | undefined
-  videoId: string | null
-}) {
+function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: string | null }) {
   const [status, setStatus] = useState<TranscriptStatus | null>(null)
   const [retrying, setRetrying] = useState(false)
 

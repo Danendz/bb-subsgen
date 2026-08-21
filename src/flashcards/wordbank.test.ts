@@ -23,7 +23,9 @@ describe('shuffle', () => {
   })
 
   test('different seeds generally differ', () => {
-    const arrangements = new Set([1, 2, 3, 4, 5].map((s) => shuffle(['a', 'b', 'c', 'd'], s).join()))
+    const arrangements = new Set(
+      [1, 2, 3, 4, 5].map((s) => shuffle(['a', 'b', 'c', 'd'], s).join()),
+    )
     expect(arrangements.size).toBeGreaterThan(1)
   })
 

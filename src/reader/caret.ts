@@ -16,9 +16,15 @@ interface CaretOptions {
   shadowRoots?: ShadowRoot[]
 }
 type PiercingDocument = Document & {
-  caretPositionFromPoint?(x: number, y: number, options?: CaretOptions): CaretPosition & {
-    offsetNode: Node
-  } | null
+  caretPositionFromPoint?(
+    x: number,
+    y: number,
+    options?: CaretOptions,
+  ):
+    | (CaretPosition & {
+        offsetNode: Node
+      })
+    | null
 }
 
 /** How deep a nesting of shadow roots to follow before giving up. */

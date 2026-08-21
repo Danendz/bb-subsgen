@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import { covers, isWaiting, progressView, type Watching } from './progress'
 
-const translated = (...indices: number[]) => (index: number) => indices.includes(index)
+const translated =
+  (...indices: number[]) =>
+  (index: number) =>
+    indices.includes(index)
 
 /** Watching from the top of the video, with the line on screen translated. */
 const at = (playhead: number, waiting = false): Watching => ({ waiting, playhead })
@@ -24,12 +27,36 @@ describe('isWaiting', () => {
 
 describe('covers', () => {
   test('finds the stretch the playhead is in', () => {
-    expect(covers([[0, 60], [600, 900]], 42)).toBe(true)
-    expect(covers([[0, 60], [600, 900]], 700)).toBe(true)
+    expect(
+      covers(
+        [
+          [0, 60],
+          [600, 900],
+        ],
+        42,
+      ),
+    ).toBe(true)
+    expect(
+      covers(
+        [
+          [0, 60],
+          [600, 900],
+        ],
+        700,
+      ),
+    ).toBe(true)
   })
 
   test('does not find one that has not been transcribed', () => {
-    expect(covers([[0, 60], [600, 900]], 300)).toBe(false)
+    expect(
+      covers(
+        [
+          [0, 60],
+          [600, 900],
+        ],
+        300,
+      ),
+    ).toBe(false)
     expect(covers([], 0)).toBe(false)
   })
 
@@ -87,7 +114,15 @@ describe('progressView', () => {
     // Chunks are transcribed playhead-first, so within a chunk of joining you
     // are reading — and the rest of the run is not something you are waiting on.
     const view = progressView(
-      { phase: 'transcribe', done: 2, total: 11, covered: [[0, 60], [60, 360]] },
+      {
+        phase: 'transcribe',
+        done: 2,
+        total: 11,
+        covered: [
+          [0, 60],
+          [60, 360],
+        ],
+      },
       at(42),
     )
     expect(view.visible).toBe(false)
@@ -95,7 +130,15 @@ describe('progressView', () => {
 
   test('shows it again when you seek past what has been transcribed', () => {
     const view = progressView(
-      { phase: 'transcribe', done: 2, total: 11, covered: [[0, 60], [60, 360]] },
+      {
+        phase: 'transcribe',
+        done: 2,
+        total: 11,
+        covered: [
+          [0, 60],
+          [60, 360],
+        ],
+      },
       at(1800),
     )
     expect(view.visible).toBe(true)

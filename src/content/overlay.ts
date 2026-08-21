@@ -394,11 +394,7 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
  * The mark is patched alongside it, because this is exactly the path a line
  * takes when it arrives from one translator and is filled in by the other.
  */
-export function setTranslation(
-  shadowRoot: ShadowRoot,
-  text: string,
-  source: Source | null,
-): void {
+export function setTranslation(shadowRoot: ShadowRoot, text: string, source: Source | null): void {
   const el = shadowRoot.querySelector<HTMLElement>('.translation')
   if (!el) return
   el.textContent = text

@@ -30,9 +30,7 @@ async function db(): Promise<IDBDatabase> {
 }
 
 function get<T>(database: IDBDatabase, store: string, key: IDBValidKey): Promise<T | undefined> {
-  return request<T | undefined>(
-    database.transaction(store, 'readonly').objectStore(store).get(key),
-  )
+  return request<T | undefined>(database.transaction(store, 'readonly').objectStore(store).get(key))
 }
 
 const context = (text: string) => ({ text, translation: '', at: 1, url: 'https://example.com' })
@@ -55,9 +53,7 @@ describe('recordExposuresIn', () => {
     // with no error anywhere. A single word would not catch it — the failure
     // needs enough requests in flight to actually cross a task boundary.
     const database = await db()
-    const words = Object.fromEntries(
-      Array.from({ length: 300 }, (_, i) => [`词${i}`, i + 1]),
-    )
+    const words = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`词${i}`, i + 1]))
     await recordExposuresIn(database, { lines: 300, words })
 
     const store = database.transaction(STORES.exposures, 'readonly').objectStore(STORES.exposures)
@@ -164,7 +160,6 @@ describe('discoverWordIn', () => {
     expect(item?.state).toBe('new')
     expect(item?.contexts).toHaveLength(2)
   })
-
 })
 
 describe('captureSentenceIn', () => {
@@ -327,7 +322,13 @@ describe('applyReviewIn', () => {
     // The daily intake limits count these, so a later review resetting it
     // would hand back budget that was already spent.
     const database = await db()
-    const first = await applyReviewIn(database, await seededWord(database), 'good', 'recognise', 1_000)
+    const first = await applyReviewIn(
+      database,
+      await seededWord(database),
+      'good',
+      'recognise',
+      1_000,
+    )
     expect(first.introducedAt).toBe(1_000)
 
     const second = await applyReviewIn(database, first, 'good', 'recognise', 90_000_000)
@@ -458,7 +459,13 @@ describe('word lists', () => {
     const database = await db()
     await replaceWordListIn(database, 'frequency', rows('的', '一', '是'))
 
-    expect(await rankMapIn(database)).toEqual(new Map([['的', 1], ['一', 2], ['是', 3]]))
+    expect(await rankMapIn(database)).toEqual(
+      new Map([
+        ['的', 1],
+        ['一', 2],
+        ['是', 3],
+      ]),
+    )
   })
 
   test('uploading a frequency list leaves HSK levels alone', async () => {
@@ -579,9 +586,14 @@ describe('capturing grammar', () => {
 
   test('stores the skeleton as its text, so the card has something to show', async () => {
     const database = await db()
-    await captureSentenceIn(database, '时间过得很快。', context('时间过得很快。'), undefined, [], [
-      'de-complement',
-    ])
+    await captureSentenceIn(
+      database,
+      '时间过得很快。',
+      context('时间过得很快。'),
+      undefined,
+      [],
+      ['de-complement'],
+    )
 
     const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
     expect(item?.text).toBe('V + 得 + how')
@@ -591,12 +603,22 @@ describe('capturing grammar', () => {
   // actually met it in, so every sighting has to accumulate.
   test('every sighting adds the line it was met in', async () => {
     const database = await db()
-    await captureSentenceIn(database, '他跑得很快。', context('他跑得很快。'), undefined, [], [
-      'de-complement',
-    ])
-    await captureSentenceIn(database, '时间过得很快。', context('时间过得很快。'), undefined, [], [
-      'de-complement',
-    ])
+    await captureSentenceIn(
+      database,
+      '他跑得很快。',
+      context('他跑得很快。'),
+      undefined,
+      [],
+      ['de-complement'],
+    )
+    await captureSentenceIn(
+      database,
+      '时间过得很快。',
+      context('时间过得很快。'),
+      undefined,
+      [],
+      ['de-complement'],
+    )
 
     const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
     expect(item?.contexts.map((c) => c.text)).toEqual(['他跑得很快。', '时间过得很快。'])
@@ -604,7 +626,14 @@ describe('capturing grammar', () => {
 
   test('an unknown pattern id is ignored rather than stored as a blank card', async () => {
     const database = await db()
-    await captureSentenceIn(database, '你好。', context('你好。'), undefined, [], ['no-such-pattern'])
+    await captureSentenceIn(
+      database,
+      '你好。',
+      context('你好。'),
+      undefined,
+      [],
+      ['no-such-pattern'],
+    )
 
     expect(await get<Item>(database, STORES.items, grammarId('no-such-pattern'))).toBeUndefined()
   })

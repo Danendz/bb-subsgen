@@ -37,10 +37,36 @@ export interface VoiceLike {
  * (see `modeFor` in ../flashcards/exercise.ts).
  */
 const NOVELTY = new Set([
-  'Albert', 'Bad News', 'Bahh', 'Bells', 'Boing', 'Bubbles', 'Cellos', 'Deranged',
-  'Eddy', 'Flo', 'Fred', 'Good News', 'Grandma', 'Grandpa', 'Hysterical', 'Jester',
-  'Junior', 'Kathy', 'Organ', 'Princess', 'Ralph', 'Reed', 'Rocko', 'Sandy',
-  'Shelley', 'Superstar', 'Trinoids', 'Whisper', 'Wobble', 'Zarvox',
+  'Albert',
+  'Bad News',
+  'Bahh',
+  'Bells',
+  'Boing',
+  'Bubbles',
+  'Cellos',
+  'Deranged',
+  'Eddy',
+  'Flo',
+  'Fred',
+  'Good News',
+  'Grandma',
+  'Grandpa',
+  'Hysterical',
+  'Jester',
+  'Junior',
+  'Kathy',
+  'Organ',
+  'Princess',
+  'Ralph',
+  'Reed',
+  'Rocko',
+  'Sandy',
+  'Shelley',
+  'Superstar',
+  'Trinoids',
+  'Whisper',
+  'Wobble',
+  'Zarvox',
 ])
 
 /**
@@ -51,8 +77,16 @@ const NOVELTY = new Set([
  * would quietly demote the best local voice on the machine.
  */
 const KNOWN_GOOD = new Set([
-  'Tingting', 'Ting-Ting', 'Meijia', 'Mei-Jia', 'Sinji', 'Sin-ji',
-  'Huihui', 'Yaoyao', 'Kangkang', 'Xiaoxiao',
+  'Tingting',
+  'Ting-Ting',
+  'Meijia',
+  'Mei-Jia',
+  'Sinji',
+  'Sin-ji',
+  'Huihui',
+  'Yaoyao',
+  'Kangkang',
+  'Xiaoxiao',
 ])
 
 /** `Eddy (Chinese (China mainland))` → `Eddy`. */

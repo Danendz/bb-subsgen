@@ -29,10 +29,7 @@ export function openDefsDb(dbName = DB_NAME): Promise<IDBDatabase> {
   })
 }
 
-export function importDefs(
-  db: IDBDatabase,
-  defs: Record<string, CedictEntry[]>,
-): Promise<void> {
+export function importDefs(db: IDBDatabase, defs: Record<string, CedictEntry[]>): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
@@ -110,8 +107,6 @@ export function defsDb(): Promise<IDBDatabase> {
   return ready
 }
 
-export async function lookupDefs(
-  headwords: string[],
-): Promise<Record<string, CedictEntry[]>> {
+export async function lookupDefs(headwords: string[]): Promise<Record<string, CedictEntry[]>> {
   return lookupDefsIn(await defsDb(), headwords)
 }

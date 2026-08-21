@@ -26,7 +26,10 @@ describe('explainUrl', () => {
 
   test('carries everything the passage is rebuilt from', () => {
     const params = paramsOf(
-      explainUrl({ line: '我吃了饭', word: '了', videoId: 'BV1xx', start: 12.5, title: '播客' }, BASE),
+      explainUrl(
+        { line: '我吃了饭', word: '了', videoId: 'BV1xx', start: 12.5, title: '播客' },
+        BASE,
+      ),
     )
 
     expect(params.get('word')).toBe('了')

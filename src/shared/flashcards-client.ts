@@ -118,10 +118,7 @@ export function watchKnownSet(onChange: (known: Set<string>) => void): () => voi
     onChange(new Set((stored[KNOWN_SET_KEY] as string[] | undefined) ?? []))
   })
 
-  const listener = (
-    changes: { [key: string]: chrome.storage.StorageChange },
-    areaName: string,
-  ) => {
+  const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName !== 'local' || !changes[KNOWN_SET_KEY]) return
     onChange(new Set((changes[KNOWN_SET_KEY].newValue as string[] | undefined) ?? []))
   }

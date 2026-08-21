@@ -11,9 +11,7 @@ import {
 
 describe('parseVideoIdFromUrl', () => {
   test('extracts the videoId from a video URL', () => {
-    expect(parseVideoIdFromUrl('https://www.bilibili.com/video/BV1bVuo6AESP')).toBe(
-      'BV1bVuo6AESP',
-    )
+    expect(parseVideoIdFromUrl('https://www.bilibili.com/video/BV1bVuo6AESP')).toBe('BV1bVuo6AESP')
   })
 
   test('extracts the videoId when query params follow', () => {

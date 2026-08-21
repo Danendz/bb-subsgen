@@ -58,9 +58,7 @@ describe('parseJson3', () => {
   test('reads timings and text', () => {
     expect(
       parseJson3({
-        events: [
-          { tStartMs: 2820, dDurationMs: 2520, segs: [{ utf8: '你好' }, { utf8: '世界' }] },
-        ],
+        events: [{ tStartMs: 2820, dDurationMs: 2520, segs: [{ utf8: '你好' }, { utf8: '世界' }] }],
       }),
     ).toEqual([{ start: 2.82, end: 5.34, text: '你好世界' }])
   })
@@ -119,9 +117,7 @@ describe('borrowPoToken', () => {
   })
 
   test('takes the most recent one when the player has asked more than once', () => {
-    expect(
-      borrowPoToken([{ name: withPot('OLD') }, { name: withPot('NEW') }])?.pot,
-    ).toBe('NEW')
+    expect(borrowPoToken([{ name: withPot('OLD') }, { name: withPot('NEW') }])?.pot).toBe('NEW')
   })
 
   test('ignores requests that carry no token', () => {
@@ -181,9 +177,7 @@ describe('fetchChineseCaptions', () => {
       return new Response('{}')
     }) as unknown as typeof fetch
 
-    expect(
-      await fetchChineseCaptions({ tracks: [track()], entries: token, fetchImpl }),
-    ).toEqual([])
+    expect(await fetchChineseCaptions({ tracks: [track()], entries: token, fetchImpl })).toEqual([])
     expect(called).toBe(0)
   })
 

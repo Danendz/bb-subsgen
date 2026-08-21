@@ -105,8 +105,10 @@ function attempt(
   const url = `https://www.youtube.com/watch?v=${videoId}`
 
   const ytdlp = spawn('yt-dlp', [
-    '-f', FORMAT,
-    '-o', '-',
+    '-f',
+    FORMAT,
+    '-o',
+    '-',
     '--no-playlist',
     '--no-warnings',
     '--quiet',
@@ -114,11 +116,16 @@ function attempt(
   ])
   const ffmpeg = spawn('ffmpeg', [
     '-hide_banner',
-    '-loglevel', 'error',
-    '-i', 'pipe:0',
-    '-ac', '1',
-    '-ar', String(ASR_SAMPLE_RATE),
-    '-f', 'wav',
+    '-loglevel',
+    'error',
+    '-i',
+    'pipe:0',
+    '-ac',
+    '1',
+    '-ar',
+    String(ASR_SAMPLE_RATE),
+    '-f',
+    'wav',
     'pipe:1',
   ])
 
@@ -173,7 +180,9 @@ function attempt(
     // whole reason it was withheld. A retry is only worth it while the client is
     // still listening and the failure is one that has been seen to clear.
     if (!cancelled() && round < MAX_ATTEMPTS && /403|Forbidden|timed out/i.test(detail)) {
-      console.warn(`[ytdlp-server] ${videoId} attempt ${round} failed, retrying: ${detail.split('\n')[0]}`)
+      console.warn(
+        `[ytdlp-server] ${videoId} attempt ${round} failed, retrying: ${detail.split('\n')[0]}`,
+      )
       attempt(videoId, req, res, round + 1, cancelled)
       return
     }
