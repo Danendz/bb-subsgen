@@ -3,6 +3,7 @@ import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
 import { Review } from './Review'
 import { Settings } from './Settings'
+import { SetupWizard } from './SetupWizard'
 import { Videos } from './Videos'
 import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
@@ -59,7 +60,9 @@ export function App() {
 
       <Nav route={route} />
 
-      {route === '/settings' ? (
+      {route === '/setup' ? (
+        <SetupWizard />
+      ) : route === '/settings' ? (
         <Settings />
       ) : route === '/data' ? (
         <Data />

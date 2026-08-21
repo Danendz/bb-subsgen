@@ -1508,3 +1508,44 @@ select.model {
     transform: none;
   }
 }
+
+/* Setup wizard ---------------------------------------------------------------- */
+
+.wizard {
+  max-width: 560px;
+}
+
+.wizard-picker {
+  margin-bottom: 20px;
+}
+
+.wizard-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.wizard-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-requirement {
+  padding: 14px 16px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+
+.wizard-requirement-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.wizard-requirement .bar {
+  margin: 8px 0;
+}
