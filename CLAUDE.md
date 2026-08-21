@@ -2,7 +2,9 @@
 
 A Chrome MV3 extension that puts hover pinyin and CC-CEDICT glosses over Chinese text — on
 Bilibili and YouTube subtitles, on opted-in web pages, and in a flashcards app. Chromium only.
-No backend, no accounts; the only network calls go to `localhost`.
+No backend, no accounts. Every LLM/ASR network call goes to `localhost`; the one exception is
+the setup wizard's one-time download of a dictionary source (`src/dict/sources.ts`) from its
+own host.
 
 ## Commands
 
@@ -11,7 +13,6 @@ No backend, no accounts; the only network calls go to `localhost`.
 | `npm run dev` | Vite dev server; load `dist/` unpacked in Chrome |
 | `npx tsc --noEmit` | Typecheck. Run this, not `npm run build`, to check types |
 | `npm test` | Vitest, single run |
-| `npm run build:dict` | Regenerates `public/dict/`. **Must run before `build` on a fresh checkout** — `public/dict/` is gitignored and the manifest declares `dict/words.bin`, so crxjs refuses to bundle without it |
 | `npm run build` | `tsc && vite build` |
 | `npm run format` | Prettier, write |
 | `npm run format:check` | Prettier, check only. This is what CI runs |

@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "build:dict": "node --experimental-strip-types tools/build-dict.ts",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

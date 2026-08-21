@@ -33,7 +33,7 @@ Four IndexedDB databases, separated by how bad it is to lose them:
 
 | Database | Contents | Losing it means |
 |---|---|---|
-| `bb-subsgen` | CC-CEDICT definitions cache | rebuild from the shipped asset |
+| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language (schema 2, `src/dict/store.ts`) | re-download from the setup wizard |
 | `bb-subsgen-llm` | debug log of model calls | nothing |
 | `bb-subsgen-chat` | conversations | annoying |
 | `bb-subsgen-flashcards` | review history | **irreplaceable** |
@@ -44,6 +44,22 @@ a test.
 
 All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB.
 
+## `src/dict/`
+
+The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of
+downloadable sources (one per language), `store.ts` is the schema-2 database above, and
+`install.ts` streams a download straight into it. Nothing here is a build step — everything runs
+in the extension at install time, from `src/app/SetupWizard.tsx`, which is why `install.ts` takes
+`fetch` as an injected parameter rather than calling the global (`.claude/rules/testing.md`).
+
+## The setup surface
+
+`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** one of the tabs in
+`src/app/App.tsx`'s `TABS` array — it's reached from the popup when nothing is installed, and
+from a link in Settings, not from primary navigation. The wizard runs the download itself rather
+than asking the service worker to: the import is seconds of solid CPU, and an MV3 worker can be
+idle-terminated or killed under memory pressure mid-write, where an extension page cannot.
+
 ## Build-time shape
 
 - `src/reader/main.ts` must stay a self-contained IIFE. It is listed in `standaloneFiles` in
@@ -51,7 +67,6 @@ All four go through the thin wrapper in `src/shared/idb.ts` rather than raw Inde
   it cannot rely on module imports being loaded for it.
 - A new HTML entry point needs a `rollupOptions.input` entry whenever the manifest does not name
   it. That is why `flashcards` and `offscreen` are listed there explicitly.
-- `public/dict/` is generated and gitignored. `npm run build:dict` before `npm run build`.
 
 ## Routing
 
