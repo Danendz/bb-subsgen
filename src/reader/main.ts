@@ -9,9 +9,11 @@ import { attachReader } from './reader'
 import { mountReader, type ReaderMount } from './mount'
 import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
-import { loadWords, dropLegacyPageDefsDb, type Lexicon } from '../lang/dict'
-import { lookupDefs } from '../shared/dict-client'
-import { loadSettings, onSettingsChanged } from '../shared/settings'
+import type { Lexicon } from '../lang/pack'
+import { dropLegacyPageDefsDb } from '../shared/legacy-db'
+import { packFor } from '../lang/packs'
+import { loadLexicon, lookupDefs } from '../shared/dict-client'
+import { loadSettings, onSettingsChanged, resolveStudyLang } from '../shared/settings'
 import { readerEnabledFor } from '../shared/reader-sites'
 import { watchKnownSet } from '../shared/flashcards-client'
 
@@ -35,10 +37,24 @@ async function main(): Promise<void> {
   let translator: SentenceTranslator | null = null
   let detach: (() => void) | null = null
 
-  // Lazy and memoized: 4.5MB is only fetched the first time you actually hold
+  // Fixed for as long as the script is loaded, for the same reason the lexicon
+  // below is memoized: a mid-page change would leave the segmenter on one
+  // language and the definitions on another.
+  const lang = resolveStudyLang(settings)
+
+  // No pack means no segmenter and no script test, which is every question the
+  // reader would ask — so it never attaches at all, rather than attaching and
+  // finding nothing anywhere.
+  const pack = packFor(lang)
+  if (!pack) {
+    console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
+    return
+  }
+
+  // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
   // the modifier down, and never on a page you just read past.
-  let words: Promise<Lexicon> | null = null
-  const getWords = () => (words ??= loadWords())
+  let words: Promise<Lexicon | null> | null = null
+  const getWords = () => (words ??= loadLexicon(lang))
 
   // Subscribed once for the page's lifetime rather than per attach: the set
   // changes rarely, and re-reading it every time the reader is toggled on for
@@ -65,8 +81,10 @@ async function main(): Promise<void> {
     // styling back on the same path that removes the listeners driving it.
     detach = attachReader({
       mount,
+      pack,
       pageMode: createPageMode(),
-      lookup: lookupDefs,
+      // Partially applied — see `DefsLookup` in shared/dict-client.ts.
+      lookup: (headwords) => lookupDefs(lang, headwords),
       translator,
       words: getWords,
       settings: () => settings,

@@ -33,7 +33,7 @@ Four IndexedDB databases, separated by how bad it is to lose them:
 
 | Database | Contents | Losing it means |
 |---|---|---|
-| `bb-subsgen` | CC-CEDICT definitions cache | rebuild from the shipped asset |
+| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language (schema 2, `src/dict/store.ts`) | re-download from the setup wizard |
 | `bb-subsgen-llm` | debug log of model calls | nothing |
 | `bb-subsgen-chat` | conversations | annoying |
 | `bb-subsgen-flashcards` | review history | **irreplaceable** |
@@ -42,7 +42,69 @@ Bumping a `VERSION` requires a numbered migration note in the module header, nex
 already there. Treat the flashcards database as data you cannot regenerate: migrations there get
 a test.
 
-All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB.
+All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB — including
+the connection itself. `connection()` there owns the memo, the `onversionchange` / `onclose`
+handlers and the probe that catches a connection which died without firing either. Do not
+re-introduce a per-module `let ready` memo: all four had one, all four handed out a dead
+connection after an MV3 worker began teardown, and the fix only holds in one place.
+
+## `src/lang/`
+
+Everything that knows what language the text is in. `src/lang/zh/` holds the Chinese
+implementation — the segmenter, the tone and reading rules, the CC-CEDICT entry ranking, the
+grammar pattern table, the sentence terminators and the hover match. Everything directly under
+`src/lang/` is language-neutral.
+
+Three files carry the split, modelled on `Site` / `siteFor` in `src/media/`:
+
+- `pack.ts` — the `LanguagePack` interface and the vocabulary that goes with it. Imports no
+  implementation.
+- `packs.ts` — `PACKS` and `packFor(code)`, which is null for a code with no pack. Separate from
+  `pack.ts` for the reason `sites.ts` is separate from `site.ts`: so that everything needing only
+  the shape does not pull in every language.
+- `zh/pack.ts` — `chinesePack`, assembled from the modules beside it.
+
+`PACKS` and `DICT_SOURCES` (`src/dict/sources.ts`) are keyed by the same codes and neither imports
+the other — otherwise the popup and the badge, which only ever ask where a dictionary is
+downloaded from, would transitively import a segmenter. `src/lang/packs.test.ts` asserts their key
+sets agree, which is the part that has to stay true.
+
+**Two levels, as `Site` → `Video` is two levels.** A `LanguagePack` is stateless and says what is
+true of the language. `pack.load(raw)` returns a `Lexicon` whose methods close over the parsed
+download, and which carries its own `pack` back-reference so code holding one never has to be
+handed both. That split is what lets a language keep a private index — a deinflection table, a
+reading map — without widening a record every other language would then carry.
+
+**Nothing outside `src/lang/zh/` imports a module from inside it.** That is the point of the
+directory: an import of `zh/segment` from `reader/` is a Chinese assumption that compiles cleanly
+and is invisible from the file it sits in. The exceptions are the surfaces the PRD pins to Chinese
+on purpose, and each says so where it names the language:
+
+- `src/youtube/language.ts`, `src/llm/glossary.ts` and `src/background/flashcards-store.ts` reach
+  Chinese through `packFor('zh')` rather than by importing the table, so the surviving `'zh'`
+  literals read as an inventory of what is still pinned.
+- `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
+  own.
+- `src/content/card.ts` and `src/app/pinyin.tsx` still import `zh/tone.ts` for tone colouring.
+  That is #8's and #10's work.
+
+Tests may import `zh/pack.ts` directly — a fixture has to name a language.
+
+## `src/dict/`
+
+The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of
+downloadable sources (one per language), `store.ts` is the schema-2 database above, and
+`install.ts` streams a download straight into it. Nothing here is a build step — everything runs
+in the extension at install time, from `src/app/SetupWizard.tsx`, which is why `install.ts` takes
+`fetch` as an injected parameter rather than calling the global (`.claude/rules/testing.md`).
+
+## The setup surface
+
+`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** one of the tabs in
+`src/app/App.tsx`'s `TABS` array — it's reached from the popup when nothing is installed, and
+from a link in Settings, not from primary navigation. The wizard runs the download itself rather
+than asking the service worker to: the import is seconds of solid CPU, and an MV3 worker can be
+idle-terminated or killed under memory pressure mid-write, where an extension page cannot.
 
 ## Build-time shape
 
@@ -51,7 +113,6 @@ All four go through the thin wrapper in `src/shared/idb.ts` rather than raw Inde
   it cannot rely on module imports being loaded for it.
 - A new HTML entry point needs a `rollupOptions.input` entry whenever the manifest does not name
   it. That is why `flashcards` and `offscreen` are listed there explicitly.
-- `public/dict/` is generated and gitignored. `npm run build:dict` before `npm run build`.
 
 ## Routing
 

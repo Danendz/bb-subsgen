@@ -1,13 +1,14 @@
 import type { AudioSource } from '../media/audio-source'
 import type { Cue } from '../media/cue'
-import type { CedictEntry } from '../lang/dict'
+import type { CedictEntry } from '../dict/cedict'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { VideoPreamble } from '../llm/batch'
 import type { PassCue, PassStatus } from '../background/llm-translate'
 import type { TranscriptStatus } from '../background/asr-pass'
 import type { TranslationLang } from './settings'
 
-export type Status = 'loading' | 'no-track' | 'active'
+/** `'no-dictionary'` is a tab whose enabled language has no dictionary installed. */
+export type Status = 'loading' | 'no-track' | 'active' | 'no-dictionary'
 
 export interface GetStatusMessage {
   type: 'bb-subsgen:get-status'
@@ -79,12 +80,21 @@ export function isGetTranscriptStatusMessage(msg: unknown): msg is GetTranscript
 /**
  * Asks the service worker for dictionary entries.
  *
- * Batched by design — see `lookupDefsIn` in background/defs-store.ts. The
- * definition store lives in the worker because content scripts would otherwise
- * each import it under their own page origin.
+ * Batched by design — see `lookupDefsIn` in src/dict/store.ts. The definition
+ * store lives in the worker because content scripts would otherwise each import
+ * it under their own page origin.
  */
 export interface LookupDefsMessage {
   type: 'bb-subsgen:lookup-defs'
+  /**
+   * Which language's definitions to answer with.
+   *
+   * On the message rather than resolved in the worker because `defs` is keyed
+   * `${lang}:${headword}` since schema 2, so there is no answer without one —
+   * and the sender is the only party that knows which language the text it is
+   * annotating is in.
+   */
+  lang: string
   headwords: string[]
 }
 
@@ -97,6 +107,7 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
     typeof msg === 'object' &&
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:lookup-defs' &&
+    typeof (msg as { lang?: unknown }).lang === 'string' &&
     Array.isArray((msg as { headwords?: unknown }).headwords)
   )
 }
@@ -319,5 +330,79 @@ export function isLlmTranslationsMessage(msg: unknown): msg is LlmTranslationsMe
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:llm-translations' &&
     Array.isArray((msg as { lines?: unknown }).lines)
+  )
+}
+
+/**
+ * Asks the worker for a language's whole lexicon, to segment with.
+ *
+ * Request/response, and never per-token: `segment()` runs a Viterbi parse that
+ * needs the whole `Map` synchronously, once per cue and once per caret move, so
+ * there is no shape smaller than "the whole lexicon text" that would work. The
+ * transfer is a wash against the per-page `fetch` of `dict/words.bin` this
+ * replaces — see src/dict/store.ts for where it now lives.
+ */
+export interface GetLexiconMessage {
+  type: 'bb-subsgen:get-lexicon'
+  lang: string
+}
+
+export interface GetLexiconResponse {
+  /** Null when the language has no dictionary installed. */
+  text: string | null
+}
+
+export function isGetLexiconMessage(msg: unknown): msg is GetLexiconMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:get-lexicon' &&
+    typeof (msg as { lang?: unknown }).lang === 'string'
+  )
+}
+
+export interface DictStatus {
+  lang: string
+  installed: boolean
+  entryCount: number
+  installedAt: number | null
+}
+
+/**
+ * The cheap dictionary check: whether each enabled language is installed,
+ * without moving its lexicon. Request/response, so the popup and the setup
+ * wizard can ask the worker rather than opening the database themselves.
+ */
+export interface DictStatusMessage {
+  type: 'bb-subsgen:dict-status'
+}
+
+export interface DictStatusResponse {
+  languages: DictStatus[]
+}
+
+export function isDictStatusMessage(msg: unknown): msg is DictStatusMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:dict-status'
+  )
+}
+
+/**
+ * Fire-and-forget, from the setup wizard to the worker after an install or a
+ * delete, so the toolbar badge recomputes. Its own guard rather than joining an
+ * existing union: none of them fit a single-member notification, and forcing
+ * it into one would cost more than a second guard does.
+ */
+export interface DictChangedMessage {
+  type: 'bb-subsgen:dict-changed'
+}
+
+export function isDictChangedMessage(msg: unknown): msg is DictChangedMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:dict-changed'
   )
 }

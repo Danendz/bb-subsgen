@@ -1,13 +1,25 @@
-import { loadSettings, saveSettings, nextFontSize } from './shared/settings'
+import {
+  loadSettings,
+  onSettingsChanged,
+  resolveStudyLang,
+  saveSettings,
+  nextFontSize,
+} from './shared/settings'
 import {
   isAsrMessage,
+  isDictChangedMessage,
+  isDictStatusMessage,
   isFlashcardsMessage,
+  isGetLexiconMessage,
   isGetPassStatusMessage,
   isGetTranscriptStatusMessage,
   isLlmMessage,
   isLookupDefsMessage,
   type AsrMessage,
+  type DictStatus,
+  type DictStatusResponse,
   type FlashcardsMessage,
+  type GetLexiconResponse,
   type LlmMessage,
   type LookupDefsResponse,
   type PassStatusResponse,
@@ -31,7 +43,8 @@ import {
   setChatBusy,
   startPass,
 } from './background/llm-translate'
-import { lookupDefs } from './background/defs-store'
+import { dictDb, getAllMeta, getLexiconIn, lookupDefs } from './dict/store'
+import { refreshBadge } from './background/badge'
 import {
   captureSentence,
   discoverWord,
@@ -51,6 +64,34 @@ chrome.commands.onCommand.addListener(async (command) => {
     await saveSettings({ quizMode: !settings.quizMode })
   }
 })
+
+/**
+ * Refreshes the badge, swallowing the rejection.
+ *
+ * Every caller is an event listener with nowhere to return a promise to, and
+ * `refreshBadge` reads the dictionary database — so a bare `void refreshBadge()`
+ * turned a database that had gone away into an uncaught rejection in the worker
+ * console. The badge being one paint out of date is not worth reporting; the
+ * connection lifecycle that caused it is fixed in src/shared/idb.ts.
+ */
+function badge(): void {
+  refreshBadge().catch((e) => console.warn('[bb-subsgen] badge refresh failed', e))
+}
+
+/** What the popup and the setup wizard ask for: per enabled language, whether it's installed. */
+async function getDictStatus(): Promise<DictStatus[]> {
+  const [settings, db] = await Promise.all([loadSettings(), dictDb()])
+  const meta = await getAllMeta(db)
+  return settings.enabledLanguages.map((lang) => {
+    const installed = meta[lang]
+    return {
+      lang,
+      installed: installed !== undefined,
+      entryCount: installed?.entryCount ?? 0,
+      installedAt: installed?.installedAt ?? null,
+    }
+  })
+}
 
 function handleFlashcards(msg: FlashcardsMessage): Promise<void> {
   switch (msg.type) {
@@ -72,15 +113,22 @@ function handleLlm(msg: LlmMessage, tabId: number | undefined): void {
     case 'bb-subsgen:llm-translate-track':
       // A pass exists to paint a tab; without one there is nothing to paint.
       if (tabId === undefined) return
-      void startPass({
-        tabId,
-        videoId: msg.videoId,
-        lang: msg.lang,
-        model: msg.model,
-        baseUrl: msg.baseUrl,
-        ...(msg.video ? { video: msg.video } : {}),
-        cues: msg.cues,
-      }).catch((e: unknown) => console.warn('[bb-subsgen] translation pass failed', e))
+      // The study language is resolved here rather than inside the pass, which
+      // must not reach for storage between batches — see `PassRequest`.
+      void loadSettings()
+        .then((settings) =>
+          startPass({
+            tabId,
+            videoId: msg.videoId,
+            lang: msg.lang,
+            studyLang: resolveStudyLang(settings),
+            model: msg.model,
+            baseUrl: msg.baseUrl,
+            ...(msg.video ? { video: msg.video } : {}),
+            cues: msg.cues,
+          }),
+        )
+        .catch((e: unknown) => console.warn('[bb-subsgen] translation pass failed', e))
       return
     case 'bb-subsgen:llm-playhead':
       if (tabId !== undefined) reportPlayhead(tabId, msg.index)
@@ -155,7 +203,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (isLookupDefsMessage(msg)) {
-    lookupDefs(msg.headwords).then(
+    lookupDefs(msg.lang, msg.headwords).then(
       (entries) => sendResponse({ entries } satisfies LookupDefsResponse),
       (e) => {
         console.warn('[bb-subsgen] defs lookup failed in worker', e)
@@ -164,6 +212,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     )
     // Keeps the message channel open for the async response above.
     return true
+  }
+
+  if (isGetLexiconMessage(msg)) {
+    dictDb()
+      .then((db) => getLexiconIn(db, msg.lang))
+      .then(
+        (text) => sendResponse({ text } satisfies GetLexiconResponse),
+        (e) => {
+          console.warn('[bb-subsgen] lexicon fetch failed in worker', e)
+          sendResponse({ text: null } satisfies GetLexiconResponse)
+        },
+      )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
+  if (isDictStatusMessage(msg)) {
+    getDictStatus().then(
+      (languages) => sendResponse({ languages } satisfies DictStatusResponse),
+      (e) => {
+        console.warn('[bb-subsgen] dict status failed', e)
+        sendResponse({ languages: [] } satisfies DictStatusResponse)
+      },
+    )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
+  if (isDictChangedMessage(msg)) {
+    badge()
+    return
   }
 
   if (isFlashcardsMessage(msg)) {
@@ -218,3 +297,10 @@ chrome.runtime.onConnect.addListener((port) => {
 // without making every read pay for a database round trip.
 chrome.runtime.onStartup.addListener(() => void refreshKnownMirror())
 chrome.runtime.onInstalled.addListener(() => void refreshKnownMirror())
+
+// The badge reflects settings and installed dictionaries, neither of which the
+// worker is told about except by these three routes: a fresh start, a settings
+// write, and the wizard reporting an install or a delete.
+chrome.runtime.onStartup.addListener(badge)
+chrome.runtime.onInstalled.addListener(badge)
+onSettingsChanged(badge)

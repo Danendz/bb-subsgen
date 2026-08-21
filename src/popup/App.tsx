@@ -40,6 +40,7 @@ import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
+import { dictStatus } from '../shared/dict-client'
 
 type TabStatus = Status | 'no-video'
 
@@ -48,6 +49,7 @@ const STATUS_LABEL: Record<TabStatus, string> = {
   'no-track': 'No subtitle track on this video.',
   active: 'Active on this video.',
   'no-video': 'Open a Bilibili or YouTube video for subtitles.',
+  'no-dictionary': 'No dictionary installed for this language.',
 }
 
 async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -261,6 +263,15 @@ export function App() {
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
   const [videoId, setVideoId] = useState<string | null>(null)
+  const [needsSetup, setNeedsSetup] = useState(false)
+
+  useEffect(() => {
+    if (!settings.enabledLanguages.length) {
+      setNeedsSetup(true)
+      return
+    }
+    dictStatus().then((languages) => setNeedsSetup(languages.some((l) => !l.installed)))
+  }, [settings.enabledLanguages.join(',')])
 
   useEffect(() => {
     currentTab().then((t) => {
@@ -301,6 +312,29 @@ export function App() {
   }
 
   if (!loaded) return null
+
+  if (needsSetup) {
+    return (
+      <div class="app">
+        <h1>bb-subsgen</h1>
+        <p>
+          {settings.enabledLanguages.length
+            ? 'A language you study has no dictionary installed yet.'
+            : "You haven't set up a language to study yet."}
+        </p>
+        <button
+          class="open-app"
+          onClick={() =>
+            void chrome.tabs.create({
+              url: chrome.runtime.getURL('src/app/index.html') + '#/setup',
+            })
+          }
+        >
+          Go to setup
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div class="app">

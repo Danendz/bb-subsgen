@@ -12,9 +12,25 @@
 // because the evidence genuinely differs in strength, and the right response to
 // weak evidence is neither to spend nor to give up silently — it is to ask.
 
-import { isHan } from '../lang/segment'
+import { packFor } from '../lang/packs'
 import type { Confidence } from '../media/site'
 import type { CaptionTrack } from './player-response'
+
+/**
+ * Pinned to Chinese, deliberately, and the one place in this file that names a
+ * language.
+ *
+ * This asks how Chinese a *video* looks, not what the user studies — the
+ * transcription pipeline behind it is Chinese-only (PRD #6, Out of Scope), so
+ * grading a Japanese title as promising would spend a GPU on something nothing
+ * downstream can read. The registry is how the pack is reached even so, so that
+ * the surviving `'zh'` literals are an inventory of what is still pinned.
+ *
+ * No zh pack means no Chinese anything, so "not Chinese" is the right answer to
+ * every question below rather than a failure to report.
+ */
+const zh = packFor('zh')
+const isHan = (char: string): boolean => zh?.inScript(char) ?? false
 
 /**
  * How much of a string is Han, as a share of its letters.

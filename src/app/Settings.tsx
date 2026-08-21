@@ -133,6 +133,13 @@ export function Settings() {
       <LocalModelSection settings={settings} update={update} />
       <SpeechSection settings={settings} update={update} />
 
+      <Section title="Dictionaries">
+        <div class="toolbar">
+          <button onClick={() => navigate('/setup')}>Manage dictionaries</button>
+        </div>
+        <Hint>Add a language you study, or check an installed one for an update.</Hint>
+      </Section>
+
       <Section title="Page reader">
         <ReaderSites origins={settings.readerOrigins} />
         <div class={settings.readerOrigins.length ? '' : 'disabled'}>

@@ -34,6 +34,17 @@ export const READER_MODIFIERS: ReadonlyArray<{ code: ReaderModifier; label: stri
 
 export interface Settings {
   enabled: boolean
+  /**
+   * Languages the setup wizard has been told you study, e.g. `['zh']`.
+   *
+   * Empty by default even for an existing profile: the packaged dictionary is
+   * gone (see #20), so an install that upgraded from a version that shipped one
+   * has nothing installed either, and belongs in the wizard exactly like a
+   * fresh profile does. The badge and the popup read this list against
+   * src/dict/store.ts's per-language `meta` to decide whether anything is
+   * actually ready to use.
+   */
+  enabledLanguages: string[]
   showPinyin: boolean
   showToneColors: boolean
   fontSize: number // px, hanzi row
@@ -74,6 +85,18 @@ export interface Settings {
    * `studySessionSize` is what limits how many are actually met.
    */
   newSentencesPerDay: number
+  /**
+   * The language you are working in right now, e.g. `'zh'`.
+   *
+   * One setting rather than one per surface: it means "the language I am
+   * studying today", so switching it in the Dictionary tab moves Review with it
+   * instead of leaving two controls to disagree about which lexicon is loaded.
+   *
+   * Empty until something sets it — read it through `resolveStudyLang`, never
+   * directly, or a profile that has never touched the control reads no lexicon
+   * at all.
+   */
+  studyLang: string
   /** How the study session asks its questions. */
   studyMode: StudyMode
   /** Which cards it draws from. */
@@ -180,6 +203,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
+  // Empty: nothing is installed until the wizard says so. See the doc comment
+  // on the field above.
+  enabledLanguages: [],
   showPinyin: true,
   showToneColors: true,
   fontSize: 32,
@@ -203,6 +229,9 @@ export const DEFAULT_SETTINGS: Settings = {
   readerSentenceTranslation: true,
   quizMode: false,
   newSentencesPerDay: 5,
+  // Empty: resolved rather than stored, so a fresh profile follows whatever the
+  // wizard was told rather than a guess made before it was asked.
+  studyLang: '',
   // Mixed by default: meeting a word from a different angle each sitting is
   // better practice than any single mode, and it is the behaviour that existed
   // before the modes were choosable, so nobody's sessions change unasked.
@@ -228,6 +257,19 @@ export const DEFAULT_SETTINGS: Settings = {
   asrBaseUrl: '',
   asrModel: '',
   ytdlpBaseUrl: '',
+}
+
+/**
+ * Which language a lookup should be answered in.
+ *
+ * `studyLang` is `''` until the control has been touched, and the language
+ * controls stay hidden while only one dictionary is installed — so most
+ * profiles never set it, and every caller has to fall back the same way or they
+ * fall back differently. The final `'zh'` is for the window between installing
+ * the extension and finishing the wizard, where nothing is enabled yet.
+ */
+export function resolveStudyLang(settings: Settings): string {
+  return settings.studyLang || settings.enabledLanguages[0] || 'zh'
 }
 
 /** Bounds for `studySessionSize`, shared by the picker and the queue. */

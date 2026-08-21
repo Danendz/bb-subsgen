@@ -19,7 +19,15 @@ has run. A cast is not a check.
 - A fire-and-forget write joins an existing union and its `Set<string>` of type strings —
   `FlashcardsMessage` / `FLASHCARDS_TYPES`, `LlmMessage` / `LLM_TYPES`, `AsrMessage` /
   `ASR_TYPES`. One guard covers the set.
-- A request/response pair gets its own interface plus a matching `…Response` interface.
+- A request/response pair gets its own interface plus a matching `…Response` interface. See
+  `GetLexiconMessage` and `DictStatusMessage`. `LookupDefsMessage` is one too, and carries a
+  `lang` alongside its headwords: `defs` has been keyed `` `${lang}:${headword}` `` since schema 2
+  (`src/dict/store.ts`), so there is no answer without one, and only the sender knows which
+  language the text it is annotating is in.
+- A single-member notification that fits none of the existing unions gets its own guard rather
+  than being forced into one — see `DictChangedMessage`. Forcing it into an existing union would
+  mean widening that union's dispatch for a message unrelated to what the union is for; a second
+  guard costs one `if` in `src/background.ts`.
 
 Say in a comment which one it is and why. A message that needs an answer and does not get one is
 a bug that shows up as silence.

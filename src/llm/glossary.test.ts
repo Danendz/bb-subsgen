@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { CedictEntry } from '../lang/dict'
+import type { CedictEntry } from '../lang/pack'
 import { glossFor, glossLine, splitByKnown, translationGlossary } from './glossary'
 
 function entry(over: Partial<CedictEntry> = {}): CedictEntry {

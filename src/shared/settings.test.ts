@@ -5,6 +5,8 @@ import {
   MAX_SPEECH_RATE,
   MIN_SPEECH_RATE,
   nextFontSize,
+  resolveStudyLang,
+  type Settings,
 } from './settings'
 
 describe('translation defaults', () => {
@@ -24,6 +26,43 @@ describe('translation defaults', () => {
 
   test('translates to English by default, so existing users see no change', () => {
     expect(DEFAULT_SETTINGS.translationLang).toBe('en')
+  })
+})
+
+describe('enabledLanguages default', () => {
+  test('starts empty, even for an upgraded profile', () => {
+    // The packaged dictionary is gone (#20): an install that upgraded from a
+    // version that shipped one has nothing installed either, so it belongs in
+    // the setup wizard exactly like a fresh profile.
+    expect(DEFAULT_SETTINGS.enabledLanguages).toEqual([])
+  })
+})
+
+describe('resolveStudyLang', () => {
+  const settings = (patch: Partial<Settings>): Settings => ({ ...DEFAULT_SETTINGS, ...patch })
+
+  test('honours the language you picked', () => {
+    expect(resolveStudyLang(settings({ studyLang: 'ja', enabledLanguages: ['zh', 'ja'] }))).toBe(
+      'ja',
+    )
+  })
+
+  test('follows the wizard when nobody has touched the control', () => {
+    // The control stays hidden while one dictionary is installed, so this is
+    // the path almost every profile actually takes.
+    expect(resolveStudyLang(settings({ enabledLanguages: ['ja'] }))).toBe('ja')
+  })
+
+  test('still names a language before the wizard has been through', () => {
+    // Between installing the extension and finishing setup there is nothing to
+    // resolve from, and a lookup keyed on '' would match nothing at all.
+    expect(resolveStudyLang(settings({}))).toBe('zh')
+  })
+
+  test('ignores a language you have stopped studying', () => {
+    // The wizard clears `studyLang` when it removes that language; this is the
+    // belt to that braces, since the two settings are written separately.
+    expect(resolveStudyLang(settings({ studyLang: '', enabledLanguages: ['zh'] }))).toBe('zh')
   })
 })
 

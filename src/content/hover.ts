@@ -1,7 +1,6 @@
 import { adoptStyles } from './overlay'
-import { buildCard, cardHeadwords, characterBreakdown } from './card'
-import { patternsForWord } from '../lang/grammar/match'
-import type { Token } from '../lang/segment'
+import { buildCard, characterBreakdown } from './card'
+import type { LanguagePack, Token } from '../lang/pack'
 import { discoverWord, markKnown } from '../shared/flashcards-client'
 import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
@@ -59,6 +58,8 @@ function inHoverRegion(node: EventTarget | null): boolean {
 
 export interface HoverDeps {
   shadowRoot: ShadowRoot
+  /** The language on screen: what ranks the entries and finds the patterns. */
+  pack: LanguagePack
   video: HTMLVideoElement
   lookup: DefsLookup
   /** Read at popup-build time so live settings changes take effect. */
@@ -105,6 +106,7 @@ export interface HoverDeps {
 
 export function attachHover({
   shadowRoot,
+  pack,
   video,
   lookup,
   isTraditional,
@@ -143,7 +145,7 @@ export function attachHover({
     // this card carries the same per-character breakdown the reader's does — it
     // was asking for the headword alone and silently rendering a poorer card.
     const useTraditional = isTraditional()
-    const found = await lookup(cardHeadwords(headword))
+    const found = await lookup(pack.cardHeadwords(headword))
     closePopup()
     adoptStyles(shadowRoot)
 
@@ -158,11 +160,12 @@ export function attachHover({
         headword,
         displayedPinyin: wordEl.dataset.pinyin ?? '',
         entries: found[headword] ?? [],
-        breakdown: characterBreakdown(headword, found, useTraditional),
-        patterns: patternsForWord(currentTokens(), headword),
+        breakdown: characterBreakdown(headword, found, pack, useTraditional),
+        patterns: pack.patternsForWord(currentTokens(), headword),
         known: known().has(headword),
       },
       {
+        pack,
         useTraditional,
         toneColors: showToneColors(),
         onMarkKnown: (next) => markKnown(headword, next),

@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { answerOf, buildBank, isCorrect, seedFor, shuffle } from './wordbank'
-import type { Token } from '../lang/segment'
+import type { Token } from '../lang/pack'
 
-const tokens = (...texts: string[]): Token[] => texts.map((text) => ({ text, pinyin: null }))
+const tokens = (...texts: string[]): Token[] =>
+  texts.map((text) => ({
+    text,
+    pinyin: null,
+    kind: /\p{Script=Han}/u.test(text) ? 'content' : 'other',
+  }))
 
 describe('answerOf', () => {
   test('punctuation is scenery, not a tile', () => {

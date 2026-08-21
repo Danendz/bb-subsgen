@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import {
-  buildCard,
-  buildWordElement,
-  cardHeadwords,
-  characterBreakdown,
-  setCardTranslation,
-} from './card'
-import type { CedictEntry } from '../lang/dict'
-import { PATTERNS } from '../lang/grammar/patterns'
+import { buildCard, buildWordElement, characterBreakdown, setCardTranslation } from './card'
+import type { CedictEntry } from '../lang/pack'
+import { chinesePack } from '../lang/zh/pack'
+import { PATTERNS } from '../lang/zh/grammar/patterns'
 
 const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
   simplified: '学习',
@@ -33,7 +28,7 @@ const xi = entry({
 
 describe('characterBreakdown', () => {
   test('returns one row per character with its own reading and gloss', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [xi] })).toEqual([
+    expect(characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack)).toEqual([
       { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
       { char: '习', pinyin: 'xi2', gloss: 'to practice' },
     ])
@@ -41,11 +36,11 @@ describe('characterBreakdown', () => {
 
   test('breaks down nothing for a single character', () => {
     // The breakdown of 我 is 我 — noise, not information.
-    expect(characterBreakdown('学', { 学: [xue] })).toEqual([])
+    expect(characterBreakdown('学', { 学: [xue] }, chinesePack)).toEqual([])
   })
 
   test('skips characters the dictionary has no entry for', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [] })).toEqual([
+    expect(characterBreakdown('学习', { 学: [xue], 习: [] }, chinesePack)).toEqual([
       { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
     ])
   })
@@ -53,33 +48,19 @@ describe('characterBreakdown', () => {
   test('ignores non-Han characters in the headword', () => {
     // Punctuation and latin never get a row, and never count toward the
     // two-character minimum either.
-    expect(characterBreakdown('学!', { 学: [xue] })).toEqual([])
+    expect(characterBreakdown('学!', { 学: [xue] }, chinesePack)).toEqual([])
   })
 
   test('drops entries whose definitions are all classifier notation', () => {
     const clOnly = entry({ simplified: '习', pinyin: 'xi2', definitions: ['CL:個|个[ge4]'] })
-    expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] })).toEqual([
+    expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] }, chinesePack)).toEqual([
       { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
     ])
   })
 })
 
-describe('cardHeadwords', () => {
-  test('asks for the word and each of its characters in one batch', () => {
-    expect(cardHeadwords('学习')).toEqual(['学习', '学', '习'])
-  })
-
-  test('asks only for itself when there is nothing to break down', () => {
-    expect(cardHeadwords('学')).toEqual(['学'])
-  })
-
-  test('ignores non-Han characters when deciding', () => {
-    expect(cardHeadwords('学!')).toEqual(['学!'])
-  })
-})
-
 describe('buildCard', () => {
-  const opts = { useTraditional: false }
+  const opts = { pack: chinesePack, useTraditional: false }
 
   test('renders the headword and its reading', () => {
     const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
@@ -97,7 +78,7 @@ describe('buildCard', () => {
       {
         headword: '学习',
         entries: [entry()],
-        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }),
+        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
     )
@@ -110,7 +91,7 @@ describe('buildCard', () => {
       {
         headword: '学习',
         entries: [entry()],
-        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }),
+        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
     )
@@ -137,7 +118,7 @@ describe('buildCard', () => {
 })
 
 describe('the structure section', () => {
-  const opts = { useTraditional: false }
+  const opts = { pack: chinesePack, useTraditional: false }
   const complement = PATTERNS.find((p) => p.id === 'de-complement')!
 
   test('names the pattern, shows its shape, and explains what it does', () => {
@@ -180,17 +161,17 @@ describe('dimming function words', () => {
   const style = { showPinyin: true, showToneColors: true }
 
   test('marks a structural particle so it can be told from vocabulary', () => {
-    const el = buildWordElement({ text: '得', pinyin: 'de5' }, style)
+    const el = buildWordElement({ text: '得', pinyin: 'de5', kind: 'function' }, style)
     expect(el.classList.contains('function')).toBe(true)
   })
 
   test('leaves ordinary vocabulary unmarked', () => {
-    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1' }, style)
+    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1', kind: 'content' }, style)
     expect(el.classList.contains('function')).toBe(false)
   })
 
   test('does not mark punctuation, which is not a word at all', () => {
-    const el = buildWordElement({ text: '。', pinyin: null }, style)
+    const el = buildWordElement({ text: '。', pinyin: null, kind: 'other' }, style)
     expect(el.classList.contains('function')).toBe(false)
   })
 })

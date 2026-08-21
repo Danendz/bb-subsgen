@@ -3,8 +3,8 @@ import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, listVideos, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction, type Coverage } from '../flashcards/capture'
 import { lookupDefs } from '../shared/dict-client'
-import { parseDefinitions } from '../lang/definitions'
-import { rankEntries } from '../lang/entries'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
+import { packFor } from '../lang/packs'
 import { Pinyin } from './pinyin'
 import type { VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
@@ -95,6 +95,7 @@ function VideoDetail({ videoId }: { videoId: string }) {
 
   const load = useCallback(async () => {
     const db = await flashcardsDb()
+    const lang = resolveStudyLang(await loadSettings())
     const [items, videos, words] = await Promise.all([
       listItems(db),
       listVideos(db),
@@ -104,13 +105,18 @@ function VideoDetail({ videoId }: { videoId: string }) {
       video: videos.find((v) => v.videoId === videoId) ?? null,
       words: [...words].sort((a, b) => b.count - a.count),
       known: knownSetOf(items),
+      pack: packFor(lang),
     }
   }, [videoId])
   const { data, loading } = useAsync(load)
 
   const page: VideoWord[] = data?.words.slice(0, limit) ?? []
   const loadDefs = useCallback(
-    () => lookupDefs(page.map((w) => w.headword)),
+    async () =>
+      lookupDefs(
+        resolveStudyLang(await loadSettings()),
+        page.map((w) => w.headword),
+      ),
     [page.map((w) => w.headword).join(' ')],
   )
   const { data: defs } = useAsync(loadDefs)
@@ -140,14 +146,17 @@ function VideoDetail({ videoId }: { videoId: string }) {
       <div class="panel">
         {page.map((word) => {
           const entries = defs?.[word.headword]
-          const [primary] = rankEntries(entries ?? [], word.headword)
+          const [primary] = data.pack?.rankEntries(entries ?? [], word.headword) ?? []
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
               <Pinyin pinyin={primary?.pinyin ?? ''} />
               <span class="grow gloss">
-                {primary
-                  ? parseDefinitions(primary.definitions).definitions.slice(0, 2).join('; ')
+                {primary && data.pack
+                  ? data.pack
+                      .parseDefinitions(primary.definitions)
+                      .definitions.slice(0, 2)
+                      .join('; ')
                   : ''}
               </span>
               <span class="muted small">{word.count}×</span>

@@ -17,6 +17,8 @@ import {
   type WordListMeta,
 } from '../background/flashcards-store'
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
+import { packFor } from '../lang/packs'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { WordListHelp } from './WordListHelp'
 import { LlmLog } from './LlmLog'
 import { cacheSize, clearCache } from '../background/llm-cache'
@@ -83,7 +85,14 @@ function WordLists() {
   const onFile = async (kind: ListKind, file: File) => {
     setError('')
     setPending(null)
-    const result = parseWordList(kind, await file.text())
+    // A word list is a list of words in the language you study, so the column
+    // sniffing has to know which script it is looking for.
+    const pack = packFor(resolveStudyLang(await loadSettings()))
+    if (!pack) {
+      setError('No dictionary installed yet — set one up from the extension popup first.')
+      return
+    }
+    const result = parseWordList(kind, await file.text(), pack)
     if (!result.ok) {
       setError(errorMessage(result.error))
       return

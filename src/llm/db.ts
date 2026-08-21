@@ -14,6 +14,8 @@
 // three run on the extension origin. Content scripts do not, so they go through
 // messages, the same as everything else that touches storage.
 
+import { connection } from '../shared/idb'
+
 const DB_NAME = 'bb-subsgen-llm'
 
 /**
@@ -90,15 +92,4 @@ export function openLlmDb(dbName = DB_NAME): Promise<IDBDatabase> {
 
 // Memoized for the same reason as flashcardsDb(): the worker is torn down
 // whenever it goes idle, so this resolves once per worker lifetime.
-let ready: Promise<IDBDatabase> | null = null
-
-export function llmDb(): Promise<IDBDatabase> {
-  if (!ready) {
-    ready = openLlmDb().catch((e) => {
-      // Never cache a failed open, or one transient error poisons the worker.
-      ready = null
-      throw e
-    })
-  }
-  return ready
-}
+export const llmDb = connection(() => openLlmDb())

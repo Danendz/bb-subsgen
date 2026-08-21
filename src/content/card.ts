@@ -2,13 +2,10 @@
 // reader. Both mount it into a shadow root of their own, so this module owns
 // the markup and the styles but never the positioning.
 
-import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/tone'
-import { parseDefinitions } from '../lang/definitions'
-import { rankEntries } from '../lang/entries'
-import { isFunctionWord } from '../lang/grammar/function-words'
-import type { Pattern } from '../lang/grammar/patterns'
-import { isHan, type Token } from '../lang/segment'
-import type { CedictEntry } from '../lang/dict'
+import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/zh/tone'
+import type { LanguagePack, Pattern } from '../lang/pack'
+import type { Token } from '../lang/pack'
+import type { CedictEntry } from '../lang/pack'
 
 const MAX_DEFINITIONS = 3
 
@@ -422,7 +419,7 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   word.className = 'word'
   // Structure reads dimmer than vocabulary. Costs no height, which is the whole
   // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
-  if (isFunctionWord(token.text)) word.classList.add('function')
+  if (token.kind === 'function') word.classList.add('function')
   word.dataset.text = token.text
   // Lets the hover card show pinyin even when CC-CEDICT has no entry.
   if (token.pinyin) word.dataset.pinyin = token.pinyin
@@ -449,17 +446,6 @@ export interface CharacterGloss {
 }
 
 /**
- * Every headword a full card needs, for one batched lookup.
- *
- * A single character needs no breakdown — the breakdown of 我 is 我 — so it
- * asks for itself alone.
- */
-export function cardHeadwords(headword: string): string[] {
-  const chars = Array.from(headword).filter(isHan)
-  return chars.length < 2 ? [headword] : [headword, ...chars]
-}
-
-/**
  * Builds the per-character rows for a multi-character word.
  *
  * Single characters get nothing: the breakdown of 我 is 我, which is noise.
@@ -468,16 +454,19 @@ export function cardHeadwords(headword: string): string[] {
 export function characterBreakdown(
   headword: string,
   found: Record<string, CedictEntry[]>,
+  pack: LanguagePack,
   useTraditional = false,
 ): CharacterGloss[] {
-  const chars = Array.from(headword).filter(isHan)
-  if (chars.length < 2) return []
+  // The same list the lookup was batched from, minus the whole word: a
+  // breakdown is exactly the pieces that lookup already asked about.
+  const chars = pack.cardHeadwords(headword).slice(1)
+  if (!chars.length) return []
 
   const rows: CharacterGloss[] = []
   for (const char of chars) {
-    const [primary] = rankEntries(found[char] ?? [], char, undefined, useTraditional)
+    const [primary] = pack.rankEntries(found[char] ?? [], char, undefined, useTraditional)
     if (!primary) continue
-    const { definitions } = parseDefinitions(primary.definitions, useTraditional)
+    const { definitions } = pack.parseDefinitions(primary.definitions, useTraditional)
     if (!definitions.length) continue
     rows.push({ char, pinyin: primary.pinyin, gloss: definitions.join('; ') })
   }
@@ -503,7 +492,7 @@ export interface CardData {
    * The section the dictionary cannot supply. A gloss describes a word, and for
    * a function word that is close to useless — CC-CEDICT calls 啊 an
    * "interjection of surprise", which is true of the character and wrong about
-   * every sentence it ends. See lang/grammar/patterns.ts.
+   * every sentence it ends. See lang/zh/grammar/patterns.ts.
    */
   patterns?: readonly Pattern[]
   /** Sentence translation; empty renders no section. */
@@ -513,6 +502,8 @@ export interface CardData {
 }
 
 export interface CardOptions {
+  /** The language the card is about, and what ranks and parses its entries. */
+  pack: LanguagePack
   useTraditional: boolean
   toneColors?: boolean
   /** Omitted renders no "I know this" button — which is what card tests want. */
@@ -534,12 +525,12 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { useTraditional, toneColors = true, onMarkKnown, onExplain } = options
+  const { pack, useTraditional, toneColors = true, onMarkKnown, onExplain } = options
   const { headword, displayedPinyin = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
   // by relevance to the reading actually shown on screen.
-  const entries = rankEntries(rawEntries, headword, displayedPinyin, useTraditional)
+  const entries = pack.rankEntries(rawEntries, headword, displayedPinyin, useTraditional)
 
   const el = document.createElement('div')
   el.className = 'popup'
@@ -580,7 +571,7 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
   } else {
     // Lifts CC-CEDICT classifier notation out of the definition text, so raw
     // syntax never shows and classifiers don't eat a definition slot.
-    const { definitions, classifiers } = parseDefinitions(primary.definitions, useTraditional)
+    const { definitions, classifiers } = pack.parseDefinitions(primary.definitions, useTraditional)
 
     for (const definition of definitions.slice(0, MAX_DEFINITIONS)) {
       const def = document.createElement('div')

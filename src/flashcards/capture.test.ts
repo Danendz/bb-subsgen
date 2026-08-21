@@ -3,24 +3,44 @@ import {
   coverageOf,
   fraction,
   graduationOrder,
-  hanWords,
+  vocabularyIn,
   isCapturableText,
   selectionTarget,
   shouldCaptureLine,
   unknownIn,
 } from './capture'
-import type { Token } from '../lang/segment'
+import type { Token } from '../lang/pack'
+import { chinesePack } from '../lang/zh/pack'
 
-const token = (text: string, pinyin: string | null = null): Token => ({ text, pinyin })
+const token = (text: string, kind: Token['kind'] = 'content'): Token => ({
+  text,
+  pinyin: null,
+  kind,
+})
 
-describe('hanWords', () => {
-  test('keeps only the Chinese tokens', () => {
-    const tokens = [token('我'), token('喜欢'), token('，'), token('OK'), token('学习')]
-    expect(hanWords(tokens)).toEqual(['我', '喜欢', '学习'])
+describe('vocabularyIn', () => {
+  test('keeps only what the segmenter cut as a word', () => {
+    // The point of reading `kind` rather than testing the characters: whether a
+    // token is vocabulary was decided while the line was cut, and 'OK' inside a
+    // Chinese subtitle is a pass-through even though it is not punctuation.
+    const tokens = [
+      token('我'),
+      token('喜欢'),
+      token('，', 'other'),
+      token('OK', 'other'),
+      token('学习'),
+    ]
+    expect(vocabularyIn(tokens)).toEqual(['我', '喜欢', '学习'])
   })
 
   test('drops punctuation, spaces and empty tokens', () => {
-    expect(hanWords([token('。'), token(' '), token(''), token('!')])).toEqual([])
+    const inert = [
+      token('。', 'other'),
+      token(' ', 'other'),
+      token('', 'other'),
+      token('!', 'other'),
+    ]
+    expect(vocabularyIn(inert)).toEqual([])
   })
 })
 
@@ -47,22 +67,18 @@ describe('shouldCaptureLine', () => {
 
 describe('isCapturableText', () => {
   test('rejects text with no Chinese in it', () => {
-    expect(isCapturableText('hello world')).toBe(false)
-    expect(isCapturableText('   ')).toBe(false)
+    expect(isCapturableText('hello world', chinesePack)).toBe(false)
+    expect(isCapturableText('   ', chinesePack)).toBe(false)
   })
 
   test('rejects a run longer than a sentence', () => {
-    expect(isCapturableText('学'.repeat(221))).toBe(false)
-    expect(isCapturableText('学'.repeat(220))).toBe(true)
+    expect(isCapturableText('学'.repeat(221), chinesePack)).toBe(false)
+    expect(isCapturableText('学'.repeat(220), chinesePack)).toBe(true)
   })
 })
 
 describe('selectionTarget', () => {
-  const words = new Map([
-    ['选择', 'xuan3 ze2'],
-    ['我', 'wo3'],
-    ['学习', 'xue2 xi2'],
-  ])
+  const words = chinesePack.load('选择\txuan3 ze2\n我\two3\n学习\txue2 xi2')
 
   test('a single dictionary headword is a word', () => {
     expect(selectionTarget('选择', words)).toEqual({ kind: 'word', text: '选择' })
@@ -71,7 +87,10 @@ describe('selectionTarget', () => {
   test('anything the dictionary does not hold is a sentence', () => {
     // The awkward middle: two words in a row is not a headword, so it is a
     // sentence rather than being forced into the word deck by length alone.
-    expect(selectionTarget('我学习', words)).toEqual({ kind: 'sentence', text: '我学习' })
+    expect(selectionTarget('我学习', words)).toEqual({
+      kind: 'sentence',
+      text: '我学习',
+    })
   })
 
   test('trims before deciding, so a sloppy drag still reads as one word', () => {

@@ -17,7 +17,8 @@ import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
 import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
 import type { ListKind } from '../flashcards/wordlist'
-import { PATTERNS, type Pattern } from '../lang/grammar/patterns'
+import type { Pattern } from '../lang/pack'
+import { packFor } from '../lang/packs'
 import {
   grammarId,
   sentenceId,
@@ -62,8 +63,12 @@ function initialState(kind: Item['kind']): Item['state'] {
  * from the table safe for decks that already hold it.
  */
 function knownPatterns(ids: string[]): Pattern[] {
-  const wanted = new Set(ids)
-  return PATTERNS.filter((pattern) => wanted.has(pattern.id))
+  // Pinned to Chinese, and named as a pin rather than hidden behind a direct
+  // import of the table: a grammar card's id carries no language yet, and #11
+  // and #12 are what give the deck one. Until then every stored id is Chinese,
+  // and this is one of the sites that has to change when that stops being true.
+  const zh = packFor('zh')
+  return [...new Set(ids)].flatMap((id) => zh?.patternById(id) ?? [])
 }
 
 function newGrammarItem(pattern: Pattern, now: number): Item {

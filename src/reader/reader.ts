@@ -1,24 +1,19 @@
 import {
   buildCard,
   buildWordElement,
-  cardHeadwords,
   characterBreakdown,
   setCardTranslation,
 } from '../content/card'
-import { segment } from '../lang/segment'
-import { EMPTY_LEXICON, type Lexicon } from '../lang/dict'
-import { patternsForWord } from '../lang/grammar/match'
+import type { LanguagePack, Lexicon, Match } from '../lang/pack'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
-import { hanWords, selectionTarget, unknownIn } from '../flashcards/capture'
+import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
 import { blockAncestor, createBlockCache, indexOf, rangeOf, rootElement } from './block'
 import { caretAt } from './caret'
 import { createWordHighlight } from './highlight'
 import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
-import { matchAt, type Match } from './lookup'
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
-import { sentenceTextAt } from './sentence'
 import type { SentenceTranslator } from './translator'
 import type { DefsLookup } from '../shared/dict-client'
 import type { ReaderMount } from './mount'
@@ -33,12 +28,17 @@ const MODIFIER_PROPERTY: Record<ReaderModifier, 'shiftKey' | 'altKey' | 'ctrlKey
 
 export interface ReaderDeps {
   mount: ReaderMount
+  /** The language being read, as everything below has to ask it rather than assume it. */
+  pack: LanguagePack
   /** Force-selectable page text, switched on for as long as the modifier is held. */
   pageMode: PageMode
   lookup: DefsLookup
   translator: SentenceTranslator
-  /** Lazily resolved: the 4.5MB word list is only fetched once you actually look something up. */
-  words: () => Promise<Lexicon>
+  /**
+   * Lazily resolved: the 4.5MB word list is only asked for once you actually
+   * look something up. Null means no dictionary is installed for the language.
+   */
+  words: () => Promise<Lexicon | null>
   /** Read live, so settings changes take effect without a reload. */
   settings: () => Settings
   /** Words the reader should stop annotating, mirrored from the worker. */
@@ -54,6 +54,7 @@ interface OpenCard {
 
 export function attachReader({
   mount,
+  pack,
   pageMode,
   lookup,
   translator,
@@ -64,7 +65,7 @@ export function attachReader({
   const { shadowRoot } = mount
   const highlight = createWordHighlight()
   const blockCache = createBlockCache()
-  const guard = new ClickGuard()
+  const guard = new ClickGuard(pack)
 
   let held = false
   let dragging = false
@@ -73,6 +74,8 @@ export function attachReader({
   let pending = 0
   let frame = 0
   let wordList: Lexicon | null = null
+  /** Set once `words()` has resolved null — no dictionary installed for this language. */
+  let dictionaryMissing = false
 
   const modifierHeld = (e: MouseEvent | KeyboardEvent): boolean =>
     e[MODIFIER_PROPERTY[settings().readerModifier]]
@@ -142,6 +145,21 @@ export function attachReader({
     card.style.top = `${top}px`
   }
 
+  /**
+   * Shown in place of a word card when the language has no dictionary
+   * installed — the one place silence would read as a bug, since the modifier
+   * is you asking a question and getting nothing back.
+   */
+  const showDictionaryNotice = (anchor: Anchor) => {
+    if (open) return
+    const card = document.createElement('div')
+    card.className = 'dict-notice'
+    card.textContent = 'No dictionary installed — set one up from the extension popup.'
+    shadowRoot.appendChild(card)
+    open = { element: card, identity: { text: '', start: -1, source: 'page' }, anchor }
+    place(card, anchor)
+  }
+
   /** Fills the card's translation line in, if it's still the card on screen. */
   const fillTranslation = (card: HTMLElement, sentence: string, token: number) => {
     if (!settings().readerSentenceTranslation || !sentence) return
@@ -196,7 +214,7 @@ export function attachReader({
     const { useTraditional, showToneColors } = settings()
 
     // One round trip for the word and every one of its characters.
-    const found = await lookup(cardHeadwords(match.text))
+    const found = await lookup(pack.cardHeadwords(match.text))
     if (token !== pending) return // a later hover superseded this one
 
     removeCard()
@@ -214,13 +232,14 @@ export function attachReader({
         headword: match.text,
         displayedPinyin: match.pinyin,
         entries: found[match.text] ?? [],
-        breakdown: characterBreakdown(match.text, found, useTraditional),
+        breakdown: characterBreakdown(match.text, found, pack, useTraditional),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
-        patterns: wordList ? patternsForWord(segment(sentence, wordList), match.text) : [],
+        patterns: wordList ? pack.patternsForWord(wordList.segment(sentence), match.text) : [],
         known: known().has(match.text),
       },
       {
+        pack,
         useTraditional,
         toneColors: showToneColors,
         onMarkKnown: (next) => markKnown(match.text, next),
@@ -253,13 +272,13 @@ export function attachReader({
     const index = indexOf(block, caret.node, caret.offset)
     if (index === null) return null
 
-    const match = matchAt(block.text, index, wordList.words)
+    const match = wordList.matchAt(block.text, index)
     if (!match) return null
 
     const range = rangeOf(block, match.start, match.end)
     if (!range) return null
 
-    return { match, range, sentence: sentenceTextAt(block.text, index) }
+    return { match, range, sentence: pack.sentenceTextAt(block.text, index) }
   }
 
   const onPointerMove = (e: PointerEvent) => {
@@ -275,6 +294,10 @@ export function attachReader({
     const { clientX, clientY } = e
     frame = requestAnimationFrame(() => {
       frame = 0
+      if (dictionaryMissing) {
+        showDictionaryNotice({ left: clientX, top: clientY, right: clientX, bottom: clientY })
+        return
+      }
       const found = wordUnder(clientX, clientY)
       // 'keep' covers both "same word" and "no word here" — see lifecycle.ts.
       // The `!found` half is what makes pointing at a button a non-event.
@@ -304,7 +327,12 @@ export function attachReader({
     pageMode.activate()
     // Deferred until now, so a page you never look anything up on never pays
     // for the word list at all.
-    if (!wordList) void words().then((loaded) => (wordList = loaded))
+    if (!wordList && !dictionaryMissing) {
+      void words().then((loaded) => {
+        if (loaded) wordList = loaded
+        else dictionaryMissing = true
+      })
+    }
   }
 
   /** Hands the page back: its own cursors, links, and drag behaviour. */
@@ -450,7 +478,7 @@ export function attachReader({
    * drag 的 and 我们 back in.
    */
   const captureSelection = (selected: string, list: Lexicon) => {
-    const target = selectionTarget(selected, list.words)
+    const target = selectionTarget(selected, list)
     if (!target) return
 
     const context = pageContext(target.text)
@@ -464,19 +492,19 @@ export function attachReader({
         target.text,
         context,
         undefined,
-        unknownIn(hanWords(segment(target.text, list)), known()),
+        unknownIn(vocabularyIn(list.segment(target.text)), known()),
       )
     }
   }
 
-  const buildSelectionCard = (text: string, anchor: Anchor) => {
+  const buildSelectionCard = (text: string, list: Lexicon, anchor: Anchor) => {
     const config = settings()
     const card = document.createElement('div')
     card.className = 'selection-card'
 
     const wordsEl = document.createElement('div')
     wordsEl.className = 'words'
-    segment(text, wordList ?? EMPTY_LEXICON).forEach((token, index) => {
+    list.segment(text).forEach((token, index) => {
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,
@@ -521,10 +549,16 @@ export function attachReader({
     // other place it can first be required.
     const ready = wordList ? Promise.resolve(wordList) : words()
     void ready.then((loaded) => {
+      if (!loaded) {
+        dictionaryMissing = true
+        if (token !== pending) return
+        showDictionaryNotice(anchor)
+        return
+      }
       wordList = loaded
       if (token !== pending) return
       closeSelectionCard()
-      const card = buildSelectionCard(text, anchor)
+      const card = buildSelectionCard(text, loaded, anchor)
       fillTranslation(card, text.trim(), token)
       captureSelection(text, loaded)
     })

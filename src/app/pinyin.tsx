@@ -6,9 +6,8 @@
 // the palette in style.css is the tone palette, and anything showing pinyin
 // shows it in the tone's own colour.
 
-import { segment } from '../lang/segment'
-import type { Lexicon } from '../lang/dict'
-import { parseTone, toDiacritic } from '../lang/tone'
+import type { Lexicon } from '../lang/pack'
+import { parseTone, toDiacritic } from '../lang/zh/tone'
 
 /** CC-CEDICT writes a run as space-separated numeric syllables: `xue2 xi2`. */
 function syllables(pinyin: string): string[] {
@@ -42,7 +41,7 @@ export function Pinyin({ pinyin }: { pinyin: string }) {
  * back to neutral for a line the dictionary cannot read.
  */
 export function dominantTone(text: string, lexicon: Lexicon): number {
-  for (const token of segment(text, lexicon)) {
+  for (const token of lexicon.segment(text)) {
     if (!token.pinyin) continue
     const [first] = syllables(token.pinyin)
     if (first) return parseTone(first)

@@ -53,9 +53,9 @@ not re-teach 是 and 了.
 
 ## Dictionary data
 
-Built at dev time by `tools/build-dict.ts` from CC-CEDICT into `public/dict/`. CC BY-SA 4.0 —
-attribution is required wherever the derived data is shown or shipped.
+Downloaded and parsed at install time, from the setup wizard — see `src/dict/` in
+`architecture.md`. CC-CEDICT is CC BY-SA 4.0; attribution is required wherever the derived data is
+shown or shipped.
 
-Definitions go through the service worker (`src/background/defs-store.ts`, batched via
-`lookupDefsIn`) rather than being loaded per page: a content script copy would be held once per
-page origin.
+Definitions go through the service worker (`src/dict/store.ts`, batched via `lookupDefsIn`) rather
+than being loaded per page: a content script copy would be held once per page origin.

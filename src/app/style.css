@@ -1,7 +1,7 @@
 /* The study app's visual language.
  *
  * The palette is the Mandarin tone palette. Those five colours are already in
- * this codebase — src/lang/tone.ts, the MDBG convention the subtitle overlay
+ * this codebase — src/lang/zh/tone.ts, the MDBG convention the subtitle overlay
  * colours pinyin with — and this stylesheet had been reaching for three of them
  * by hand for its verdicts and links without ever saying so. Naming them here
  * makes that deliberate: colour means tone, the app and the overlay cannot
@@ -26,7 +26,7 @@
      pink into a muddy crimson — and form controls render in the light theme. */
   color-scheme: dark;
 
-  /* Tones. Identical to TONE_COLORS in src/lang/tone.ts — change both or neither. */
+  /* Tones. Identical to TONE_COLORS in src/lang/zh/tone.ts — change both or neither. */
   --tone-1: #ff8a8a; /* flat   */
   --tone-2: #ffc46b; /* rising */
   --tone-3: #7ee0a8; /* dipping */
@@ -1507,4 +1507,81 @@ select.model {
   button:active:not(:disabled) {
     transform: none;
   }
+}
+
+/* Setup wizard ---------------------------------------------------------------- */
+
+.wizard {
+  max-width: 560px;
+}
+
+.wizard-picker {
+  margin-bottom: 20px;
+}
+
+/*
+ * A `.choice` with the flag stacked above its label.
+ *
+ * The border is not decoration: a flag with a white field (and most of them
+ * have one) bleeds into the card without it, so the drawing needs its own edge
+ * rather than borrowing the card's.
+ */
+.lang-card {
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 14px;
+}
+.lang-card svg {
+  display: block;
+  width: auto;
+  height: 34px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+}
+
+/* Smaller, and inline with the search box rather than stacked above it. */
+.lang-switch {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+}
+.lang-switch svg {
+  height: 16px;
+}
+
+.wizard-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-requirement {
+  padding: 14px 16px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+
+.wizard-requirement-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.wizard-requirement .bar {
+  margin: 8px 0;
+}
+
+/*
+ * The one toolbar on this page that closes it rather than sitting inside a
+ * card, so it gets room above and is pushed to the end of the line. `.toolbar`
+ * alone carries only `margin-bottom`, which left Done crowded against the
+ * requirement card above it.
+ */
+.wizard-done {
+  margin-top: 24px;
+  justify-content: flex-end;
 }

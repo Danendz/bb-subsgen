@@ -1,7 +1,8 @@
 # bb-subsgen
 
 Hover pinyin + CC-CEDICT glosses over Chinese text. A Chrome MV3 extension —
-no backend, no account, works fully offline after install.
+no backend, no account. A first-run wizard downloads the ~4MB CC-CEDICT export
+from MDBG; everything after that runs offline.
 
 Two ways in:
 
@@ -84,7 +85,6 @@ cards are simply introduced in the order you found them.
 
 ```sh
 npm install
-npm run build:dict   # regenerate public/dict/{words.bin,defs.json} from tools/data/cedict_ts.u8
 npm run dev
 npm test
 npm run format     # Prettier; CI checks this with `npm run format:check`

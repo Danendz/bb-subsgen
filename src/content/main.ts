@@ -22,9 +22,9 @@ import { fetchAudioBytes } from '../bilibili/audio'
 import { isAudioNeeded, OFFSCREEN_TARGET, type AudioSupply } from '../offscreen/protocol'
 import { sliceAudio } from '../offscreen/audio-transfer'
 import { looksLikeTranscript, type Cue } from '../media/cue'
-import { segment, type Token } from '../lang/segment'
-import { findPatterns } from '../lang/grammar/match'
-import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
+import type { Token } from '../lang/pack'
+import { dropLegacyPageDefsDb } from '../shared/legacy-db'
+import { loadLexicon } from '../shared/dict-client'
 import { lookupDefs } from '../shared/dict-client'
 import {
   captureSentence,
@@ -32,7 +32,8 @@ import {
   recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
-import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
+import { vocabularyIn, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
+import { packFor } from '../lang/packs'
 import type { Context } from '../flashcards/types'
 import {
   createTranslator,
@@ -43,6 +44,7 @@ import {
 import {
   loadSettings,
   onSettingsChanged,
+  resolveStudyLang,
   TRANSLATION_LANGS,
   type TranslationLang,
 } from '../shared/settings'
@@ -206,23 +208,45 @@ async function main() {
     return
   }
 
+  const initialSettings = await loadSettings()
+  let settings = initialSettings
+
   /**
-   * The dictionary, fetched the first time a video actually needs it.
+   * The language being annotated, fixed for as long as this script is loaded.
+   *
+   * Read once from the initial settings rather than from the live `settings`,
+   * because the lexicon below is memoized: following a mid-page change would
+   * leave the segmenter on one language and the definitions on another. A
+   * settings change takes effect on the next page, which is where the reload
+   * that reloads the lexicon happens anyway.
+   */
+  const lang = resolveStudyLang(initialSettings)
+
+  // Resolved beside the language rather than at the points that ask it
+  // questions. Without a pack there is no segmenter, no script test and nothing
+  // the overlay could put over a subtitle — an unknown language code is not a
+  // degraded overlay, it is no overlay.
+  const pack = packFor(lang)
+  if (!pack) {
+    console.warn('[bb-subsgen] no language pack for', lang, '— doing nothing')
+    return
+  }
+
+  /**
+   * The dictionary, asked for the first time a video actually needs it.
    *
    * Deferred rather than loaded up front because this content script now runs on
    * every page of a site, not only on the video pages: YouTube navigates from its
    * homepage into `/watch` without a document load, and Chrome does not re-inject
-   * a content script for that — so the script has to already be there. Loading
-   * 4.5MB of lexicon on a page that turns out to be a search results list would
-   * be the price of that, and it is avoidable.
+   * a content script for that — so the script has to already be there. Asking the
+   * worker for 4.5MB of lexicon on a page that turns out to be a search results
+   * list would be the price of that, and it is avoidable.
    *
-   * Memoised on the promise so two videos in quick succession share one fetch.
+   * Memoised on the promise so two videos in quick succession share one request.
+   * Null means no dictionary is installed for `lang`.
    */
-  let lexicon: Promise<Awaited<ReturnType<typeof loadWords>>> | null = null
-  const loadLexicon = () => (lexicon ??= loadWords())
-
-  const initialSettings = await loadSettings()
-  let settings = initialSettings
+  let lexicon: Promise<Awaited<ReturnType<typeof loadLexicon>>> | null = null
+  const getLexicon = () => (lexicon ??= loadLexicon(lang))
   let stopMount: (() => void) | null = null
   /**
    * Subscriptions that belong to the video rather than to the overlay.
@@ -469,7 +493,12 @@ async function main() {
     const resolved = loaded.video
     const { videoId, duration } = resolved
     // Only now, once there is a video that will actually use it.
-    const words = await loadLexicon()
+    const words = await getLexicon()
+    if (!words) {
+      status = 'no-dictionary'
+      console.log('[bb-subsgen] no dictionary installed for', lang)
+      return
+    }
     const videoInfo = { title: resolved.title, description: resolved.description }
 
     /**
@@ -748,8 +777,11 @@ async function main() {
 
       const stopHover = attachHover({
         shadowRoot,
+        pack,
         video,
-        lookup: lookupDefs,
+        // Partially applied: the hover card is one language for the life of the
+        // page, so it never has to be told which one. See `DefsLookup`.
+        lookup: (headwords) => lookupDefs(lang, headwords),
         isTraditional: () => settings.useTraditional,
         showToneColors: () => settings.showToneColors,
         currentTokens: () => currentTokens,
@@ -869,7 +901,7 @@ async function main() {
           clearCue(shadowRoot)
           return
         }
-        currentTokens = segment(cues[lastIndex].text, words)
+        currentTokens = words.segment(cues[lastIndex].text)
         renderCue(shadowRoot, cueView(), settings)
       }
 
@@ -879,7 +911,7 @@ async function main() {
        * Derived from the tokens already segmented for rendering, so finding them
        * costs nothing beyond the match itself.
        */
-      const patternsInLine = () => findPatterns(currentTokens).map((match) => match.pattern.id)
+      const patternsInLine = () => pack.findPatterns(currentTokens).map((match) => match.pattern.id)
 
       /**
        * Counts a line as seen, and keeps it if it still has something to teach.
@@ -900,11 +932,11 @@ async function main() {
         captured = false
         if (lastIndex < 0) return
 
-        const seen = hanWords(currentTokens)
+        const seen = vocabularyIn(currentTokens)
         buffer.line(seen)
 
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
+        if (!isCapturableText(text, pack) || !shouldCaptureLine(seen, known)) return
         captureSentence(
           text,
           contextFor(lastIndex),
@@ -931,7 +963,7 @@ async function main() {
       const captureCurrentLine = () => {
         if (captured || lastIndex < 0) return
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text)) return
+        if (!isCapturableText(text, pack)) return
         captureSentence(text, contextFor(lastIndex), undefined, [], patternsInLine())
         captured = true
       }
@@ -1102,7 +1134,7 @@ async function main() {
         cues: cues.map((cue) => ({
           start: cue.start,
           text: cue.text,
-          words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
+          words: cue.text.trim() ? vocabularyIn(words.segment(cue.text)) : [],
         })),
       })
     }
