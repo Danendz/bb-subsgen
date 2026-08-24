@@ -50,10 +50,15 @@ connection after an MV3 worker began teardown, and the fix only holds in one pla
 
 ## `src/lang/`
 
-Everything that knows what language the text is in. `src/lang/zh/` holds the Chinese
-implementation — the segmenter, the tone and reading rules, the CC-CEDICT entry ranking, the
-grammar pattern table, the sentence terminators and the hover match. Everything directly under
-`src/lang/` is language-neutral.
+Everything that knows what language the text is in. One directory per language: `src/lang/zh/`
+holds the Chinese implementation — the segmenter, the tone and reading rules, the CC-CEDICT entry
+ranking, the grammar pattern table, the sentence terminators and the hover match. Everything
+directly under `src/lang/` is language-neutral.
+
+A language directory can exist before its pack does. `src/lang/ja/` is pure modules only — script
+classification and furigana alignment — and is registered by nothing: `PACKS` is still `{ zh }`
+until #14 adds `japanesePack`. Adding a module there is not adding a language, which is what
+`src/lang/packs.test.ts` continuing to pass unchanged proves.
 
 Three files carry the split, modelled on `Site` / `siteFor` in `src/media/`:
 
@@ -75,9 +80,10 @@ download, and which carries its own `pack` back-reference so code holding one ne
 handed both. That split is what lets a language keep a private index — a deinflection table, a
 reading map — without widening a record every other language would then carry.
 
-**Nothing outside `src/lang/zh/` imports a module from inside it.** That is the point of the
-directory: an import of `zh/segment` from `reader/` is a Chinese assumption that compiles cleanly
-and is invisible from the file it sits in. The exceptions are the surfaces the PRD pins to Chinese
+**Nothing outside a language's directory imports a module from inside it.** That is the point of
+the directory: an import of `zh/segment` from `reader/` is a Chinese assumption that compiles
+cleanly and is invisible from the file it sits in, and `ja/script` would be the same the other
+way round. The exceptions are the surfaces the PRD pins to Chinese
 on purpose, and each says so where it names the language:
 
 - `src/youtube/language.ts`, `src/llm/glossary.ts` and `src/background/flashcards-store.ts` reach
@@ -85,7 +91,7 @@ on purpose, and each says so where it names the language:
   literals read as an inventory of what is still pinned.
 - `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
   own.
-Tests may import `zh/pack.ts` directly — a fixture has to name a language.
+Tests may import a language's modules directly — a fixture has to name a language.
 
 ## `src/dict/`
 
