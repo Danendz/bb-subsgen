@@ -2,8 +2,7 @@
 // reader. Both mount it into a shadow root of their own, so this module owns
 // the markup and the styles but never the positioning.
 
-import { toneColor } from '../lang/zh/tone'
-import { readingFromText, readingText } from '../lang/reading'
+import { readingFromText, readingText, toneColor } from '../lang/reading'
 import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
 import type { Token } from '../lang/pack'
 import type { CedictEntry } from '../lang/pack'

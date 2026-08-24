@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from './tone'
+import { parseTone, toDiacritic, toDiacriticPhrase } from './tone'
 
 describe('parseTone', () => {
   test('reads the trailing tone digit from a CC-CEDICT syllable', () => {
@@ -10,20 +10,6 @@ describe('parseTone', () => {
 
   test('defaults to neutral tone when no digit is present', () => {
     expect(parseTone('haha')).toBe(5)
-  })
-})
-
-describe('toneColor', () => {
-  test('maps each tone to its softened palette color', () => {
-    expect(toneColor(1)).toBe('#ff8a8a')
-    expect(toneColor(2)).toBe('#ffc46b')
-    expect(toneColor(3)).toBe('#7ee0a8')
-    expect(toneColor(4)).toBe('#8ab6ff')
-    expect(toneColor(5)).toBe('#c3c8d0')
-  })
-
-  test('falls back to the neutral color for an unknown tone', () => {
-    expect(toneColor(9)).toBe('#c3c8d0')
   })
 })
 

@@ -85,9 +85,6 @@ on purpose, and each says so where it names the language:
   literals read as an inventory of what is still pinned.
 - `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
   own.
-- `src/content/card.ts` and `src/app/pinyin.tsx` still import `zh/tone.ts` for tone colouring.
-  That is #8's and #10's work.
-
 Tests may import `zh/pack.ts` directly — a fixture has to name a language.
 
 ## `src/dict/`

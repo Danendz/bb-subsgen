@@ -1,12 +1,32 @@
-// Reading parts, flattened back to text.
+// Reading parts, flattened back to text, and the colour a tone is drawn in.
 //
-// The one thing every holder of a `ReadingPart[]` eventually wants and should
-// not write itself: a run of parts as a single string, for a `dataset`
-// attribute, a clipboard copy, or the ranking signal `rankEntries` takes. The
-// parts already carry display text, so this joins — it does not parse, and
-// nothing here knows what a tone digit is.
+// What every holder of a `ReadingPart[]` eventually wants and should not write
+// itself: a run of parts as a single string, for a `dataset` attribute, a
+// clipboard copy, or the ranking signal `rankEntries` takes. The parts already
+// carry display text, so this joins — it does not parse, and nothing here knows
+// what a tone digit is.
+//
+// The palette is here rather than in `zh/tone.ts`, where it started, because a
+// tone number is neutral once it sits on a `ReadingPart` — and the alternative
+// was `content/card.ts` importing a Chinese module to draw a colour, which is
+// one of the two exceptions #8 was closing.
 
 import type { ReadingPart } from './pack'
+
+// The conventional MDBG tone→color mapping, softened to light pastels so the
+// reading stays legible over video instead of reading as neon.
+const TONE_COLORS: Record<number, string> = {
+  1: '#ff8a8a', // coral
+  2: '#ffc46b', // amber
+  3: '#7ee0a8', // mint
+  4: '#8ab6ff', // sky
+  5: '#c3c8d0', // soft gray (neutral)
+}
+
+/** MDBG standard tone-coloring convention. */
+export function toneColor(tone: number): string {
+  return TONE_COLORS[tone] ?? TONE_COLORS[5]
+}
 
 /**
  * A reading as one string.

@@ -1,22 +1,16 @@
-// The conventional MDBG tone→color mapping, softened to light pastels so the
-// pinyin stays legible over video instead of reading as neon.
-const TONE_COLORS: Record<number, string> = {
-  1: '#ff8a8a', // coral
-  2: '#ffc46b', // amber
-  3: '#7ee0a8', // mint
-  4: '#8ab6ff', // sky
-  5: '#c3c8d0', // soft gray (neutral)
-}
+// CC-CEDICT's notation, and the machinery for reading it. Pack-internal: what
+// leaves this directory is a `ReadingPart`, which carries a tone number and a
+// display form and no trace of the digit either was derived from.
+//
+// The tone palette used to live here, and moved to `lang/reading.ts` when the
+// renderers stopped parsing readings — a tone number is neutral, so the hexes
+// that colour one belong where anything can reach them without importing
+// Chinese.
 
 /** CC-CEDICT syllables always end in a tone digit (1-4, 5 = neutral). */
 export function parseTone(syllable: string): number {
   const match = /([1-5])$/.exec(syllable)
   return match ? Number(match[1]) : 5
-}
-
-/** MDBG standard tone-coloring convention. */
-export function toneColor(tone: number): string {
-  return TONE_COLORS[tone] ?? TONE_COLORS[5]
 }
 
 // index 0 = toneless, 1-4 = tone marks. Neutral tone (5) uses the toneless form.
