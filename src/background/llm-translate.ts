@@ -29,6 +29,7 @@ import { newRequestId } from '../llm/types'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import type { TranslationLang } from '../shared/settings'
 import { lookupDefs } from '../dict/store'
+import { packFor } from '../lang/packs'
 import { evict, readTrack, writeLines } from './llm-cache'
 
 /** A cue as the pass needs it: what to translate, and how to key what comes back. */
@@ -204,7 +205,17 @@ async function translateBatch(
   // The words are already segmented; all this needs is what the dictionary
   // knows about the longer ones.
   const words = batch.flatMap((line) => request.cues[line.id]?.words ?? [])
-  const defs = words.length ? await lookupDefs(request.studyLang, [...new Set(words)]) : {}
+  const rows = words.length ? await lookupDefs(request.studyLang, [...new Set(words)]) : {}
+  // Simplified: the glossary is prompt text for a model, not something on
+  // screen, and the cues it describes were segmented against the simplified
+  // lexicon (see `useTraditional` in src/youtube/captions.ts).
+  const pack = packFor(request.studyLang)
+  const defs = Object.fromEntries(
+    Object.entries(rows).map(([word, found]) => [
+      word,
+      pack ? pack.entriesFrom(found, word, { traditional: false }) : [],
+    ]),
+  )
   const glossary = translationGlossary(words, defs)
 
   const prompt = {

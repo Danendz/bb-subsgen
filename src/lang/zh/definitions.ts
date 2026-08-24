@@ -1,7 +1,12 @@
-import type { Classifier, ParsedDefinitions } from '../pack'
+import type { Sense, Tag } from '../pack'
 import { readingText } from '../reading'
 import { readingParts } from './reading'
 import { toDiacriticPhrase } from './tone'
+
+// Definitions that only point at another headword rather than carrying a
+// meaning of their own. Read by `rank`, which demotes an entry whose every
+// sense is one of these.
+const STUB_RE = /^\s*\(?(?:old\s+|erhua\s+)?variant of\b|^\s*see\b|^\s*used in\b/i
 
 // A single classifier: `个[ge4]`, or `個|个[ge4]` when traditional and
 // simplified differ. Multiple are comma-separated.
@@ -26,12 +31,14 @@ const REFERENCE_RE = new RegExp(`(?:(${HEADWORD})\\|)?(${HEADWORD})?\\[([^\\]]+)
 // A traditional|simplified pair with no reading attached, e.g. `牛郎織女|牛郎织女`.
 const BARE_PAIR_RE = new RegExp(`(${HEADWORD})\\|(${HEADWORD})`, 'gu')
 
-function parseClassifierList(list: string, useTraditional: boolean): Classifier[] {
-  const classifiers: Classifier[] = []
+type ClassifierTag = Extract<Tag, { kind: 'classifier' }>
+
+function parseClassifierList(list: string, useTraditional: boolean): ClassifierTag[] {
+  const classifiers: ClassifierTag[] = []
   for (const [, traditional, simplified, pinyin] of list.matchAll(CLASSIFIER_RE)) {
     // Without a `|` the single form serves as both scripts.
     const word = simplified ? (useTraditional ? traditional : simplified) : traditional
-    classifiers.push({ word, reading: readingParts(word, pinyin) })
+    classifiers.push({ kind: 'classifier', word, reading: readingParts(word, pinyin) })
   }
   return classifiers
 }
@@ -57,16 +64,23 @@ function prettifyReferences(text: string, useTraditional: boolean): string {
 }
 
 /**
- * Splits CC-CEDICT classifier (measure word) notation out of definition text.
+ * What a row's definition strings say, once no dictionary notation is left in
+ * them.
  *
- * Classifiers appear either as a whole definition (`CL:個|个[ge4],位[wei4]`) or
- * parenthesised inside one (`light; ray (CL:道[dao4])`). Both are lifted out so
- * raw dictionary syntax never reaches the UI and classifiers stop consuming
- * the popup's limited definition slots.
+ * Classifiers come back separately rather than on the sense they were written
+ * against. They appear both ways in the data — as a whole definition
+ * (`CL:個|个[ge4],位[wei4]`) and parenthesised inside one (`light; ray
+ * (CL:道[dao4])`) — and the standalone form is the common one, which leaves no
+ * gloss and so no sense to hang the tag on. A measure word is a fact about the
+ * word anyway, not about one of its meanings, and the card draws one measure
+ * row per entry.
  */
-export function parseDefinitions(defs: string[], useTraditional = false): ParsedDefinitions {
-  const definitions: string[] = []
-  const classifiers: Classifier[] = []
+export function parseDefinitions(
+  defs: string[],
+  useTraditional = false,
+): { senses: Sense[]; classifiers: ClassifierTag[] } {
+  const senses: Sense[] = []
+  const classifiers: ClassifierTag[] = []
 
   for (const def of defs) {
     const standalone = STANDALONE_CL_RE.exec(def)
@@ -79,7 +93,14 @@ export function parseDefinitions(defs: string[], useTraditional = false): Parsed
       classifiers.push(...parseClassifierList(list, useTraditional))
     }
     const stripped = def.replace(EMBEDDED_CL_RE, '').trim()
-    if (stripped) definitions.push(prettifyReferences(stripped, useTraditional))
+    if (!stripped) continue
+    senses.push({
+      gloss: prettifyReferences(stripped, useTraditional),
+      // Tested against the raw text, not the prettified gloss: prettifying
+      // rewrites `see 事[shi4]` into `see 事 (shì)`, and the regex is anchored
+      // on notation that by then is gone.
+      tags: STUB_RE.test(stripped) ? [{ kind: 'stub' }] : [],
+    })
   }
 
   const seen = new Set<string>()
@@ -90,5 +111,5 @@ export function parseDefinitions(defs: string[], useTraditional = false): Parsed
     return true
   })
 
-  return { definitions, classifiers: unique }
+  return { senses, classifiers: unique }
 }

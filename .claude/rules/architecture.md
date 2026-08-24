@@ -91,7 +91,15 @@ Tests may import `zh/pack.ts` directly — a fixture has to name a language.
 
 The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of
 downloadable sources (one per language), `store.ts` is the schema-2 database above, and
-`install.ts` streams a download straight into it. Nothing here is a build step — everything runs
+`install.ts` streams a download straight into it.
+
+**The store holds opaque rows.** `DictRow` is `unknown`, and what a row *is* belongs to the
+language — `src/lang/zh/cedict-row.ts` for Chinese, with a hand-written guard because a row read
+back out of IndexedDB was written by whichever install ran last. `pack.entriesFrom` is the only
+place a row's fields are read; everything downstream of the `bb-subsgen:lookup-defs` reply holds
+an `Entry`. Converting at install time instead and storing `Entry` directly would bake the
+traditional/simplified choice into the database, and flipping that setting would become a
+re-install — the hover card reads it live today. Nothing here is a build step — everything runs
 in the extension at install time, from `src/app/SetupWizard.tsx`, which is why `install.ts` takes
 `fetch` as an injected parameter rather than calling the global (`.claude/rules/testing.md`).
 

@@ -217,7 +217,7 @@ export function attachReader({
     displayedReading?: string,
   ) => {
     const token = ++pending
-    const { useTraditional, showToneColors } = settings()
+    const { showToneColors } = settings()
 
     // One round trip for the word and every one of its characters.
     const found = await lookup(pack.cardHeadwords(match.text))
@@ -238,7 +238,7 @@ export function attachReader({
         headword: match.text,
         displayedReading: displayedReading ?? readingText(match.reading),
         entries: found[match.text] ?? [],
-        breakdown: characterBreakdown(match.text, found, pack, useTraditional),
+        breakdown: characterBreakdown(match.text, found, pack),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
         patterns: wordList ? pack.patternsForWord(wordList.segment(sentence), match.text) : [],
@@ -246,7 +246,6 @@ export function attachReader({
       },
       {
         pack,
-        useTraditional,
         toneColors: showToneColors,
         onMarkKnown: (next) => markKnown(match.text, next),
       },

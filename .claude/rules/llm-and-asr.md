@@ -44,9 +44,15 @@ gets checked against both cases in `src/llm/batch.test.ts`.
 
 ## Glossaries
 
-`rankEntries` in `src/lang/entries.ts` is the single ranking used by both the hover card and the
-LLM glossary, deliberately: the model is told the same sense the learner just saw. Do not add a
-second ranking for one of the two callers.
+**One ranking per language.** `pack.rank` is what the hover card, the LLM glossary and the
+install-time reading choice all go through — `rank` in `src/lang/zh/entries.ts` for Chinese. The
+point is unchanged: the model is told the same sense the learner just saw. What changed in #9 is
+where it lives, because a ranking has to read an entry's fields and CC-CEDICT's are not JMdict's.
+Do not add a second ranking for one caller of a language's pack.
+
+The glossary holds an `Entry`, not a dictionary row, so `Glossed.pinyin` is display form —
+`了 (le)`, not `了 (le5)`. A prompt that quotes tone digits is quoting notation the learner has
+never been shown.
 
 Glossaries cover words the learner does *not* know (`splitByKnown`, `glossFor`) so the model does
 not re-teach 是 and 了.

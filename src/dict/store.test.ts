@@ -9,16 +9,19 @@ import {
   putLexicon,
   putMeta,
 } from './store'
-import type { CedictEntry } from './cedict'
 
-const entry: CedictEntry = {
+// Deliberately untyped beyond what they are: the store takes `DictRow`, which
+// is `unknown`, and these cases are about a row surviving the round trip
+// unchanged — not about any dictionary's format. The shapes are CC-CEDICT's
+// only because a fixture has to look like something.
+const entry = {
   simplified: '喜欢',
   traditional: '喜歡',
   pinyin: 'xi3 huan5',
   definitions: ['to like', 'to be fond of'],
 }
 
-const char: CedictEntry = {
+const char = {
   simplified: '喜',
   traditional: '喜',
   pinyin: 'xi3',

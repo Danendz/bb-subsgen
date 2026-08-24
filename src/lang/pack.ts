@@ -102,25 +102,65 @@ export interface PatternMatch {
   to: number
 }
 
-/** A measure word, with its reading in parts so it can still be tone-coloured on render. */
-export interface Classifier {
-  word: string
-  reading: ReadingPart[]
-}
+/**
+ * One stored dictionary record, as it came out of `src/dict/store.ts`.
+ *
+ * `unknown` on purpose: the store holds whatever the language's install wrote,
+ * and only that language's pack knows how to read it. CC-CEDICT's row has
+ * `simplified`, `traditional` and a pinyin string; JMdict's has none of the
+ * three. Naming either here would put one dictionary's format in the interface
+ * every language implements, which is what `Entry` below exists to stop.
+ */
+export type DictRow = unknown
 
-export interface ParsedDefinitions {
-  definitions: string[]
-  classifiers: Classifier[]
+/**
+ * A fact about an entry, or about one of its senses.
+ *
+ * A union rather than flat strings so a classifier keeps its `ReadingPart[]`
+ * and stays tone-coloured where it is drawn. `'cl:个'` would have meant parsing
+ * the tag back apart at render time, which is the parsing an `Entry` removes.
+ */
+export type Tag =
+  /** A measure word this entry counts with. Chinese has these; most languages do not. */
+  | { kind: 'classifier'; word: string; reading: ReadingPart[] }
+  /** Points at another headword — "variant of …", "see …" — and carries no meaning itself. */
+  | { kind: 'stub' }
+  /** A phrasebook line rather than a lexical unit. See `isPhrase` in zh/entries.ts. */
+  | { kind: 'phrase' }
+  /** A name. Ranked below ordinary senses, because a surname is rarely what was meant. */
+  | { kind: 'proper-noun' }
+
+/** One meaning, in words a learner can read. No dictionary notation survives into `gloss`. */
+export interface Sense {
+  gloss: string
+  tags: Tag[]
 }
 
 /**
- * Named on this interface until #9, which replaces it with an entry type a
- * pack defines for itself. Written down rather than left to be discovered: a
- * language-neutral interface naming CC-CEDICT's row shape is a staging post,
- * not the intended end state.
+ * A dictionary entry, in the only terms a renderer needs.
+ *
+ * Replaces CC-CEDICT's row, which used to travel all the way to the card: a
+ * caller held `pinyin` as `'xi3 huan5'`, `definitions` as strings with
+ * `CL:個|个[ge4]` still in them, and `simplified` / `traditional` as fields that
+ * are a Chinese assumption compiling cleanly on a Japanese page. Everything
+ * that turned a row into something drawable now happens in `entriesFrom`,
+ * behind the pack that owns the format.
  */
-export type { CedictEntry } from '../dict/cedict'
-import type { CedictEntry } from '../dict/cedict'
+export interface Entry {
+  headword: string
+  /** Other spellings of the same word. Chinese puts the traditional form here. */
+  variants: string[]
+  reading: ReadingPart[]
+  senses: Sense[]
+  /**
+   * Facts about the whole entry rather than about one sense.
+   *
+   * Separate from `Sense.tags` because some are genuinely entry-wide: a proper
+   * noun is one by its reading, not by any sense, and an entry can rank without
+   * having a single usable sense left to hang the tag on.
+   */
+  tags: Tag[]
+}
 
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
@@ -134,15 +174,6 @@ export interface LanguagePack {
    * for a language they mean nothing in rather than showing dead switches.
    */
   readonly displaysTones: boolean
-
-  /**
-   * A dictionary entry's own notation for a reading, aligned to the word.
-   *
-   * How neutral code turns the string an entry carries into something it can
-   * draw. #9 drops `raw` once entries carry parts of their own; #16 implements
-   * it for Japanese as kanji-run alignment.
-   */
-  readingOf(base: string, raw: string): ReadingPart[]
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean
@@ -184,20 +215,33 @@ export interface LanguagePack {
   readonly patterns: readonly Pattern[]
 
   /**
-   * Orders dictionary entries so the most useful sense comes first.
+   * Turns stored rows into entries anyone can render.
+   *
+   * The one place a dictionary's own notation is read. Everything a row needs
+   * doing to it — picking a reading apart, lifting measure words out of the
+   * gloss text, rewriting cross-references into something printable — happens
+   * here, so that no caller downstream holds a format.
+   *
+   * `traditional` is a display choice, and it reaches this rather than being
+   * baked in at install time because it can change between two hovers. Rows a
+   * pack does not recognise are dropped: `DictRow` is `unknown`, and a stale
+   * install is a card with no definition, never a thrown renderer.
+   */
+  entriesFrom(rows: DictRow[], headword: string, opts: { traditional: boolean }): Entry[]
+
+  /**
+   * Orders entries so the most useful sense comes first.
    *
    * `displayedReading` is the **display form** already on screen — what
-   * `readingText` returns, not an entry's raw notation. It is the strongest
+   * `readingText` returns, not a dictionary's raw notation. It is the strongest
    * signal there is, and the only reading a caller holding a `Token` still has.
+   *
+   * One ranking per language, shared by every caller: the hover card, the
+   * glossary handed to the model, and the reading the install picks per
+   * headword all have to agree on which sense a word has, or the model is told
+   * about a sense the learner was never shown.
    */
-  rankEntries(
-    entries: CedictEntry[],
-    headword: string,
-    displayedReading?: string,
-    useTraditional?: boolean,
-  ): CedictEntry[]
-  /** Splits a raw dictionary entry's notation into readable definitions and classifiers. */
-  parseDefinitions(defs: string[], useTraditional?: boolean): ParsedDefinitions
+  rank(entries: Entry[], headword: string, displayedReading?: string): Entry[]
 }
 
 /**

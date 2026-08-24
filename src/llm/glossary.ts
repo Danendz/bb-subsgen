@@ -8,7 +8,8 @@
 // Pure. The lookups happen elsewhere; this only decides what to say about them.
 
 import type { Glossed } from '../chat/types'
-import type { CedictEntry } from '../lang/pack'
+import type { Entry } from '../lang/pack'
+import { readingText } from '../lang/reading'
 import { packFor } from '../lang/packs'
 
 /**
@@ -28,14 +29,19 @@ const SENSES = 2
  * The pack's ranking is the same one the hover card uses, so the sense named
  * here is the sense the learner would have been shown.
  */
-export function glossFor(word: string, entries: CedictEntry[] | undefined): Glossed | null {
-  const [best] = zh?.rankEntries(entries ?? [], word) ?? []
+export function glossFor(word: string, entries: Entry[] | undefined): Glossed | null {
+  const [best] = zh?.rank(entries ?? [], word) ?? []
   if (!best) return null
 
-  const gloss = best.definitions.slice(0, SENSES).join('; ')
+  const gloss = best.senses
+    .slice(0, SENSES)
+    .map((sense) => sense.gloss)
+    .join('; ')
   if (!gloss) return null
 
-  return { word, pinyin: best.pinyin, gloss }
+  // Display form — `xǐhuan`, not `xi3 huan5`. The model is being shown the same
+  // reading the learner is, and an entry no longer carries any other kind.
+  return { word, pinyin: readingText(best.reading), gloss }
 }
 
 export interface Split {
@@ -53,7 +59,7 @@ export interface Split {
 export function splitByKnown(
   words: string[],
   known: ReadonlySet<string>,
-  defs: Record<string, CedictEntry[]>,
+  defs: Record<string, Entry[]>,
 ): Split {
   const seen = new Set<string>()
   const split: Split = { known: [], fresh: [] }
@@ -73,7 +79,7 @@ export function splitByKnown(
   return split
 }
 
-/** One glossed word as a prompt line: `了 (le5) — completed action`. */
+/** One glossed word as a prompt line: `了 (le) — completed action`. */
 export function glossLine({ word, pinyin, gloss }: Glossed): string {
   return `${word} (${pinyin}) — ${gloss}`
 }
@@ -97,7 +103,7 @@ export const GLOSSARY_LIMIT = 20
  */
 export function translationGlossary(
   words: string[],
-  defs: Record<string, CedictEntry[]>,
+  defs: Record<string, Entry[]>,
   limit = GLOSSARY_LIMIT,
 ): Glossed[] {
   const seen = new Set<string>()

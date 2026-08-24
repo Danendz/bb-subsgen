@@ -5,7 +5,7 @@
 // gives every word a reading you can turn on and a meaning you can ask for,
 // without ever volunteering the meaning to a question that is asking for it.
 
-import type { CedictEntry, LanguagePack, Lexicon } from '../../lang/pack'
+import type { Entry, LanguagePack, Lexicon } from '../../lang/pack'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 
@@ -18,7 +18,7 @@ export interface LineProps {
   words: Lexicon
   known: Set<string>
   /** Looked up by the card, keyed by headword. Absent while it is still loading. */
-  defs?: Record<string, CedictEntry[]> | null
+  defs?: Record<string, Entry[]> | null
   readings?: boolean
   mark?: string
   blank?: string
@@ -57,9 +57,9 @@ function Word({
   reserve,
 }: {
   token: LineToken
-  /** Taken from the line's own lexicon: what ranks and parses the entry below. */
+  /** Taken from the line's own lexicon: what ranks the entries below. */
   pack: LanguagePack
-  entries?: CedictEntry[]
+  entries?: Entry[]
   /** Whether the line keeps a row for readings, so its characters share a baseline. */
   reserve: boolean
 }) {
@@ -75,13 +75,15 @@ function Word({
 
   if (!token.han) return <span class="line-word punct">{token.text}</span>
 
-  const [primary] = pack.rankEntries(entries ?? [], token.text)
-  const gloss = primary
-    ? pack.parseDefinitions(primary.definitions).definitions.slice(0, SENSES).join('; ')
-    : ''
+  const [primary] = pack.rank(entries ?? [], token.text)
+  const gloss =
+    primary?.senses
+      .slice(0, SENSES)
+      .map((sense) => sense.gloss)
+      .join('; ') ?? ''
   // The card's own reading is the fallback: a word the dictionary has no entry
   // for can still have been segmented, and half an answer beats none.
-  const reading = primary ? pack.readingOf(token.text, primary.pinyin) : (token.reading ?? [])
+  const reading = primary?.reading ?? token.reading ?? []
   const askable = Boolean(reading.length || gloss)
 
   return (

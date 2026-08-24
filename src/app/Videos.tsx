@@ -10,6 +10,9 @@ import type { VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { canSpeak, speak } from '../shared/speak'
 
+/** Senses per word in the list. The row is one line tall; a third would clip. */
+const SENSES = 2
+
 /**
  * How followable a video is, from running-word coverage.
  *
@@ -111,14 +114,14 @@ function VideoDetail({ videoId }: { videoId: string }) {
   const { data, loading } = useAsync(load)
 
   const page: VideoWord[] = data?.words.slice(0, limit) ?? []
-  const loadDefs = useCallback(
-    async () =>
-      lookupDefs(
-        resolveStudyLang(await loadSettings()),
-        page.map((w) => w.headword),
-      ),
-    [page.map((w) => w.headword).join(' ')],
-  )
+  const loadDefs = useCallback(async () => {
+    const settings = await loadSettings()
+    return lookupDefs(
+      resolveStudyLang(settings),
+      page.map((w) => w.headword),
+      settings.useTraditional,
+    )
+  }, [page.map((w) => w.headword).join(' ')])
   const { data: defs } = useAsync(loadDefs)
 
   if (loading) return <p class="muted">Loading…</p>
@@ -146,22 +149,16 @@ function VideoDetail({ videoId }: { videoId: string }) {
       <div class="panel">
         {page.map((word) => {
           const entries = defs?.[word.headword]
-          const [primary] = data.pack?.rankEntries(entries ?? [], word.headword) ?? []
+          const [primary] = data.pack?.rank(entries ?? [], word.headword) ?? []
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
-              <Pinyin
-                parts={
-                  primary && data.pack ? data.pack.readingOf(word.headword, primary.pinyin) : []
-                }
-              />
+              <Pinyin parts={primary?.reading ?? []} />
               <span class="grow gloss">
-                {primary && data.pack
-                  ? data.pack
-                      .parseDefinitions(primary.definitions)
-                      .definitions.slice(0, 2)
-                      .join('; ')
-                  : ''}
+                {primary?.senses
+                  .slice(0, SENSES)
+                  .map((sense) => sense.gloss)
+                  .join('; ') ?? ''}
               </span>
               <span class="muted small">{word.count}×</span>
               {canSpeak() && (

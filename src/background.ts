@@ -44,6 +44,8 @@ import {
   startPass,
 } from './background/llm-translate'
 import { dictDb, getAllMeta, getLexiconIn, lookupDefs } from './dict/store'
+import type { Entry } from './lang/pack'
+import { packFor } from './lang/packs'
 import { refreshBadge } from './background/badge'
 import {
   captureSentence,
@@ -176,6 +178,30 @@ function handleAsr(msg: AsrMessage, tabId: number | undefined): void {
   }
 }
 
+/**
+ * Stored rows, turned into entries by the pack that can read them.
+ *
+ * The conversion happens here rather than at install time so that the script
+ * setting stays live: it is spent on cross-references and measure words, and it
+ * can change between two hovers. A language with no pack answers empty — the
+ * rows are unreadable to everything downstream, which is exactly the "no
+ * dictionary" state the card already renders.
+ */
+async function entriesFor(
+  lang: string,
+  headwords: string[],
+  traditional: boolean,
+): Promise<Record<string, Entry[]>> {
+  const rows = await lookupDefs(lang, headwords)
+  const pack = packFor(lang)
+  return Object.fromEntries(
+    Object.entries(rows).map(([headword, found]) => [
+      headword,
+      pack ? pack.entriesFrom(found, headword, { traditional }) : [],
+    ]),
+  )
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // First, because these come from the offscreen document rather than a tab and
   // match none of the guards below.
@@ -203,7 +229,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (isLookupDefsMessage(msg)) {
-    lookupDefs(msg.lang, msg.headwords).then(
+    entriesFor(msg.lang, msg.headwords, msg.traditional).then(
       (entries) => sendResponse({ entries } satisfies LookupDefsResponse),
       (e) => {
         console.warn('[bb-subsgen] defs lookup failed in worker', e)

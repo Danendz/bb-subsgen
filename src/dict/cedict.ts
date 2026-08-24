@@ -8,16 +8,10 @@
 //
 // CC-CEDICT is CC BY-SA 4.0 (https://cc-cedict.org). Attribution required
 // wherever this derived data is shown or redistributed.
-import { excludeFromSegmentation, rankEntries } from '../lang/zh/entries'
+import type { CedictRow } from '../lang/zh/cedict-row'
+import { bestRow, excludeFromSegmentation } from '../lang/zh/entries'
 import { functionWord } from '../lang/zh/grammar/function-words'
 import { toDiacriticPhrase } from '../lang/zh/tone'
-
-export interface CedictEntry {
-  simplified: string
-  traditional: string
-  pinyin: string
-  definitions: string[]
-}
 
 const LINE_RE = /^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+\/(.+)\/$/
 
@@ -37,7 +31,7 @@ function normalizePinyin(raw: string): string {
  * through, which is an install that reports success with an `entryCount` of 1
  * and an overlay with no pinyin and no glosses.
  */
-export function parseCedictLine(raw: string): CedictEntry | null {
+export function parseCedictLine(raw: string): CedictRow | null {
   const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
   if (!line || line.startsWith('#')) return null
   const match = LINE_RE.exec(line)
@@ -51,13 +45,13 @@ export function parseCedictLine(raw: string): CedictEntry | null {
   }
 }
 
-export function groupByHeadword(entries: CedictEntry[]): Map<string, CedictEntry[]> {
-  const byHeadword = new Map<string, CedictEntry[]>()
-  for (const entry of entries) {
-    for (const key of new Set([entry.simplified, entry.traditional])) {
+export function groupByHeadword(rows: CedictRow[]): Map<string, CedictRow[]> {
+  const byHeadword = new Map<string, CedictRow[]>()
+  for (const row of rows) {
+    for (const key of new Set([row.simplified, row.traditional])) {
       const existing = byHeadword.get(key)
-      if (existing) existing.push(entry)
-      else byHeadword.set(key, [entry])
+      if (existing) existing.push(row)
+      else byHeadword.set(key, [row])
     }
   }
   return byHeadword
@@ -81,14 +75,18 @@ export function groupByHeadword(entries: CedictEntry[]): Map<string, CedictEntry
  * dictionary — so the table declares those, and they are fed in as the
  * preferred reading rather than left to be inferred.
  */
-export function buildLexiconText(byHeadword: Map<string, CedictEntry[]>): string {
+export function buildLexiconText(byHeadword: Map<string, CedictRow[]>): string {
   const lines: string[] = []
   for (const [word, candidates] of byHeadword) {
     const declared = functionWord(word)?.reading
-    // `rankEntries` compares display forms now, and the table is written in
-    // CC-CEDICT's own notation — see `function-words.ts`.
-    const [best] = rankEntries(candidates, word, declared && toDiacriticPhrase(declared))
-    lines.push(`${word}\t${best.pinyin}${excludeFromSegmentation(best, word) ? '\tp' : ''}`)
+    // The row for its reading, which has to stay in CC-CEDICT's own notation,
+    // and the entry for the phrasebook tag. `bestRow` owns that pairing —
+    // nothing in this directory knows a row and an entry line up. Ranking
+    // compares display forms, and the table is written in CC-CEDICT's notation,
+    // so the declared reading is converted on the way in — see
+    // `function-words.ts`.
+    const { row, entry } = bestRow(candidates, word, declared && toDiacriticPhrase(declared))
+    lines.push(`${word}\t${row.pinyin}${excludeFromSegmentation(entry, word) ? '\tp' : ''}`)
   }
   return lines.join('\n')
 }

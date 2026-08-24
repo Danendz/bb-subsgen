@@ -34,6 +34,9 @@ const REWIND_S = 10
 /** Wrong tiles mixed into a bank, so a short line cannot be solved by elimination. */
 const DISTRACTORS = 3
 
+/** Senses shown under the card's word. More is a paragraph, not a reminder. */
+const SENSES = 3
+
 /**
  * Where to watch this line again.
  *
@@ -179,10 +182,10 @@ export function Session({
     [current?.id, line, words],
   )
 
-  const loadDefs = useCallback(
-    async () => lookupDefs(resolveStudyLang(await loadSettings()), headwords),
-    [headwords.join('|')],
-  )
+  const loadDefs = useCallback(async () => {
+    const settings = await loadSettings()
+    return lookupDefs(resolveStudyLang(settings), headwords, settings.useTraditional)
+  }, [headwords.join('|')])
   const { data: defs } = useAsync(loadDefs)
 
   const card = useMemo(() => {
@@ -239,10 +242,12 @@ export function Session({
   }, [current?.id, checked, card?.exercise.response])
 
   const entries = defs?.[current?.text ?? '']
-  const [primary] = words.pack.rankEntries(entries ?? [], current?.text ?? '')
-  const gloss = primary
-    ? words.pack.parseDefinitions(primary.definitions).definitions.slice(0, 3).join('; ')
-    : ''
+  const [primary] = words.pack.rank(entries ?? [], current?.text ?? '')
+  const gloss =
+    primary?.senses
+      .slice(0, SENSES)
+      .map((sense) => sense.gloss)
+      .join('; ') ?? ''
 
   const answered =
     card?.exercise.response === 'tiles'
@@ -263,9 +268,11 @@ export function Session({
     }
     if (card.exercise.response === 'text') {
       const attempt = typed.trim()
+      // Either spelling counts: a deck collected in one script should not mark
+      // the same word wrong for being typed in the other.
       return (
         attempt === current.text ||
-        Boolean(primary && (attempt === primary.simplified || attempt === primary.traditional))
+        Boolean(primary && (attempt === primary.headword || primary.variants.includes(attempt)))
       )
     }
     return false
@@ -456,7 +463,7 @@ export function Session({
   // example line happens to contain.
   const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
   const spokenText = current.kind === 'grammar' ? exampleText : current.text
-  const reading = primary ? words.pack.readingOf(current.text, primary.pinyin) : []
+  const reading = primary?.reading ?? []
 
   return (
     <>

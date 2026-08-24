@@ -2,6 +2,13 @@
 // state. Replaces background/defs-store.ts, which held only definitions, all
 // Chinese, imported once from a build artifact.
 //
+// What a stored definition row *is* is deliberately not known here. Rows go in
+// and come out as `DictRow`, and only the language's pack can read one — see
+// `entriesFrom` in src/lang/pack.ts. Storing already-converted `Entry` records
+// instead would bake the traditional/simplified choice and the prettified gloss
+// text into the database, which would make flipping a display setting a
+// re-install.
+//
 // Schema history:
 // 1 — a single `defs` store keyed by bare headword, gated by a
 //     `bbSubsgenDefsVersion` flag in chrome.storage.local rather than an IDB
@@ -13,8 +20,8 @@
 //     place: the key shape changed, the data is re-derivable from a re-install
 //     (see install.ts), and clearing also fixes a bug in the old code where a
 //     re-import never removed a headword CC-CEDICT had since dropped.
+import type { DictRow } from '../lang/pack'
 import { connection, done, request } from '../shared/idb'
-import type { CedictEntry } from './cedict'
 
 const DB_NAME = 'bb-subsgen'
 const VERSION = 2
@@ -64,11 +71,11 @@ export function clearLangIn(db: IDBDatabase, lang: string): Promise<void> {
   return done(tx)
 }
 
-/** Writes one chunk of `headword -> entries` for a language, in one transaction. */
+/** Writes one chunk of `headword -> rows` for a language, in one transaction. */
 export function putDefsChunk(
   db: IDBDatabase,
   lang: string,
-  entries: Map<string, CedictEntry[]>,
+  entries: Map<string, DictRow[]>,
 ): Promise<void> {
   const tx = db.transaction(STORES.defs, 'readwrite')
   const store = tx.objectStore(STORES.defs)
@@ -90,9 +97,9 @@ export function lookupDefsIn(
   db: IDBDatabase,
   lang: string,
   headwords: string[],
-): Promise<Record<string, CedictEntry[]>> {
+): Promise<Record<string, DictRow[]>> {
   return new Promise((resolve, reject) => {
-    const found: Record<string, CedictEntry[]> = {}
+    const found: Record<string, DictRow[]> = {}
     if (!headwords.length) {
       resolve(found)
       return
@@ -162,6 +169,6 @@ export const dictDb = connection(() => openDictDb())
 export async function lookupDefs(
   lang: string,
   headwords: string[],
-): Promise<Record<string, CedictEntry[]>> {
+): Promise<Record<string, DictRow[]>> {
   return lookupDefsIn(await dictDb(), lang, headwords)
 }

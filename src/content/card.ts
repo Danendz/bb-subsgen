@@ -5,7 +5,7 @@
 import { readingFromText, readingText, toneColor } from '../lang/reading'
 import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
 import type { Token } from '../lang/pack'
-import type { CedictEntry } from '../lang/pack'
+import type { Entry } from '../lang/pack'
 
 const MAX_DEFINITIONS = 3
 
@@ -429,9 +429,9 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
   if (token.kind === 'function') word.classList.add('function')
   word.dataset.text = token.text
-  // Lets the hover card show a reading even when CC-CEDICT has no entry, and is
-  // the ranking signal it passes back as `displayedReading`. Whole, not split:
-  // whoever reads it hands it straight to `rankEntries`.
+  // Lets the hover card show a reading even when the dictionary has no entry,
+  // and is the ranking signal it passes back as `displayedReading`. Whole, not
+  // split: whoever reads it hands it straight to `pack.rank`.
   if (token.reading?.length) word.dataset.reading = readingText(token.reading)
 
   if (token.reading !== null && options.showPinyin) {
@@ -462,9 +462,8 @@ export interface CharacterGloss {
  */
 export function characterBreakdown(
   headword: string,
-  found: Record<string, CedictEntry[]>,
+  found: Record<string, Entry[]>,
   pack: LanguagePack,
-  useTraditional = false,
 ): CharacterGloss[] {
   // The same list the lookup was batched from, minus the whole word: a
   // breakdown is exactly the pieces that lookup already asked about.
@@ -473,14 +472,12 @@ export function characterBreakdown(
 
   const rows: CharacterGloss[] = []
   for (const char of chars) {
-    const [primary] = pack.rankEntries(found[char] ?? [], char, undefined, useTraditional)
-    if (!primary) continue
-    const { definitions } = pack.parseDefinitions(primary.definitions, useTraditional)
-    if (!definitions.length) continue
+    const [primary] = pack.rank(found[char] ?? [], char)
+    if (!primary?.senses.length) continue
     rows.push({
       char,
-      reading: pack.readingOf(char, primary.pinyin),
-      gloss: definitions.join('; '),
+      reading: primary.reading,
+      gloss: primary.senses.map((sense) => sense.gloss).join('; '),
     })
   }
   return rows
@@ -493,10 +490,10 @@ export interface CardData {
    *
    * Display form, not an entry's notation: it comes off `dataset.reading`, or
    * from a `Match` the reader already resolved, and it is handed to
-   * `rankEntries` whole. Nothing splits it.
+   * `pack.rank` whole. Nothing splits it.
    */
   displayedReading?: string
-  entries: CedictEntry[]
+  entries: Entry[]
   /**
    * Rows from `characterBreakdown`; empty renders no section.
    *
@@ -521,9 +518,8 @@ export interface CardData {
 }
 
 export interface CardOptions {
-  /** The language the card is about, and what ranks and parses its entries. */
+  /** The language the card is about, and what ranks its entries. */
   pack: LanguagePack
-  useTraditional: boolean
   toneColors?: boolean
   /** Omitted renders no "I know this" button — which is what card tests want. */
   onMarkKnown?: (known: boolean) => void
@@ -544,12 +540,12 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { pack, useTraditional, toneColors = true, onMarkKnown, onExplain } = options
+  const { pack, toneColors = true, onMarkKnown, onExplain } = options
   const { headword, displayedReading = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
   // by relevance to the reading actually shown on screen.
-  const entries = pack.rankEntries(rawEntries, headword, displayedReading, useTraditional)
+  const entries = pack.rank(rawEntries, headword, displayedReading)
 
   const el = document.createElement('div')
   el.className = 'popup'
@@ -570,9 +566,7 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
   // With no entry there is nothing to align against and no tone to recover,
   // only the run already on screen. It still draws syllable by syllable, so a
   // card the dictionary missed is a card missing its colour, not its layout.
-  const headReading: ReadingPart[] = primary
-    ? pack.readingOf(headword, primary.pinyin)
-    : readingFromText(displayedReading)
+  const headReading: ReadingPart[] = primary ? primary.reading : readingFromText(displayedReading)
   if (headReading.length) {
     const readingGroup = document.createElement('span')
     readingGroup.className = 'popup-head-group'
@@ -592,16 +586,16 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
     empty.textContent = 'No definition found'
     el.appendChild(empty)
   } else {
-    // Lifts CC-CEDICT classifier notation out of the definition text, so raw
-    // syntax never shows and classifiers don't eat a definition slot.
-    const { definitions, classifiers } = pack.parseDefinitions(primary.definitions, useTraditional)
-
-    for (const definition of definitions.slice(0, MAX_DEFINITIONS)) {
+    for (const sense of primary.senses.slice(0, MAX_DEFINITIONS)) {
       const def = document.createElement('div')
       def.className = 'popup-def'
-      def.textContent = definition
+      def.textContent = sense.gloss
       el.appendChild(def)
     }
+
+    // Measure words are a tag rather than a sense, so they neither show as raw
+    // `CL:` notation nor eat one of the definition slots above.
+    const classifiers = primary.tags.filter((tag) => tag.kind === 'classifier')
 
     if (classifiers.length) {
       const row = document.createElement('div')
@@ -625,18 +619,16 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
     }
 
     // 多音字: surface the other readings rather than silently showing only one.
+    // Run together, the way a dictionary prints a word rather than a gloss.
+    const shown = readingText(primary.reading, '')
     const otherReadings = entries
       .slice(1)
-      .map((entry) => entry.pinyin)
-      .filter((raw) => raw !== primary.pinyin)
+      .map((entry) => readingText(entry.reading, ''))
+      .filter((reading) => reading !== shown)
     if (otherReadings.length) {
       const alt = document.createElement('div')
       alt.className = 'popup-alt'
-      // Run together, the way a dictionary prints a word rather than a gloss.
-      const readings = otherReadings
-        .map((raw) => readingText(pack.readingOf(headword, raw), ''))
-        .join(', ')
-      alt.textContent = `also read ${readings}`
+      alt.textContent = `also read ${otherReadings.join(', ')}`
       el.appendChild(alt)
     }
   }

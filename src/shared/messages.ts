@@ -1,6 +1,6 @@
 import type { AudioSource } from '../media/audio-source'
 import type { Cue } from '../media/cue'
-import type { CedictEntry } from '../dict/cedict'
+import type { Entry } from '../lang/pack'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { VideoPreamble } from '../llm/batch'
 import type { PassCue, PassStatus } from '../background/llm-translate'
@@ -96,10 +96,23 @@ export interface LookupDefsMessage {
    */
   lang: string
   headwords: string[]
+  /**
+   * Which script cross-references and measure words are written in.
+   *
+   * A display setting, so it travels with the request rather than being read in
+   * the worker: it can change between two hovers, and the worker has no
+   * business holding one. The rows it applies to are stored in neither script
+   * in particular — see `entriesFrom`, which is where it is spent.
+   */
+  traditional: boolean
 }
 
 export interface LookupDefsResponse {
-  entries: Record<string, CedictEntry[]>
+  /**
+   * Already converted by the language's pack, so nothing downstream holds a
+   * dictionary's own format. `{}` is the degraded answer — see `lookupDefs`.
+   */
+  entries: Record<string, Entry[]>
 }
 
 export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
@@ -108,6 +121,7 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
     msg !== null &&
     (msg as { type?: unknown }).type === 'bb-subsgen:lookup-defs' &&
     typeof (msg as { lang?: unknown }).lang === 'string' &&
+    typeof (msg as { traditional?: unknown }).traditional === 'boolean' &&
     Array.isArray((msg as { headwords?: unknown }).headwords)
   )
 }

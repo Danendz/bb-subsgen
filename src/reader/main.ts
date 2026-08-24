@@ -84,7 +84,9 @@ async function main(): Promise<void> {
       pack,
       pageMode: createPageMode(),
       // Partially applied — see `DefsLookup` in shared/dict-client.ts.
-      lookup: (headwords) => lookupDefs(lang, headwords),
+      // Read inside the closure rather than captured, so flipping the script
+      // setting reaches the next card without a reload.
+      lookup: (headwords) => lookupDefs(lang, headwords, settings.useTraditional),
       translator,
       words: getWords,
       settings: () => settings,

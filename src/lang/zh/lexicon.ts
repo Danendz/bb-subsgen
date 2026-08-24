@@ -54,11 +54,3 @@ export function loadChinese(raw: string, pack: LanguagePack): Lexicon {
       pack.containsScript(query) ? searchHeadwords(index.words, query, exclude, limit) : [],
   }
 }
-
-/**
- * Re-exported from where it's now defined and parsed — see src/dict/cedict.ts.
- * Kept under this name too because nearly every card renderer already imports
- * it from here, and there is no reason to make them all point at `dict/` for a
- * type alone.
- */
-export type { CedictEntry } from '../../dict/cedict'

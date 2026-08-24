@@ -781,8 +781,9 @@ async function main() {
         video,
         // Partially applied: the hover card is one language for the life of the
         // page, so it never has to be told which one. See `DefsLookup`.
-        lookup: (headwords) => lookupDefs(lang, headwords),
-        isTraditional: () => settings.useTraditional,
+        // Read inside the closure rather than captured, so flipping the script
+        // setting reaches the next hover without a reload.
+        lookup: (headwords) => lookupDefs(lang, headwords, settings.useTraditional),
         showToneColors: () => settings.showToneColors,
         currentTokens: () => currentTokens,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),

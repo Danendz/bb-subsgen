@@ -1,31 +1,27 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
 import { buildCard, buildWordElement, characterBreakdown, setCardTranslation } from './card'
-import type { CedictEntry } from '../lang/pack'
+import type { Entry } from '../lang/pack'
 import { chinesePack } from '../lang/zh/pack'
 import { readingParts as parts } from '../lang/zh/reading'
 import { PATTERNS } from '../lang/zh/grammar/patterns'
 
-const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
-  simplified: '学习',
-  traditional: '學習',
-  pinyin: 'xue2 xi2',
-  definitions: ['to learn', 'to study'],
-  ...over,
-})
+/**
+ * Built through the pack rather than written out as an `Entry` literal, so
+ * these cases still exercise the conversion the card now depends on — a
+ * definition that is nothing but `CL:` notation has to arrive here with no
+ * senses on it for the breakdown to skip it.
+ */
+const entry = (headword: string, pinyin: string, ...definitions: string[]): Entry =>
+  chinesePack.entriesFrom(
+    [{ simplified: headword, traditional: headword, pinyin, definitions }],
+    headword,
+    { traditional: false },
+  )[0]
 
-const xue = entry({
-  simplified: '学',
-  traditional: '學',
-  pinyin: 'xue2',
-  definitions: ['to learn', 'school'],
-})
-const xi = entry({
-  simplified: '习',
-  traditional: '習',
-  pinyin: 'xi2',
-  definitions: ['to practice'],
-})
+const xuexi = () => entry('学习', 'xue2 xi2', 'to learn', 'to study')
+const xue = entry('学', 'xue2', 'to learn', 'school')
+const xi = entry('习', 'xi2', 'to practice')
 
 describe('characterBreakdown', () => {
   test('returns one row per character with its own reading and gloss', () => {
@@ -53,7 +49,7 @@ describe('characterBreakdown', () => {
   })
 
   test('drops entries whose definitions are all classifier notation', () => {
-    const clOnly = entry({ simplified: '习', pinyin: 'xi2', definitions: ['CL:個|个[ge4]'] })
+    const clOnly = entry('习', 'xi2', 'CL:個|个[ge4]')
     expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] }, chinesePack)).toEqual([
       { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
     ])
@@ -61,16 +57,16 @@ describe('characterBreakdown', () => {
 })
 
 describe('buildCard', () => {
-  const opts = { pack: chinesePack, useTraditional: false }
+  const opts = { pack: chinesePack }
 
   test('renders the headword and its reading', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-word')?.textContent).toBe('学习')
     expect(card.querySelector('.popup-pinyin')?.textContent).toBe('xuéxí')
   })
 
   test('omits the breakdown section when there are no rows', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-chars')).toBeNull()
   })
 
@@ -78,7 +74,7 @@ describe('buildCard', () => {
     const card = buildCard(
       {
         headword: '学习',
-        entries: [entry()],
+        entries: [xuexi()],
         breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
@@ -91,7 +87,7 @@ describe('buildCard', () => {
     const card = buildCard(
       {
         headword: '学习',
-        entries: [entry()],
+        entries: [xuexi()],
         breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
@@ -100,7 +96,7 @@ describe('buildCard', () => {
   })
 
   test('keeps an empty sentence slot so a late translation can be patched in', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     const sentence = card.querySelector('.popup-sentence')
     expect(sentence).not.toBeNull()
     expect(sentence?.textContent).toBe('')
@@ -119,14 +115,14 @@ describe('buildCard', () => {
 })
 
 describe('the structure section', () => {
-  const opts = { pack: chinesePack, useTraditional: false }
+  const opts = { pack: chinesePack }
   const complement = PATTERNS.find((p) => p.id === 'de-complement')!
 
   test('names the pattern, shows its shape, and explains what it does', () => {
     const card = buildCard(
       {
         headword: '得',
-        entries: [entry({ simplified: '得', definitions: ['structural particle'] })],
+        entries: [entry('得', 'de5', 'structural particle')],
         patterns: [complement],
       },
       opts,
@@ -139,7 +135,7 @@ describe('the structure section', () => {
   })
 
   test('renders nothing at all when the word is not part of a pattern', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-structure')).toBeNull()
   })
 
@@ -148,7 +144,7 @@ describe('the structure section', () => {
     const card = buildCard(
       {
         headword: '啊',
-        entries: [entry({ simplified: '啊', definitions: ['particle'] })],
+        entries: [entry('啊', 'a5', 'particle')],
         patterns: [complement, final],
       },
       opts,

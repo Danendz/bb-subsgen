@@ -62,8 +62,6 @@ export interface HoverDeps {
   pack: LanguagePack
   video: HTMLVideoElement
   lookup: DefsLookup
-  /** Read at popup-build time so live settings changes take effect. */
-  isTraditional: () => boolean
   showToneColors: () => boolean
   /** The line currently on screen, snapshotted onto whatever gets discovered. */
   currentContext: () => Context | null
@@ -109,7 +107,6 @@ export function attachHover({
   pack,
   video,
   lookup,
-  isTraditional,
   showToneColors,
   currentContext,
   currentTokens,
@@ -144,7 +141,6 @@ export function attachHover({
     // Asks for the characters alongside the word, in one batched round trip, so
     // this card carries the same per-character breakdown the reader's does — it
     // was asking for the headword alone and silently rendering a poorer card.
-    const useTraditional = isTraditional()
     const found = await lookup(pack.cardHeadwords(headword))
     closePopup()
     adoptStyles(shadowRoot)
@@ -160,13 +156,12 @@ export function attachHover({
         headword,
         displayedReading: wordEl.dataset.reading ?? '',
         entries: found[headword] ?? [],
-        breakdown: characterBreakdown(headword, found, pack, useTraditional),
+        breakdown: characterBreakdown(headword, found, pack),
         patterns: pack.patternsForWord(currentTokens(), headword),
         known: known().has(headword),
       },
       {
         pack,
-        useTraditional,
         toneColors: showToneColors(),
         onMarkKnown: (next) => markKnown(headword, next),
         ...(openExplain && canExplain?.() !== false

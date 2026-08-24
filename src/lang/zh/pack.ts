@@ -4,12 +4,10 @@
 // and it is reached through `packs.ts` rather than by name.
 
 import type { LanguagePack } from '../pack'
-import { parseDefinitions } from './definitions'
-import { rankEntries } from './entries'
+import { entriesFrom, rank } from './entries'
 import { findPatterns, patternsForWord } from './grammar/match'
 import { PATTERNS } from './grammar/patterns'
 import { loadChinese } from './lexicon'
-import { readingParts } from './reading'
 import { sentenceTextAt } from './sentence'
 import { isHan } from './segment'
 
@@ -30,8 +28,6 @@ export const chinesePack: LanguagePack = {
   name: 'Chinese',
   displaysTones: true,
 
-  readingOf: readingParts,
-
   inScript: isHan,
   containsScript: (text) => Array.from(text).some(isHan),
 
@@ -47,6 +43,6 @@ export const chinesePack: LanguagePack = {
   patternById: (id) => PATTERNS.find((pattern) => pattern.id === id),
   patterns: PATTERNS,
 
-  rankEntries,
-  parseDefinitions,
+  entriesFrom,
+  rank,
 }

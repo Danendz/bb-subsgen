@@ -8,7 +8,8 @@
 //
 // `fetch` is an injected parameter, per src/llm/sse.ts and .claude/rules/testing.md:
 // a test constructs a `ReadableStream` and never touches the network.
-import { buildLexiconText, groupByHeadword, parseCedictLine, type CedictEntry } from './cedict'
+import type { CedictRow } from '../lang/zh/cedict-row'
+import { buildLexiconText, groupByHeadword, parseCedictLine } from './cedict'
 import { clearLangIn, putDefsChunk, putLexicon, putMeta, type DictMeta } from './store'
 import type { DictSource } from './sources'
 
@@ -72,7 +73,7 @@ export async function installDictionary({
 
   // The 9.9MB decompressed source is never held whole — only the entries
   // parsed out of it, line by line, as the stream delivers them.
-  const entries: CedictEntry[] = []
+  const entries: CedictRow[] = []
   let buffer = ''
   const reader = textStream.getReader()
   try {
@@ -100,7 +101,7 @@ export async function installDictionary({
   await clearLangIn(db, source.lang)
 
   let written = 0
-  let chunk = new Map<string, CedictEntry[]>()
+  let chunk = new Map<string, CedictRow[]>()
   for (const [headword, defs] of byHeadword) {
     chunk.set(headword, defs)
     if (chunk.size >= DEFS_CHUNK_SIZE) {

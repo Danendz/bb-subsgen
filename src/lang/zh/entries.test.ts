@@ -1,15 +1,38 @@
 import { describe, expect, test } from 'vitest'
-import { excludeFromSegmentation, isPhrase, rankEntries } from './entries'
-import type { CedictEntry } from './lexicon'
+import type { Entry } from '../pack'
+import { readingText } from '../reading'
+import type { CedictRow } from './cedict-row'
+import { readingParts } from './reading'
+import { bestRow, entriesFrom, excludeFromSegmentation, isPhrase, rank } from './entries'
 
-function entry(pinyin: string, ...definitions: string[]): CedictEntry {
-  return { traditional: '', simplified: '', pinyin, definitions }
+/**
+ * Rows in, ranked entries out — the path a hover actually takes.
+ *
+ * The fixtures below stay in CC-CEDICT's own shape rather than being written
+ * as `Entry` literals, so these cases keep proving the conversion as well as
+ * the ranking.
+ */
+function ranked(
+  rows: CedictRow[],
+  headword: string,
+  displayedReading?: string,
+  traditional = false,
+): Entry[] {
+  return rank(entriesFrom(rows, headword, { traditional }), headword, displayedReading)
 }
+
+function entry(pinyin: string, ...definitions: string[]): Entry {
+  const rows: CedictRow[] = [{ traditional: '', simplified: '', pinyin, definitions }]
+  return entriesFrom(rows, '', { traditional: false })[0]
+}
+
+/** The first gloss, which is what every ranking case below is checking. */
+const topGloss = (entries: Entry[]): string => entries[0].senses[0].gloss
 
 // The real CC-CEDICT shape for 和, in file order. The variant entry keyed
 // under 咊 precedes the canonical one, which is why "first wins" showed
 // "old variant of 和".
-const HE: CedictEntry[] = [
+const HE: CedictRow[] = [
   { traditional: '咊', simplified: '和', pinyin: 'he2', definitions: ['old variant of 和[he2]'] },
   { traditional: '和', simplified: '和', pinyin: 'He2', definitions: ['surname He'] },
   {
@@ -32,28 +55,25 @@ const HE: CedictEntry[] = [
   },
 ]
 
-describe('rankEntries', () => {
+describe('rank', () => {
   test('prefers the canonical entry over a variant that appears first', () => {
-    const [primary] = rankEntries(HE, '和', 'hé')
-    expect(primary.definitions[0]).toContain('together with')
+    expect(topGloss(ranked(HE, '和', 'hé'))).toContain('together with')
   })
 
   test('prefers the entry matching the reading shown on the subtitle', () => {
-    const [primary] = rankEntries(HE, '和', 'hè')
-    expect(primary.definitions[0]).toBe('to compose a poem in reply')
+    expect(topGloss(ranked(HE, '和', 'hè'))).toBe('to compose a poem in reply')
   })
 
   test('deprioritizes a surname reading when no reading is displayed', () => {
-    const [primary] = rankEntries(HE, '和')
-    expect(primary.definitions[0]).toContain('together with')
+    expect(topGloss(ranked(HE, '和'))).toContain('together with')
   })
 
   test('keeps every entry, only reordering them', () => {
-    expect(rankEntries(HE, '和', 'hé')).toHaveLength(HE.length)
+    expect(ranked(HE, '和', 'hé')).toHaveLength(HE.length)
   })
 
   test('prefers the traditional form when reading traditional text', () => {
-    const entries: CedictEntry[] = [
+    const rows: CedictRow[] = [
       { traditional: '龍', simplified: '龙', pinyin: 'long2', definitions: ['dragon'] },
       {
         traditional: '竜',
@@ -62,12 +82,11 @@ describe('rankEntries', () => {
         definitions: ['variant of 龍[long2]'],
       },
     ]
-    const [primary] = rankEntries(entries, '龍', 'long2', true)
-    expect(primary.definitions[0]).toBe('dragon')
+    expect(topGloss(ranked(rows, '龍', 'lóng', true))).toBe('dragon')
   })
 
   test('returns an empty array for no entries', () => {
-    expect(rankEntries([], '和', 'he2')).toEqual([])
+    expect(ranked([], '和', 'hé')).toEqual([])
   })
 
   // Where nothing else separates two readings of a character, file order decided
@@ -75,7 +94,7 @@ describe('rankEntries', () => {
   // 说 was published as `shui4` ("to persuade"), 跑 as `pao2` ("to paw the
   // ground"), and both readings went into words.bin and onto the screen.
   test('prefers the reading carrying more senses when nothing else separates them', () => {
-    const shuo: CedictEntry[] = [
+    const shuo: CedictRow[] = [
       { traditional: '說', simplified: '说', pinyin: 'shui4', definitions: ['to persuade'] },
       {
         traditional: '說',
@@ -85,11 +104,11 @@ describe('rankEntries', () => {
       },
     ]
 
-    expect(rankEntries(shuo, '说')[0].pinyin).toBe('shuo1')
+    expect(readingText(ranked(shuo, '说')[0].reading)).toBe('shuō')
   })
 
   test('lets sense count break a tie without outvoting the displayed reading', () => {
-    const pao: CedictEntry[] = [
+    const pao: CedictRow[] = [
       { traditional: '跑', simplified: '跑', pinyin: 'pao2', definitions: ['to paw the ground'] },
       {
         traditional: '跑',
@@ -101,13 +120,13 @@ describe('rankEntries', () => {
 
     // Asked for páo explicitly, pao2 still wins — sense count is a tiebreak,
     // not a veto over what is actually printed above the character.
-    expect(rankEntries(pao, '跑', 'páo')[0].pinyin).toBe('pao2')
-    expect(rankEntries(pao, '跑')[0].pinyin).toBe('pao3')
+    expect(readingText(ranked(pao, '跑', 'páo')[0].reading)).toBe('páo')
+    expect(readingText(ranked(pao, '跑')[0].reading)).toBe('pǎo')
   })
 })
 
 // 啊 as CC-CEDICT actually publishes it, in file order.
-const A: CedictEntry[] = [
+const A: CedictRow[] = [
   {
     traditional: '啊',
     simplified: '啊',
@@ -144,18 +163,18 @@ describe('the sense a reading selects', () => {
   /**
    * The 啊 in 那时间过得很快啊 was glossed "interjection of surprise".
    *
-   * Nothing here was wrong. `rankEntries` scores the displayed reading above
+   * Nothing here was wrong. `rank` scores the displayed reading above
    * every other signal, which is correct — it is just that the reading it was
    * shown was `ā`, chosen at build time with no sentence in front of it. Given
    * the neutral `a` the same function picks the sentence-final particle unaided, which is
    * why closing this defect took no change to entries.ts at all.
    */
   test('picks the sentence-final particle once the reading is the neutral a', () => {
-    expect(rankEntries(A, '啊', 'a')[0].definitions[0]).toContain('modal particle')
+    expect(topGloss(ranked(A, '啊', 'a'))).toContain('modal particle')
   })
 
   test('still picks the interjection when the reading really is ā', () => {
-    expect(rankEntries(A, '啊', 'ā')[0].definitions[0]).toContain('surprise')
+    expect(topGloss(ranked(A, '啊', 'ā'))).toContain('surprise')
   })
 })
 
@@ -216,5 +235,115 @@ describe('excludeFromSegmentation', () => {
   test('leaves ordinary words that begin with a pronoun alone', () => {
     expect(excludeFromSegmentation(entry('ni3 hao3', 'hello'), '你好')).toBe(false)
     expect(excludeFromSegmentation(entry('wo3 men5', 'we; us'), '我们')).toBe(false)
+  })
+})
+
+describe('entriesFrom', () => {
+  const you: CedictRow[] = [
+    {
+      traditional: '朋友',
+      simplified: '朋友',
+      pinyin: 'peng2 you5',
+      definitions: ['friend', 'CL:個|个[ge4],位[wei4]'],
+    },
+  ]
+
+  test('keeps a measure word as a tag, so the card can still tone-colour it', () => {
+    const [entry] = entriesFrom(you, '朋友', { traditional: false })
+    expect(entry.tags).toEqual([
+      { kind: 'classifier', word: '个', reading: readingParts('个', 'ge4') },
+      { kind: 'classifier', word: '位', reading: readingParts('位', 'wei4') },
+    ])
+  })
+
+  // The standalone `CL:` form is the common one and leaves nothing to gloss, so
+  // a classifier attached to a sense would have been dropped for exactly the
+  // words that have one.
+  test('does not turn a bare CL line into a sense', () => {
+    const [entry] = entriesFrom(you, '朋友', { traditional: false })
+    expect(entry.senses.map((sense) => sense.gloss)).toEqual(['friend'])
+  })
+
+  test('writes the headword and its measure word in the script that was asked for', () => {
+    const [entry] = entriesFrom(you, '朋友', { traditional: true })
+    expect(entry.headword).toBe('朋友')
+    expect(entry.tags).toContainEqual({
+      kind: 'classifier',
+      word: '個',
+      reading: readingParts('個', 'ge4'),
+    })
+  })
+
+  test('rewrites a cross-reference into the same script as the rest of the card', () => {
+    const rows: CedictRow[] = [
+      {
+        traditional: '信用卡',
+        simplified: '信用卡',
+        pinyin: 'xin4 yong4 ka3',
+        definitions: ['see also 信用證|信用证[xin4 yong4 zheng4]'],
+      },
+    ]
+    expect(entriesFrom(rows, '信用卡', { traditional: false })[0].senses[0].gloss).toBe(
+      'see also 信用证 (xìn yòng zhèng)',
+    )
+    expect(entriesFrom(rows, '信用卡', { traditional: true })[0].senses[0].gloss).toBe(
+      'see also 信用證 (xìn yòng zhèng)',
+    )
+  })
+
+  test('names the other script as a variant, and nothing when the two agree', () => {
+    const rows: CedictRow[] = [
+      { traditional: '龍', simplified: '龙', pinyin: 'long2', definitions: ['dragon'] },
+      { traditional: '和', simplified: '和', pinyin: 'he2', definitions: ['and'] },
+    ]
+    const [dragon, he] = entriesFrom(rows, '龙', { traditional: false })
+    expect(dragon.variants).toEqual(['龍'])
+    expect(he.variants).toEqual([])
+  })
+
+  // Rows come back from IndexedDB typed `unknown`, written by whichever install
+  // ran last. A card with no definition beats an exception inside a hover.
+  test('drops a stored row it cannot read rather than throwing on it', () => {
+    expect(
+      entriesFrom([null, 'nonsense', { pinyin: 'he2' }], '和', { traditional: false }),
+    ).toEqual([])
+  })
+})
+
+describe('bestRow', () => {
+  // The lexicon stores CC-CEDICT's own `ye3` notation, which `Entry.reading`
+  // has thrown away — so the winning entry has to be paired back to the row it
+  // came from. If `rank` ever starts returning new objects, this is the test
+  // that fails instead of every reading in the dictionary quietly going wrong.
+  test('gives back the row the winning entry was built from, not a copy', () => {
+    const ye: CedictRow[] = [
+      { traditional: '也', simplified: '也', pinyin: 'Ye3', definitions: ['surname Ye'] },
+      { traditional: '也', simplified: '也', pinyin: 'ye3', definitions: ['also; too'] },
+    ]
+    const { row, entry } = bestRow(ye, '也')
+    expect(row).toBe(ye[1])
+    expect(row.pinyin).toBe('ye3')
+    expect(entry.senses[0].gloss).toBe('also; too')
+  })
+
+  test('demotes the surname CC-CEDICT lists first, which is why 过 read Guo1', () => {
+    const guo: CedictRow[] = [
+      { traditional: '過', simplified: '过', pinyin: 'Guo1', definitions: ['surname Guo'] },
+      {
+        traditional: '過',
+        simplified: '过',
+        pinyin: 'guo4',
+        definitions: ['to cross', 'to pass', 'to go over'],
+      },
+    ]
+    expect(bestRow(guo, '过').row.pinyin).toBe('guo4')
+  })
+
+  test('takes the reading the function-word table declares over the one ranking would pick', () => {
+    const de: CedictRow[] = [
+      { traditional: '得', simplified: '得', pinyin: 'de2', definitions: ['to obtain', 'to get'] },
+      { traditional: '得', simplified: '得', pinyin: 'de5', definitions: ['structural particle'] },
+    ]
+    expect(bestRow(de, '得', 'de').row.pinyin).toBe('de5')
   })
 })

@@ -138,10 +138,11 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   }
 
   try {
-    const lang = resolveStudyLang(await loadSettings())
+    const settings = await loadSettings()
+    const lang = resolveStudyLang(settings)
     const [lexicon, known] = await Promise.all([loadWords(lang), knownSet()])
     const words = lexicon ? vocabularyIn(lexicon.segment(req.line)) : []
-    const defs = await lookupDefs(lang, words)
+    const defs = await lookupDefs(lang, words, settings.useTraditional)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)
 
     context.knownWords = mastered

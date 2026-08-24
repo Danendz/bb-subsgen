@@ -1,8 +1,7 @@
 // Page-side half of the dictionary: asks the service worker instead of holding
 // a store of its own. See src/dict/store.ts for why the store lives there.
 
-import type { CedictEntry } from '../dict/cedict'
-import type { Lexicon } from '../lang/pack'
+import type { Entry, Lexicon } from '../lang/pack'
 import { packFor } from '../lang/packs'
 import type {
   DictStatus,
@@ -22,9 +21,9 @@ import type {
  * partially apply `lookupDefs` once at setup and pass this in, rather than every
  * renderer between them and the message threading a language it never varies.
  */
-export type DefsLookup = (headwords: string[]) => Promise<Record<string, CedictEntry[]>>
+export type DefsLookup = (headwords: string[]) => Promise<Record<string, Entry[]>>
 
-function empty(headwords: string[]): Record<string, CedictEntry[]> {
+function empty(headwords: string[]): Record<string, Entry[]> {
   return Object.fromEntries(headwords.map((headword) => [headword, []]))
 }
 
@@ -32,16 +31,22 @@ function empty(headwords: string[]): Record<string, CedictEntry[]> {
  * A missing definition is a degraded card, never a broken one — a worker that
  * failed to wake or a store that failed to open resolves to empty entries so
  * the pinyin and the sentence translation still render.
+ *
+ * `traditional` is required rather than defaulted: it decides which script the
+ * answer is written in, and a caller that forgot it would silently get one
+ * script's cross-references on the other script's page.
  */
 export async function lookupDefs(
   lang: string,
   headwords: string[],
-): Promise<Record<string, CedictEntry[]>> {
+  traditional: boolean,
+): Promise<Record<string, Entry[]>> {
   if (!headwords.length) return {}
   const message: LookupDefsMessage = {
     type: 'bb-subsgen:lookup-defs',
     lang,
     headwords,
+    traditional,
   }
   try {
     const response = (await chrome.runtime.sendMessage(message)) as LookupDefsResponse | undefined
