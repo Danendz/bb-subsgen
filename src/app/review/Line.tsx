@@ -81,16 +81,16 @@ function Word({
     : ''
   // The card's own reading is the fallback: a word the dictionary has no entry
   // for can still have been segmented, and half an answer beats none.
-  const reading = primary?.pinyin ?? token.pinyin ?? ''
-  const askable = Boolean(reading || gloss)
+  const reading = primary ? pack.readingOf(token.text, primary.pinyin) : (token.reading ?? [])
+  const askable = Boolean(reading.length || gloss)
 
   return (
     <span class={`line-word ${askable ? 'askable' : ''}`} tabIndex={askable ? 0 : undefined}>
       {reserve && (
         // Withheld rather than absent, so a line of mixed known and unknown
         // words still sits on one baseline. The same reason the overlay does it.
-        <span class={`ruby ${token.reading ? '' : 'withheld'}`}>
-          <Pinyin pinyin={token.pinyin ?? ''} />
+        <span class={`ruby ${token.showReading ? '' : 'withheld'}`}>
+          <Pinyin parts={token.reading ?? []} />
         </span>
       )}
       <span class={`zh ${token.marked ? 'marked' : ''} ${token.structural ? 'structural' : ''}`}>
@@ -100,7 +100,7 @@ function Word({
         <span class="word-tip" role="tooltip">
           <span class="tip-head">
             <span class="tip-word">{token.text}</span>
-            <Pinyin pinyin={reading} />
+            <Pinyin parts={reading} />
           </span>
           {gloss && <span class="tip-gloss">{gloss}</span>}
         </span>

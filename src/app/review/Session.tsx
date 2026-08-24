@@ -456,7 +456,7 @@ export function Session({
   // example line happens to contain.
   const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
   const spokenText = current.kind === 'grammar' ? exampleText : current.text
-  const pinyin = primary?.pinyin ?? ''
+  const reading = primary ? words.pack.readingOf(current.text, primary.pinyin) : []
 
   return (
     <>
@@ -605,7 +605,7 @@ export function Session({
                 )}
               </p>
             )}
-            {pinyin && <Pinyin pinyin={pinyin} />}
+            {reading.length > 0 && <Pinyin parts={reading} />}
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
             {current.kind === 'word'

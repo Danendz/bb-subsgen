@@ -150,7 +150,11 @@ function VideoDetail({ videoId }: { videoId: string }) {
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
-              <Pinyin pinyin={primary?.pinyin ?? ''} />
+              <Pinyin
+                parts={
+                  primary && data.pack ? data.pack.readingOf(word.headword, primary.pinyin) : []
+                }
+              />
               <span class="grow gloss">
                 {primary && data.pack
                   ? data.pack

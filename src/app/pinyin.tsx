@@ -6,27 +6,23 @@
 // the palette in style.css is the tone palette, and anything showing pinyin
 // shows it in the tone's own colour.
 
-import type { Lexicon } from '../lang/pack'
-import { parseTone, toDiacritic } from '../lang/zh/tone'
-
-/** CC-CEDICT writes a run as space-separated numeric syllables: `xue2 xi2`. */
-function syllables(pinyin: string): string[] {
-  return pinyin.trim().split(/\s+/).filter(Boolean)
-}
+import type { Lexicon, ReadingPart } from '../lang/pack'
 
 /**
- * A pinyin run, one span per syllable, coloured by its tone.
+ * A reading, one span per part, coloured by its tone.
  *
  * The colour comes from a class rather than an inline style so it stays inside
- * the token layer and follows the theme.
+ * the token layer and follows the theme. A part with no tone — kana, or a
+ * reading carried over from the DOM — gets the neutral class, which is what
+ * `t5` already meant.
  */
-export function Pinyin({ pinyin }: { pinyin: string }) {
-  if (!pinyin.trim()) return null
+export function Pinyin({ parts }: { parts: readonly ReadingPart[] }) {
+  if (!parts.length) return null
   return (
     <span class="pinyin">
-      {syllables(pinyin).map((syllable, i) => (
-        <span key={i} class={`syl t${parseTone(syllable)}`}>
-          {toDiacritic(syllable)}
+      {parts.map((part, i) => (
+        <span key={i} class={`syl t${part.tone ?? 5}`}>
+          {part.text}
         </span>
       ))}
     </span>
@@ -42,9 +38,9 @@ export function Pinyin({ pinyin }: { pinyin: string }) {
  */
 export function dominantTone(text: string, lexicon: Lexicon): number {
   for (const token of lexicon.segment(text)) {
-    if (!token.pinyin) continue
-    const [first] = syllables(token.pinyin)
-    if (first) return parseTone(first)
+    for (const part of token.reading ?? []) {
+      if (part.tone !== null) return part.tone
+    }
   }
   return 5
 }

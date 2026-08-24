@@ -1,7 +1,7 @@
 import type { Token } from '../pack'
 import type { WordIndex } from './lexicon'
 import { isFunctionWord } from './grammar/function-words'
-import { applyReadingRules } from './reading'
+import { applyReadingRules, readingParts } from './reading'
 
 const wordSegmenter = new Intl.Segmenter('zh', { granularity: 'word' })
 
@@ -99,9 +99,10 @@ function cheapestParse(run: string, index: WordIndex): Token[] {
     const text = run.slice(end - take[end], end)
     // The same test `costOf` already ran to price the cut, kept rather than
     // re-run downstream: what a word is doing is the segmenter's answer.
+    const raw = words.get(text)
     tokens.push({
       text,
-      pinyin: words.get(text) ?? null,
+      reading: raw === undefined ? null : readingParts(text, raw),
       kind: isFunctionWord(text) ? 'function' : 'content',
     })
   }
@@ -126,7 +127,7 @@ export function segment(text: string, index: WordIndex): Token[] {
       hanziRun += piece
     } else {
       flushHanziRun()
-      tokens.push({ text: piece, pinyin: null, kind: 'other' })
+      tokens.push({ text: piece, reading: null, kind: 'other' })
     }
   }
   flushHanziRun()

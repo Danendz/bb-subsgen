@@ -12,8 +12,37 @@
 // than the default, because it also drags the gloss along with it (`rankEntries`
 // weights the displayed reading above everything else).
 
-import type { Token } from '../pack'
+import type { ReadingPart, Token } from '../pack'
 import { isNominal } from './grammar/function-words'
+import { parseTone, toDiacritic } from './tone'
+
+/**
+ * A CC-CEDICT reading, cut into one part per syllable.
+ *
+ * Always one part per syllable, and `base` is the character it aligns with only
+ * when the counts match. Mostly they do — one syllable is one character is the
+ * whole reason a reading survived as a string this long — but CC-CEDICT carries
+ * headwords where they cannot: 不入虎穴，焉得虎子 is nine code points and eight
+ * syllables, because the comma is written and not said. There is no rule that
+ * says which syllable the comma displaced, so none is guessed at.
+ *
+ * Nothing renders `base` yet: Chinese draws the reading as one run above the
+ * whole word, so every case here looks identical on screen. It is #16 that
+ * reads it, and an honest gap is a better thing to inherit than a confident
+ * lie.
+ */
+export function readingParts(base: string, raw: string): ReadingPart[] {
+  const syllables = raw.trim().split(/\s+/).filter(Boolean)
+  if (!syllables.length) return []
+
+  const chars = Array.from(base)
+  const aligned = chars.length === syllables.length
+  return syllables.map((syllable, i) => ({
+    base: aligned ? chars[i] : '',
+    text: toDiacritic(syllable),
+    tone: parseTone(syllable),
+  }))
+}
 
 /** Whether nothing precedes that a complement could attach back to. See `isNominal`. */
 function isSubjectLike(token: Token | undefined): boolean {
@@ -30,7 +59,7 @@ function isSubjectLike(token: Token | undefined): boolean {
 export function applyReadingRules(tokens: Token[]): Token[] {
   return tokens.map((token, i) => {
     const reading = ruleFor(token, tokens[i - 1], tokens[i + 1])
-    return reading === null ? token : { ...token, pinyin: reading }
+    return reading === null ? token : { ...token, reading: readingParts(token.text, reading) }
   })
 }
 

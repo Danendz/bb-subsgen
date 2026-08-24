@@ -158,7 +158,7 @@ export function attachHover({
     popup = buildCard(
       {
         headword,
-        displayedPinyin: wordEl.dataset.pinyin ?? '',
+        displayedReading: wordEl.dataset.reading ?? '',
         entries: found[headword] ?? [],
         breakdown: characterBreakdown(headword, found, pack, useTraditional),
         patterns: pack.patternsForWord(currentTokens(), headword),

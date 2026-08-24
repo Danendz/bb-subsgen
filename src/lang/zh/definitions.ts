@@ -1,4 +1,6 @@
 import type { Classifier, ParsedDefinitions } from '../pack'
+import { readingText } from '../reading'
+import { readingParts } from './reading'
 import { toDiacriticPhrase } from './tone'
 
 // A single classifier: `个[ge4]`, or `個|个[ge4]` when traditional and
@@ -29,7 +31,7 @@ function parseClassifierList(list: string, useTraditional: boolean): Classifier[
   for (const [, traditional, simplified, pinyin] of list.matchAll(CLASSIFIER_RE)) {
     // Without a `|` the single form serves as both scripts.
     const word = simplified ? (useTraditional ? traditional : simplified) : traditional
-    classifiers.push({ word, pinyin })
+    classifiers.push({ word, reading: readingParts(word, pinyin) })
   }
   return classifiers
 }
@@ -82,7 +84,7 @@ export function parseDefinitions(defs: string[], useTraditional = false): Parsed
 
   const seen = new Set<string>()
   const unique = classifiers.filter((c) => {
-    const key = `${c.word}[${c.pinyin}]`
+    const key = `${c.word}[${readingText(c.reading)}]`
     if (seen.has(key)) return false
     seen.add(key)
     return true

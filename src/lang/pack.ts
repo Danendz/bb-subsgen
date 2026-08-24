@@ -20,10 +20,35 @@
 // data public and leaks each language's internals into a shape everyone
 // imports.
 
+/**
+ * One piece of a reading, and the characters it is drawn over.
+ *
+ * A reading was a string — `'xi3 huan5'` — and Chinese got away with it because
+ * `split(' ')` happens to recover the alignment: one syllable, one character.
+ * Japanese does not. 食べる reads `taberu`, the furigana belongs over 食 alone,
+ * and there is no whitespace in the reading and no rule that puts it back. So
+ * the alignment is recorded where it is known rather than reconstructed where
+ * it is not.
+ *
+ * `text` is the **display form** — `xǐ`, not `xi3`. Tone is resolved once, at
+ * segment time, by the pack that knows the notation, so that no renderer parses
+ * a reading. That is what kept `parseTone` — a fact about CC-CEDICT — living
+ * inside two language-neutral drawing routines.
+ */
+export interface ReadingPart {
+  /** The characters this sits over. `''` where the alignment is not known. */
+  base: string
+  /** What is drawn above them. `''` means nothing is — kana, for #16. */
+  text: string
+  /** null where the language marks no tone. */
+  tone: number | null
+}
+
 /** One cut of a line: a word, or the punctuation and Latin between two of them. */
 export interface Token {
   text: string
-  pinyin: string | null
+  /** null means "not a dictionary word", which is not the same as an empty reading. */
+  reading: ReadingPart[] | null
   /**
    * What the segmenter decided this was, set as it cut rather than looked up
    * again by whoever renders it.
@@ -39,8 +64,8 @@ export interface Token {
 /** A dictionary word found in running text, with where it sits. */
 export interface Match {
   text: string
-  /** The reading, or '' when only the characters are known. */
-  pinyin: string
+  /** The reading, or `[]` when only the characters are known. */
+  reading: ReadingPart[]
   start: number
   /** Exclusive. */
   end: number
@@ -77,10 +102,10 @@ export interface PatternMatch {
   to: number
 }
 
-/** A measure word, kept raw so its reading can still be tone-coloured on render. */
+/** A measure word, with its reading in parts so it can still be tone-coloured on render. */
 export interface Classifier {
   word: string
-  pinyin: string
+  reading: ReadingPart[]
 }
 
 export interface ParsedDefinitions {
@@ -109,6 +134,15 @@ export interface LanguagePack {
    * for a language they mean nothing in rather than showing dead switches.
    */
   readonly displaysTones: boolean
+
+  /**
+   * A dictionary entry's own notation for a reading, aligned to the word.
+   *
+   * How neutral code turns the string an entry carries into something it can
+   * draw. #9 drops `raw` once entries carry parts of their own; #16 implements
+   * it for Japanese as kanji-run alignment.
+   */
+  readingOf(base: string, raw: string): ReadingPart[]
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean
@@ -149,7 +183,13 @@ export interface LanguagePack {
   patternById(id: string): Pattern | undefined
   readonly patterns: readonly Pattern[]
 
-  /** Orders dictionary entries so the most useful sense comes first. */
+  /**
+   * Orders dictionary entries so the most useful sense comes first.
+   *
+   * `displayedReading` is the **display form** already on screen — what
+   * `readingText` returns, not an entry's raw notation. It is the strongest
+   * signal there is, and the only reading a caller holding a `Token` still has.
+   */
   rankEntries(
     entries: CedictEntry[],
     headword: string,

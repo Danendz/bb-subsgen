@@ -22,7 +22,7 @@ const WORDS_WITH_PARTICLE = chinesePack.load('我\two3\n的\tde5\n书\tshu1')
 
 const texts = (tokens: ReturnType<typeof lineTokens>) => tokens.map((t) => t.text)
 const reading = (tokens: ReturnType<typeof lineTokens>) =>
-  tokens.filter((t) => t.reading).map((t) => t.text)
+  tokens.filter((t) => t.showReading).map((t) => t.text)
 
 describe('lineTokens', () => {
   test('splits the line into the words the deck knows about', () => {
@@ -50,12 +50,15 @@ describe('lineTokens', () => {
 
     test('never land on punctuation', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true })
-      expect(tokens.find((t) => t.text === '。')?.reading).toBe(false)
+      expect(tokens.find((t) => t.text === '。')?.showReading).toBe(false)
     })
 
-    test('carry the pinyin the segmenter already found', () => {
+    test('carry the reading the segmenter already found', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true })
-      expect(tokens.find((t) => t.text === '恐怖')?.pinyin).toBe('kong3 bu4')
+      expect(tokens.find((t) => t.text === '恐怖')?.reading).toEqual([
+        { base: '恐', text: 'kǒng', tone: 3 },
+        { base: '怖', text: 'bù', tone: 4 },
+      ])
     })
   })
 
@@ -94,7 +97,7 @@ describe('lineTokens', () => {
 
     test('never carries a reading, which would be the answer', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true, blank: '恐怖' })
-      expect(tokens.find((t) => t.blanked)?.reading).toBe(false)
+      expect(tokens.find((t) => t.blanked)?.showReading).toBe(false)
     })
 
     test('is not also marked, so a gap cannot be highlighted', () => {

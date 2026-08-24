@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { segment } from './segment'
+import { readingParts as reading } from './reading'
 import type { WordIndex } from './lexicon'
 
 function dict(entries: Record<string, string>, phrases: string[] = []): WordIndex {
@@ -18,14 +19,14 @@ describe('segment', () => {
     const tokens = segment('我喜欢学中文', words)
 
     expect(tokens).toEqual([
-      { text: '我', pinyin: 'wo3', kind: 'function' },
-      { text: '喜欢', pinyin: 'xi3 huan5', kind: 'content' },
-      { text: '学', pinyin: 'xue2', kind: 'content' },
-      { text: '中文', pinyin: 'zhong1 wen2', kind: 'content' },
+      { text: '我', reading: reading('我', 'wo3'), kind: 'function' },
+      { text: '喜欢', reading: reading('喜欢', 'xi3 huan5'), kind: 'content' },
+      { text: '学', reading: reading('学', 'xue2'), kind: 'content' },
+      { text: '中文', reading: reading('中文', 'zhong1 wen2'), kind: 'content' },
     ])
   })
 
-  test('resolves 多音字 pinyin from the matched compound, not the character', () => {
+  test('resolves a 多音字 reading from the matched compound, not the character', () => {
     const words = dict({
       银行: 'yin2 hang2',
       行为: 'xing2 wei2',
@@ -35,24 +36,31 @@ describe('segment', () => {
     })
 
     expect(segment('银行', words)).toEqual([
-      { text: '银行', pinyin: 'yin2 hang2', kind: 'content' },
+      { text: '银行', reading: reading('银行', 'yin2 hang2'), kind: 'content' },
     ])
     expect(segment('行为', words)).toEqual([
-      { text: '行为', pinyin: 'xing2 wei2', kind: 'content' },
+      { text: '行为', reading: reading('行为', 'xing2 wei2'), kind: 'content' },
     ])
   })
 
-  test('passes non-hanzi tokens through as inert (pinyin: null)', () => {
+  test('passes non-hanzi tokens through as inert (reading: null)', () => {
     const words = dict({ 你好: 'ni3 hao3' })
 
     const tokens = segment('BV1234 你好!', words)
 
     expect(tokens.map((t) => t.text).join('')).toBe('BV1234 你好!')
     const hanziToken = tokens.find((t) => t.text === '你好')
-    expect(hanziToken).toEqual({ text: '你好', pinyin: 'ni3 hao3', kind: 'content' })
+    expect(hanziToken).toEqual({
+      text: '你好',
+      reading: [
+        { base: '你', text: 'nǐ', tone: 3 },
+        { base: '好', text: 'hǎo', tone: 3 },
+      ],
+      kind: 'content',
+    })
     for (const t of tokens) {
       if (t.text === '你好') continue
-      expect(t.pinyin).toBeNull()
+      expect(t.reading).toBeNull()
       // The half nothing downstream would notice being wrong: a Latin run or a
       // space emitted as 'content' dims nothing and breaks no test, but tells
       // every renderer on a mixed line that there is a word here to define.
@@ -66,8 +74,8 @@ describe('segment', () => {
     const tokens = segment('我们', words)
 
     expect(tokens).toEqual([
-      { text: '我', pinyin: 'wo3', kind: 'function' },
-      { text: '们', pinyin: null, kind: 'content' },
+      { text: '我', reading: reading('我', 'wo3'), kind: 'function' },
+      { text: '们', reading: null, kind: 'content' },
     ])
   })
 
@@ -84,8 +92,8 @@ describe('segment', () => {
     })
 
     expect(segment('那时间', words)).toEqual([
-      { text: '那', pinyin: 'na4', kind: 'function' },
-      { text: '时间', pinyin: 'shi2 jian1', kind: 'content' },
+      { text: '那', reading: reading('那', 'na4'), kind: 'function' },
+      { text: '时间', reading: reading('时间', 'shi2 jian1'), kind: 'content' },
     ])
   })
 
@@ -107,9 +115,9 @@ describe('segment', () => {
     // it, so the reading rules correct it to the structural particle on the way
     // out. That is the whole point of splitting the span.
     expect(segment('过得很快', words)).toEqual([
-      { text: '过', pinyin: 'guo4', kind: 'function' },
-      { text: '得', pinyin: 'de5', kind: 'function' },
-      { text: '很快', pinyin: 'hen3 kuai4', kind: 'content' },
+      { text: '过', reading: reading('过', 'guo4'), kind: 'function' },
+      { text: '得', reading: reading('得', 'de5'), kind: 'function' },
+      { text: '很快', reading: reading('很快', 'hen3 kuai4'), kind: 'content' },
     ])
   })
 
@@ -158,9 +166,9 @@ describe('segment', () => {
     const words = dict({ 我: 'wo3', 得: 'de5', 走: 'zou3' })
 
     expect(segment('我得走', words)).toEqual([
-      { text: '我', pinyin: 'wo3', kind: 'function' },
-      { text: '得', pinyin: 'dei3', kind: 'function' },
-      { text: '走', pinyin: 'zou3', kind: 'content' },
+      { text: '我', reading: reading('我', 'wo3'), kind: 'function' },
+      { text: '得', reading: reading('得', 'dei3'), kind: 'function' },
+      { text: '走', reading: reading('走', 'zou3'), kind: 'content' },
     ])
   })
 

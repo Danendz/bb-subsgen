@@ -2,8 +2,9 @@
 // reader. Both mount it into a shadow root of their own, so this module owns
 // the markup and the styles but never the positioning.
 
-import { parseTone, toDiacritic, toDiacriticPhrase, toneColor } from '../lang/zh/tone'
-import type { LanguagePack, Pattern } from '../lang/pack'
+import { toneColor } from '../lang/zh/tone'
+import { readingFromText, readingText } from '../lang/reading'
+import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
 import type { Token } from '../lang/pack'
 import type { CedictEntry } from '../lang/pack'
 
@@ -380,19 +381,27 @@ function buildCopyButton(text: string, label: string): HTMLButtonElement {
   return button
 }
 
-/** Renders a pinyin run as tone-colored syllable spans. Shared by the line and the card. */
-export function buildPinyinElement(
-  pinyin: string,
+/**
+ * Renders a reading as tone-colored spans, one per part. Shared by the line and
+ * the card.
+ *
+ * It draws what it is handed. It used to split a string and parse a tone digit
+ * out of each piece, which put CC-CEDICT's notation inside a routine that is
+ * supposed to work for any language — and it disagreed with the study app's
+ * copy of the same loop about whether the separator was `' '` or `/\s+/`.
+ */
+export function buildReadingElement(
+  parts: readonly ReadingPart[],
   className: string,
   toneColors: boolean,
 ): HTMLElement {
   const el = document.createElement('span')
   el.className = className
-  for (const syllable of pinyin.split(' ')) {
+  for (const part of parts) {
     const sylEl = document.createElement('span')
     sylEl.className = 'syl'
-    sylEl.textContent = toDiacritic(syllable)
-    if (toneColors) sylEl.style.color = toneColor(parseTone(syllable))
+    sylEl.textContent = part.text
+    if (toneColors && part.tone !== null) sylEl.style.color = toneColor(part.tone)
     el.appendChild(sylEl)
   }
   return el
@@ -421,13 +430,15 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
   if (token.kind === 'function') word.classList.add('function')
   word.dataset.text = token.text
-  // Lets the hover card show pinyin even when CC-CEDICT has no entry.
-  if (token.pinyin) word.dataset.pinyin = token.pinyin
+  // Lets the hover card show a reading even when CC-CEDICT has no entry, and is
+  // the ranking signal it passes back as `displayedReading`. Whole, not split:
+  // whoever reads it hands it straight to `rankEntries`.
+  if (token.reading?.length) word.dataset.reading = readingText(token.reading)
 
-  if (token.pinyin !== null && options.showPinyin) {
-    const pinyin = buildPinyinElement(token.pinyin, 'pinyin', options.showToneColors)
-    if (options.hidePinyin) pinyin.classList.add('withheld')
-    word.appendChild(pinyin)
+  if (token.reading !== null && options.showPinyin) {
+    const reading = buildReadingElement(token.reading, 'pinyin', options.showToneColors)
+    if (options.hidePinyin) reading.classList.add('withheld')
+    word.appendChild(reading)
   }
 
   const hanziEl = document.createElement('span')
@@ -440,8 +451,7 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
 
 export interface CharacterGloss {
   char: string
-  /** CC-CEDICT numeric-tone pinyin, kept raw so it can be tone-colored. */
-  pinyin: string
+  reading: ReadingPart[]
   gloss: string
 }
 
@@ -468,15 +478,25 @@ export function characterBreakdown(
     if (!primary) continue
     const { definitions } = pack.parseDefinitions(primary.definitions, useTraditional)
     if (!definitions.length) continue
-    rows.push({ char, pinyin: primary.pinyin, gloss: definitions.join('; ') })
+    rows.push({
+      char,
+      reading: pack.readingOf(char, primary.pinyin),
+      gloss: definitions.join('; '),
+    })
   }
   return rows
 }
 
 export interface CardData {
   headword: string
-  /** The reading already on screen, if any — the strongest ranking signal. */
-  displayedPinyin?: string
+  /**
+   * The reading already on screen, if any — the strongest ranking signal.
+   *
+   * Display form, not an entry's notation: it comes off `dataset.reading`, or
+   * from a `Match` the reader already resolved, and it is handed to
+   * `rankEntries` whole. Nothing splits it.
+   */
+  displayedReading?: string
   entries: CedictEntry[]
   /**
    * Rows from `characterBreakdown`; empty renders no section.
@@ -526,11 +546,11 @@ export interface CardOptions {
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
   const { pack, useTraditional, toneColors = true, onMarkKnown, onExplain } = options
-  const { headword, displayedPinyin = '', entries: rawEntries } = data
+  const { headword, displayedReading = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
   // by relevance to the reading actually shown on screen.
-  const entries = pack.rankEntries(rawEntries, headword, displayedPinyin, useTraditional)
+  const entries = pack.rankEntries(rawEntries, headword, displayedReading, useTraditional)
 
   const el = document.createElement('div')
   el.className = 'popup'
@@ -548,14 +568,18 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
   head.appendChild(wordGroup)
 
   const primary = entries[0]
-  const headPinyin = primary?.pinyin || displayedPinyin
-  if (headPinyin) {
-    const pinyinGroup = document.createElement('span')
-    pinyinGroup.className = 'popup-head-group'
-    pinyinGroup.appendChild(buildPinyinElement(headPinyin, 'popup-pinyin', toneColors))
-    // Copy the readable form, not CC-CEDICT's numeric-tone notation.
-    pinyinGroup.appendChild(buildCopyButton(toDiacriticPhrase(headPinyin), 'Copy pinyin'))
-    head.appendChild(pinyinGroup)
+  // With no entry there is nothing to align against and no tone to recover,
+  // only the run already on screen. It still draws syllable by syllable, so a
+  // card the dictionary missed is a card missing its colour, not its layout.
+  const headReading: ReadingPart[] = primary
+    ? pack.readingOf(headword, primary.pinyin)
+    : readingFromText(displayedReading)
+  if (headReading.length) {
+    const readingGroup = document.createElement('span')
+    readingGroup.className = 'popup-head-group'
+    readingGroup.appendChild(buildReadingElement(headReading, 'popup-pinyin', toneColors))
+    readingGroup.appendChild(buildCopyButton(readingText(headReading), 'Copy pinyin'))
+    head.appendChild(readingGroup)
   }
   el.appendChild(head)
 
@@ -595,7 +619,7 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
         word.className = 'popup-cl-word'
         word.textContent = classifier.word
         item.appendChild(word)
-        item.appendChild(buildPinyinElement(classifier.pinyin, 'popup-cl-pinyin', toneColors))
+        item.appendChild(buildReadingElement(classifier.reading, 'popup-cl-pinyin', toneColors))
         row.appendChild(item)
       }
       el.appendChild(row)
@@ -605,11 +629,14 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
     const otherReadings = entries
       .slice(1)
       .map((entry) => entry.pinyin)
-      .filter((pinyin) => pinyin !== primary.pinyin)
+      .filter((raw) => raw !== primary.pinyin)
     if (otherReadings.length) {
       const alt = document.createElement('div')
       alt.className = 'popup-alt'
-      const readings = otherReadings.map((pinyin) => toDiacriticPhrase(pinyin, '')).join(', ')
+      // Run together, the way a dictionary prints a word rather than a gloss.
+      const readings = otherReadings
+        .map((raw) => readingText(pack.readingOf(headword, raw), ''))
+        .join(', ')
       alt.textContent = `also read ${readings}`
       el.appendChild(alt)
     }
@@ -618,7 +645,7 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
   if (data.breakdown?.length) {
     const chars = document.createElement('div')
     chars.className = 'popup-chars'
-    for (const { char, pinyin, gloss } of data.breakdown) {
+    for (const { char, reading, gloss } of data.breakdown) {
       const row = document.createElement('div')
       row.className = 'popup-char'
 
@@ -626,7 +653,7 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       word.className = 'popup-char-word'
       word.textContent = char
       row.appendChild(word)
-      row.appendChild(buildPinyinElement(pinyin, 'popup-char-pinyin', toneColors))
+      row.appendChild(buildReadingElement(reading, 'popup-char-pinyin', toneColors))
 
       const glossEl = document.createElement('span')
       glossEl.className = 'popup-char-gloss'

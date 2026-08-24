@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { buildCard, buildWordElement, characterBreakdown, setCardTranslation } from './card'
 import type { CedictEntry } from '../lang/pack'
 import { chinesePack } from '../lang/zh/pack'
+import { readingParts as parts } from '../lang/zh/reading'
 import { PATTERNS } from '../lang/zh/grammar/patterns'
 
 const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
@@ -29,8 +30,8 @@ const xi = entry({
 describe('characterBreakdown', () => {
   test('returns one row per character with its own reading and gloss', () => {
     expect(characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack)).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
-      { char: '习', pinyin: 'xi2', gloss: 'to practice' },
+      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
+      { char: '习', reading: parts('习', 'xi2'), gloss: 'to practice' },
     ])
   })
 
@@ -41,7 +42,7 @@ describe('characterBreakdown', () => {
 
   test('skips characters the dictionary has no entry for', () => {
     expect(characterBreakdown('学习', { 学: [xue], 习: [] }, chinesePack)).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
+      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
     ])
   })
 
@@ -54,7 +55,7 @@ describe('characterBreakdown', () => {
   test('drops entries whose definitions are all classifier notation', () => {
     const clOnly = entry({ simplified: '习', pinyin: 'xi2', definitions: ['CL:個|个[ge4]'] })
     expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] }, chinesePack)).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
+      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
     ])
   })
 })
@@ -110,7 +111,7 @@ describe('buildCard', () => {
 
   test('still renders pinyin and the sentence slot when no definition exists', () => {
     // A word the dictionary misses is a degraded card, never a broken one.
-    const card = buildCard({ headword: '沒有', displayedPinyin: 'mei2 you3', entries: [] }, opts)
+    const card = buildCard({ headword: '沒有', displayedReading: 'méi yǒu', entries: [] }, opts)
     expect(card.querySelector('.popup-empty')?.textContent).toBe('No definition found')
     expect(card.querySelector('.popup-pinyin')?.textContent).toBe('méiyǒu')
     expect(card.querySelector('.popup-sentence')).not.toBeNull()
@@ -161,17 +162,23 @@ describe('dimming function words', () => {
   const style = { showPinyin: true, showToneColors: true }
 
   test('marks a structural particle so it can be told from vocabulary', () => {
-    const el = buildWordElement({ text: '得', pinyin: 'de5', kind: 'function' }, style)
+    const el = buildWordElement(
+      { text: '得', reading: parts('得', 'de5'), kind: 'function' },
+      style,
+    )
     expect(el.classList.contains('function')).toBe(true)
   })
 
   test('leaves ordinary vocabulary unmarked', () => {
-    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1', kind: 'content' }, style)
+    const el = buildWordElement(
+      { text: '时间', reading: parts('时间', 'shi2 jian1'), kind: 'content' },
+      style,
+    )
     expect(el.classList.contains('function')).toBe(false)
   })
 
   test('does not mark punctuation, which is not a word at all', () => {
-    const el = buildWordElement({ text: '。', pinyin: null, kind: 'other' }, style)
+    const el = buildWordElement({ text: '。', reading: null, kind: 'other' }, style)
     expect(el.classList.contains('function')).toBe(false)
   })
 })

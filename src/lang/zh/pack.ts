@@ -9,6 +9,7 @@ import { rankEntries } from './entries'
 import { findPatterns, patternsForWord } from './grammar/match'
 import { PATTERNS } from './grammar/patterns'
 import { loadChinese } from './lexicon'
+import { readingParts } from './reading'
 import { sentenceTextAt } from './sentence'
 import { isHan } from './segment'
 
@@ -28,6 +29,8 @@ export const chinesePack: LanguagePack = {
   code: 'zh',
   name: 'Chinese',
   displaysTones: true,
+
+  readingOf: readingParts,
 
   inScript: isHan,
   containsScript: (text) => Array.from(text).some(isHan),

@@ -10,6 +10,7 @@
 // wherever this derived data is shown or redistributed.
 import { excludeFromSegmentation, rankEntries } from '../lang/zh/entries'
 import { functionWord } from '../lang/zh/grammar/function-words'
+import { toDiacriticPhrase } from '../lang/zh/tone'
 
 export interface CedictEntry {
   simplified: string
@@ -83,7 +84,10 @@ export function groupByHeadword(entries: CedictEntry[]): Map<string, CedictEntry
 export function buildLexiconText(byHeadword: Map<string, CedictEntry[]>): string {
   const lines: string[] = []
   for (const [word, candidates] of byHeadword) {
-    const [best] = rankEntries(candidates, word, functionWord(word)?.reading)
+    const declared = functionWord(word)?.reading
+    // `rankEntries` compares display forms now, and the table is written in
+    // CC-CEDICT's own notation — see `function-words.ts`.
+    const [best] = rankEntries(candidates, word, declared && toDiacriticPhrase(declared))
     lines.push(`${word}\t${best.pinyin}${excludeFromSegmentation(best, word) ? '\tp' : ''}`)
   }
   return lines.join('\n')

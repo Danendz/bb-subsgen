@@ -4,7 +4,7 @@ import type { Match } from '../lang/pack'
 
 const match = (text: string, start: number): Match => ({
   text,
-  pinyin: '',
+  reading: [],
   start,
   end: start + text.length,
 })

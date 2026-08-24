@@ -348,7 +348,7 @@ export interface CueView {
  */
 export function translationWithheld(view: CueView): boolean {
   if (view.quiz) return true
-  const words = view.tokens.filter((token) => token.pinyin !== null)
+  const words = view.tokens.filter((token) => token.reading !== null)
   return words.length > 0 && words.every((token) => view.known.has(token.text))
 }
 

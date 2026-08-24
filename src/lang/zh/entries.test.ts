@@ -34,12 +34,12 @@ const HE: CedictEntry[] = [
 
 describe('rankEntries', () => {
   test('prefers the canonical entry over a variant that appears first', () => {
-    const [primary] = rankEntries(HE, '和', 'he2')
+    const [primary] = rankEntries(HE, '和', 'hé')
     expect(primary.definitions[0]).toContain('together with')
   })
 
   test('prefers the entry matching the reading shown on the subtitle', () => {
-    const [primary] = rankEntries(HE, '和', 'he4')
+    const [primary] = rankEntries(HE, '和', 'hè')
     expect(primary.definitions[0]).toBe('to compose a poem in reply')
   })
 
@@ -49,7 +49,7 @@ describe('rankEntries', () => {
   })
 
   test('keeps every entry, only reordering them', () => {
-    expect(rankEntries(HE, '和', 'he2')).toHaveLength(HE.length)
+    expect(rankEntries(HE, '和', 'hé')).toHaveLength(HE.length)
   })
 
   test('prefers the traditional form when reading traditional text', () => {
@@ -99,9 +99,9 @@ describe('rankEntries', () => {
       },
     ]
 
-    // Asked for pao2 explicitly, pao2 still wins — sense count is a tiebreak,
+    // Asked for páo explicitly, pao2 still wins — sense count is a tiebreak,
     // not a veto over what is actually printed above the character.
-    expect(rankEntries(pao, '跑', 'pao2')[0].pinyin).toBe('pao2')
+    expect(rankEntries(pao, '跑', 'páo')[0].pinyin).toBe('pao2')
     expect(rankEntries(pao, '跑')[0].pinyin).toBe('pao3')
   })
 })
@@ -146,16 +146,16 @@ describe('the sense a reading selects', () => {
    *
    * Nothing here was wrong. `rankEntries` scores the displayed reading above
    * every other signal, which is correct — it is just that the reading it was
-   * shown was `a1`, chosen at build time with no sentence in front of it. Given
-   * `a5` the same function picks the sentence-final particle unaided, which is
+   * shown was `ā`, chosen at build time with no sentence in front of it. Given
+   * the neutral `a` the same function picks the sentence-final particle unaided, which is
    * why closing this defect took no change to entries.ts at all.
    */
-  test('picks the sentence-final particle once the reading is a5', () => {
-    expect(rankEntries(A, '啊', 'a5')[0].definitions[0]).toContain('modal particle')
+  test('picks the sentence-final particle once the reading is the neutral a', () => {
+    expect(rankEntries(A, '啊', 'a')[0].definitions[0]).toContain('modal particle')
   })
 
-  test('still picks the interjection when the reading really is a1', () => {
-    expect(rankEntries(A, '啊', 'a1')[0].definitions[0]).toContain('surprise')
+  test('still picks the interjection when the reading really is ā', () => {
+    expect(rankEntries(A, '啊', 'ā')[0].definitions[0]).toContain('surprise')
   })
 })
 

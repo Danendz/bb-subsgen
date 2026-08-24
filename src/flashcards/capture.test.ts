@@ -14,7 +14,7 @@ import { chinesePack } from '../lang/zh/pack'
 
 const token = (text: string, kind: Token['kind'] = 'content'): Token => ({
   text,
-  pinyin: null,
+  reading: null,
   kind,
 })
 

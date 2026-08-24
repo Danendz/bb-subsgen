@@ -8,6 +8,8 @@
 // and it fails by finding nothing rather than by inventing something.
 
 import type { Pattern, PatternMatch, Token } from '../../pack'
+import { readingText } from '../../reading'
+import { toDiacriticPhrase } from '../tone'
 import { functionWord, isNominal, type PartOfSpeech } from './function-words'
 import { PATTERNS } from './patterns'
 
@@ -53,7 +55,7 @@ export interface Rule {
 const FINAL_PARTICLES = new Set(['吗', '呢', '吧', '啊', '呀', '嘛'])
 
 function isWord(token: Token | undefined): token is Token {
-  return Boolean(token && token.pinyin !== null)
+  return Boolean(token && token.reading !== null)
 }
 
 function isContent(token: Token | undefined): boolean {
@@ -108,7 +110,11 @@ interface Span {
 function matchAt(tokens: Token[], at: number, rule: Rule): Span | null {
   const token = tokens[at]
   if (!anchors(rule).includes(token.text)) return null
-  if (rule.reading && token.pinyin !== rule.reading) return null
+  // The table is written in CC-CEDICT's notation on purpose (see `patterns.ts`),
+  // so the rule's reading is converted to meet the token's rather than the other
+  // way round — a token no longer carries the numeric form at all.
+  if (rule.reading && readingText(token.reading ?? []) !== toDiacriticPhrase(rule.reading))
+    return null
 
   const before = rule.before ?? []
   const after = rule.after ?? []

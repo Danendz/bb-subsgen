@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { matchAt } from './match'
+import { readingParts } from './reading'
 
 const words = new Map<string, string>([
   ['学', 'xue2'],
@@ -15,7 +16,7 @@ describe('matchAt', () => {
   test('matches the word starting at the hovered character', () => {
     expect(matchAt('学习中文', 0, words)).toEqual({
       text: '学习',
-      pinyin: 'xue2 xi2',
+      reading: readingParts('学习', 'xue2 xi2'),
       start: 0,
       end: 2,
     })
@@ -26,7 +27,7 @@ describe('matchAt', () => {
     // word's first — forward-only matching would return 习 here.
     expect(matchAt('学习中文', 1, words)).toEqual({
       text: '学习',
-      pinyin: 'xue2 xi2',
+      reading: readingParts('学习', 'xue2 xi2'),
       start: 0,
       end: 2,
     })
@@ -36,7 +37,7 @@ describe('matchAt', () => {
     // 京 is inside 北京, 北京大学 — the longest wins.
     expect(matchAt('北京大学', 1, words)).toEqual({
       text: '北京大学',
-      pinyin: 'Bei3 jing1 Da4 xue2',
+      reading: readingParts('北京大学', 'Bei3 jing1 Da4 xue2'),
       start: 0,
       end: 4,
     })
@@ -45,15 +46,15 @@ describe('matchAt', () => {
   test('falls back to the single character when no word matches', () => {
     expect(matchAt('学', 0, words)).toEqual({
       text: '学',
-      pinyin: 'xue2',
+      reading: readingParts('学', 'xue2'),
       start: 0,
       end: 1,
     })
   })
 
-  test('returns the character with empty pinyin when the dictionary misses it', () => {
+  test('returns the character with no reading at all when the dictionary misses it', () => {
     // A card with no reading still beats no card at all.
-    expect(matchAt('鿕', 0, words)).toEqual({ text: '鿕', pinyin: '', start: 0, end: 1 })
+    expect(matchAt('鿕', 0, words)).toEqual({ text: '鿕', reading: [], start: 0, end: 1 })
   })
 
   test('ignores non-Han characters', () => {
@@ -69,7 +70,7 @@ describe('matchAt', () => {
     // 大学 sits at the very end; the scan must not read beyond it.
     expect(matchAt('去大学', 2, words)).toEqual({
       text: '大学',
-      pinyin: 'da4 xue2',
+      reading: readingParts('大学', 'da4 xue2'),
       start: 1,
       end: 3,
     })

@@ -6,6 +6,7 @@
 // facts about the language, not about hovering.
 
 import type { Match } from '../pack'
+import { readingParts } from './reading'
 import { isHan } from './segment'
 
 /**
@@ -40,16 +41,26 @@ export function matchAt(text: string, index: number, words: Map<string, string>)
     // Must reach past `index` to cover the hovered character.
     for (let length = limit; length > index - start; length--) {
       const candidate = text.slice(start, start + length)
-      const pinyin = words.get(candidate)
-      if (pinyin === undefined) continue
+      const raw = words.get(candidate)
+      if (raw === undefined) continue
       // Earlier starts win ties, so a word is highlighted from its beginning.
       if (!best || length > best.end - best.start) {
-        best = { text: candidate, pinyin, start, end: start + length }
+        best = {
+          text: candidate,
+          reading: readingParts(candidate, raw),
+          start,
+          end: start + length,
+        }
       }
       break // nothing shorter from this start can beat what we just found
     }
   }
 
   if (best) return best
-  return { text: char, pinyin: words.get(char) ?? '', start: index, end: index + 1 }
+  return {
+    text: char,
+    reading: readingParts(char, words.get(char) ?? ''),
+    start: index,
+    end: index + 1,
+  }
 }

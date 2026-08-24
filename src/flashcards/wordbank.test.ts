@@ -5,7 +5,7 @@ import type { Token } from '../lang/pack'
 const tokens = (...texts: string[]): Token[] =>
   texts.map((text) => ({
     text,
-    pinyin: null,
+    reading: null,
     kind: /\p{Script=Han}/u.test(text) ? 'content' : 'other',
   }))
 

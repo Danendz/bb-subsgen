@@ -1,9 +1,11 @@
 import type { CedictEntry } from '../pack'
+import { toDiacriticPhrase } from './tone'
 
 // Definitions that only point at another headword rather than carrying a
 // meaning of their own.
 const STUB_RE = /^\s*\(?(?:old\s+|erhua\s+)?variant of\b|^\s*see\b|^\s*used in\b/i
 
+/** Whitespace and case only — both sides are already in display form. */
 function normalizePinyin(pinyin: string): string {
   return pinyin.trim().toLowerCase().replace(/\s+/g, ' ')
 }
@@ -67,13 +69,19 @@ export function excludeFromSegmentation(entry: CedictEntry, headword: string): b
 function score(
   entry: CedictEntry,
   headword: string,
-  displayedPinyin: string | undefined,
+  displayedReading: string | undefined,
   useTraditional: boolean,
 ): number {
   let value = 0
 
-  // Strongest signal: the reading already shown above the character.
-  if (displayedPinyin && normalizePinyin(entry.pinyin) === normalizePinyin(displayedPinyin)) {
+  // Strongest signal: the reading already shown above the character. Compared
+  // as display text on both sides, because that is the only form the caller
+  // still has — a `ReadingPart` carries `xǐ`, and CC-CEDICT's `xi3` is now an
+  // implementation detail of this directory.
+  if (
+    displayedReading &&
+    normalizePinyin(toDiacriticPhrase(entry.pinyin)) === normalizePinyin(displayedReading)
+  ) {
     value += 100
   }
 
@@ -109,15 +117,15 @@ function score(
 export function rankEntries(
   entries: CedictEntry[],
   headword: string,
-  displayedPinyin?: string,
+  displayedReading?: string,
   useTraditional = false,
 ): CedictEntry[] {
   return entries
     .map((entry, index) => ({ entry, index }))
     .sort((a, b) => {
       const diff =
-        score(b.entry, headword, displayedPinyin, useTraditional) -
-        score(a.entry, headword, displayedPinyin, useTraditional)
+        score(b.entry, headword, displayedReading, useTraditional) -
+        score(a.entry, headword, displayedReading, useTraditional)
       return diff !== 0 ? diff : a.index - b.index // stable within equal scores
     })
     .map(({ entry }) => entry)

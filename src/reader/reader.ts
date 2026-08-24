@@ -5,6 +5,7 @@ import {
   setCardTranslation,
 } from '../content/card'
 import type { LanguagePack, Lexicon, Match } from '../lang/pack'
+import { readingText } from '../lang/reading'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
@@ -203,12 +204,17 @@ export function attachReader({
    *
    * `anchor` is what the card must not cover — the word itself for a page
    * hover, the selection card for a word hovered inside it.
+   *
+   * `displayedReading` overrides the match's own for the word hovered inside
+   * the selection card, which has no match of its own to have resolved — see
+   * where it is called.
    */
   const openCard = async (
     match: Match,
     anchor: Anchor,
     sentence: string,
     identity: CardIdentity,
+    displayedReading?: string,
   ) => {
     const token = ++pending
     const { useTraditional, showToneColors } = settings()
@@ -230,7 +236,7 @@ export function attachReader({
     const card = buildCard(
       {
         headword: match.text,
-        displayedPinyin: match.pinyin,
+        displayedReading: displayedReading ?? readingText(match.reading),
         entries: found[match.text] ?? [],
         breakdown: characterBreakdown(match.text, found, pack, useTraditional),
         // Segmented from the sentence under the pointer, which is the same text
@@ -453,16 +459,25 @@ export function attachReader({
     }
     if (sameWord(open?.identity ?? null, identity)) return
 
+    // No parts: what the element carries is display text, and reversing it into
+    // an alignment would be guessing. It is still the ranking signal, so it
+    // goes to the card as one — that is what `displayedReading` below is for.
     const match: Match = {
       text,
-      pinyin: wordEl.dataset.pinyin ?? '',
+      reading: [],
       start: 0,
       end: text.length,
     }
     // Anchored to the selection card, not the word: the word card must not
     // cover the sentence you're reading it from. No sentence translation —
     // the selection card already shows the whole thing translated.
-    void openCard(match, selectionCard.getBoundingClientRect(), '', identity)
+    void openCard(
+      match,
+      selectionCard.getBoundingClientRect(),
+      '',
+      identity,
+      wordEl.dataset.reading ?? '',
+    )
   }
 
   /**
