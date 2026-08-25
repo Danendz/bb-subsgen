@@ -29,23 +29,39 @@ Highlight API. Anything that would insert or rewrite nodes in the host page is t
 
 ## Stored data
 
-Four IndexedDB databases, separated by how bad it is to lose them:
+Five IndexedDB databases, separated by how bad it is to lose them:
 
 | Database | Contents | Losing it means |
 |---|---|---|
 | `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language (schema 2, `src/dict/store.ts`) | re-download from the setup wizard |
 | `bb-subsgen-llm` | debug log of model calls | nothing |
 | `bb-subsgen-chat` | conversations | annoying |
-| `bb-subsgen-flashcards` | review history | **irreplaceable** |
+| `bb-subsgen-flashcards` | review history; every key carries its language since schema 4 — card ids are `w:zh:生`, and `exposures` / `videoWords` / `ranks` key on `[lang, headword]` (`src/flashcards/db.ts`) | **irreplaceable** |
+| `bb-subsgen-flashcards-snapshots` | the deck as it stood before each schema migration, one JSON string per version bump (`src/flashcards/snapshot.ts`) | the undo for a bad migration |
 
 Bumping a `VERSION` requires a numbered migration note in the module header, next to the ones
 already there. Treat the flashcards database as data you cannot regenerate: migrations there get
 a test.
 
-All four go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB — including
+**Migration steps run one after another, never all at once.** `sequence()` in
+`src/flashcards/db.ts` is what enforces it. A database several versions behind runs every
+transform it is behind inside one versionchange transaction, and two of them touch the same
+store: v3 drops and recreates `videoWords`, v4 does it again. Start both reads at once and the
+second is against a store the first is about to delete, which aborts the transaction and takes
+the whole upgrade with it. The quieter half is the same hazard for cursor walks — a `getAll`
+issued beside a running cursor is served before that cursor's later `continue`s.
+
+**The snapshot happens before the open, not inside the migration.** An IDB transaction is scoped
+to one database, so a versionchange transaction on the deck physically cannot write the copy
+anywhere else. `flashcardsDb`'s opener runs `snapshotIfOutdated` first, against a separate
+connection at the old version. It probes with `indexedDB.databases()` rather than a bare
+`indexedDB.open(name)` — a bare open on a fresh profile *creates* an empty v1 database, which the
+`oldVersion >= 1` branch would then mistake for an existing deck.
+
+All five go through the thin wrapper in `src/shared/idb.ts` rather than raw IndexedDB — including
 the connection itself. `connection()` there owns the memo, the `onversionchange` / `onclose`
 handlers and the probe that catches a connection which died without firing either. Do not
-re-introduce a per-module `let ready` memo: all four had one, all four handed out a dead
+re-introduce a per-module `let ready` memo: four of them had one, all four handed out a dead
 connection after an MV3 worker began teardown, and the fix only holds in one place.
 
 ## `src/lang/`
@@ -86,9 +102,10 @@ cleanly and is invisible from the file it sits in, and `ja/script` would be the 
 way round. The exceptions are the surfaces the PRD pins to Chinese
 on purpose, and each says so where it names the language:
 
-- `src/youtube/language.ts`, `src/llm/glossary.ts` and `src/background/flashcards-store.ts` reach
-  Chinese through `packFor('zh')` rather than by importing the table, so the surviving `'zh'`
-  literals read as an inventory of what is still pinned.
+- `src/youtube/language.ts` and `src/llm/glossary.ts` reach Chinese through `packFor('zh')` rather
+  than by importing the table, so the surviving `'zh'` literals read as an inventory of what is
+  still pinned. `src/background/flashcards-store.ts` no longer belongs here: #12 gave the deck a
+  language, so it resolves `packFor(lang)` from what the caller sends.
 - `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
   own.
 Tests may import a language's modules directly — a fixture has to name a language.

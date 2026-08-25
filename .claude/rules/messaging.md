@@ -18,7 +18,13 @@ has run. A cast is not a check.
 
 - A fire-and-forget write joins an existing union and its `Set<string>` of type strings —
   `FlashcardsMessage` / `FLASHCARDS_TYPES`, `LlmMessage` / `LLM_TYPES`, `AsrMessage` /
-  `ASR_TYPES`. One guard covers the set.
+  `ASR_TYPES`. One guard covers the set. The four `FlashcardsMessage` variants that write a
+  headword — `record-exposures`, `discover-word`, `capture-sentence`, `mark-known` — each carry a
+  **required** `lang`. Since schema 4 a card is keyed `w:zh:生` and the headword stores key on
+  `[lang, headword]`, so there is no row to write without one. Required rather than optional with
+  a `'zh'` default: a default is a silent mis-file the moment a second pack ships, and every
+  sender already holds the language — the content script resolved it at startup, the reader holds
+  a `pack`.
 - A request/response pair gets its own interface plus a matching `…Response` interface. See
   `GetLexiconMessage` and `DictStatusMessage`. `LookupDefsMessage` is one too, and carries a
   `lang` alongside its headwords: `defs` has been keyed `` `${lang}:${headword}` `` since schema 2

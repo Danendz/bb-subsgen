@@ -53,7 +53,7 @@ describe('createExposureBuffer', () => {
   test('posts nothing until the interval elapses', () => {
     // The whole point: a subtitle line changes every few seconds and carries
     // ~8 words, so writing per line would be thousands of messages per video.
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['我', '喜欢'])
     buffer.line(['我'])
     expect(batches()).toEqual([])
@@ -64,7 +64,7 @@ describe('createExposureBuffer', () => {
   })
 
   test('counts a word repeated within one line', () => {
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['一', '一'])
     buffer.flush()
     expect(batches()[0].words).toEqual({ 一: 2 })
@@ -73,7 +73,7 @@ describe('createExposureBuffer', () => {
 
   test('starts empty again after a flush', () => {
     // A leaked accumulator would double-count every word for the whole video.
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['我'])
     buffer.flush()
     buffer.line(['你'])
@@ -86,7 +86,7 @@ describe('createExposureBuffer', () => {
   test('an empty line is not a line', () => {
     // Cues of pure punctuation or music markers shouldn't inflate the line
     // count that per-video stats are read from.
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line([])
     buffer.flush()
     expect(batches()).toEqual([])
@@ -94,7 +94,7 @@ describe('createExposureBuffer', () => {
   })
 
   test('flushing with nothing buffered posts nothing', () => {
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.flush()
     buffer.flush()
     expect(batches()).toEqual([])
@@ -104,7 +104,7 @@ describe('createExposureBuffer', () => {
   test('stop posts what is left', () => {
     // Navigating between videos in the SPA tears the buffer down; without this
     // the last unflushed stretch of every video would be lost.
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['我'])
     buffer.stop()
     expect(batches()).toEqual([{ video, lines: 1, words: { 我: 1 } }])
@@ -113,7 +113,7 @@ describe('createExposureBuffer', () => {
   test('pagehide posts what is left', () => {
     // Closing the tab is the common ending for a session and never reaches
     // the interval.
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['我'])
     window.dispatchEvent(new Event('pagehide'))
     expect(batches()).toEqual([{ video, lines: 1, words: { 我: 1 } }])
@@ -121,7 +121,7 @@ describe('createExposureBuffer', () => {
   })
 
   test('stop detaches, so a later pagehide posts nothing', () => {
-    const buffer = createExposureBuffer(video)
+    const buffer = createExposureBuffer('zh', video)
     buffer.line(['我'])
     buffer.stop()
     sent = []
@@ -132,7 +132,7 @@ describe('createExposureBuffer', () => {
   })
 
   test('works with no video, for the reader on an ordinary page', () => {
-    const buffer = createExposureBuffer()
+    const buffer = createExposureBuffer('zh')
     buffer.line(['我'])
     buffer.flush()
     expect(batches()[0].video).toBeUndefined()
@@ -144,7 +144,7 @@ describe('watchKnownSet', () => {
   test('reports what is already stored', async () => {
     storage[KNOWN_SET_KEY] = ['我', '我们']
     const seen: Array<Set<string>> = []
-    watchKnownSet((known) => seen.push(known))
+    watchKnownSet('zh', (known) => seen.push(known))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
 
     expect([...seen[0]]).toEqual(['我', '我们'])
@@ -152,7 +152,7 @@ describe('watchKnownSet', () => {
 
   test('reports an empty set when nothing has been stored yet', async () => {
     const seen: Array<Set<string>> = []
-    watchKnownSet((known) => seen.push(known))
+    watchKnownSet('zh', (known) => seen.push(known))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
 
     expect(seen[0].size).toBe(0)
@@ -160,18 +160,18 @@ describe('watchKnownSet', () => {
 
   test('follows later changes, so marking a word known takes effect live', async () => {
     const seen: Array<Set<string>> = []
-    watchKnownSet((known) => seen.push(known))
+    watchKnownSet('zh', (known) => seen.push(known))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
 
     for (const listener of changeListeners) {
-      listener({ [KNOWN_SET_KEY]: { newValue: ['我'] } }, 'local')
+      listener({ [KNOWN_SET_KEY]: { newValue: { zh: ['我'], ja: ['本'] } } }, 'local')
     }
     expect([...seen[1]]).toEqual(['我'])
   })
 
   test('ignores unrelated keys and other storage areas', async () => {
     const seen: Array<Set<string>> = []
-    watchKnownSet((known) => seen.push(known))
+    watchKnownSet('zh', (known) => seen.push(known))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
 
     for (const listener of changeListeners) {
@@ -182,9 +182,44 @@ describe('watchKnownSet', () => {
     expect(seen).toHaveLength(1)
   })
 
+  test('reads the language it was asked for, and not the one next to it', async () => {
+    // The whole reason the mirror is a record: marking Japanese 生 known must
+    // not stop Chinese 生 being annotated.
+    storage[KNOWN_SET_KEY] = { zh: ['生'], ja: ['生', '本'] }
+    const seen: Array<Set<string>> = []
+    watchKnownSet('ja', (known) => seen.push(known))
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+
+    expect([...seen[0]]).toEqual(['生', '本'])
+  })
+
+  test('reads a mirror written before it was per-language as Chinese', async () => {
+    // `chrome.storage` has no upgrade hook, so the lift lives in the read path.
+    // Without it every existing install loses its known set on first load.
+    storage[KNOWN_SET_KEY] = ['我', '我们']
+    const seen: Array<Set<string>> = []
+    watchKnownSet('ja', (known) => seen.push(known))
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+
+    expect(seen[0].size).toBe(0)
+  })
+
+  test('lifts the old shape on a change event too, not only on the first read', async () => {
+    // The lesson `readerOrigins` recorded: a normalise on the load path alone
+    // leaves the change path handing the page an empty set.
+    const seen: Array<Set<string>> = []
+    watchKnownSet('zh', (known) => seen.push(known))
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+
+    for (const listener of changeListeners) {
+      listener({ [KNOWN_SET_KEY]: { newValue: ['我'] } }, 'local')
+    }
+    expect([...seen[1]]).toEqual(['我'])
+  })
+
   test('unsubscribing stops the updates', async () => {
     const seen: Array<Set<string>> = []
-    const stop = watchKnownSet((known) => seen.push(known))
+    const stop = watchKnownSet('zh', (known) => seen.push(known))
     await vi.waitFor(() => expect(seen).toHaveLength(1))
 
     stop()

@@ -7,6 +7,7 @@ const NOW = Date.UTC(2026, 7, 12, 12, 0, 0)
 
 function make(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item {
   return {
+    lang: 'zh',
     state: 'new',
     interval: 0,
     ease: 2.5,
@@ -20,10 +21,10 @@ function make(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item
 }
 
 const word = (text: string, extra: Partial<Item> = {}) =>
-  make({ id: `w:${text}`, kind: 'word', text, ...extra })
+  make({ id: `w:zh:${text}`, kind: 'word', text, ...extra })
 
 const sentence = (text: string, extra: Partial<Item> = {}) =>
-  make({ id: `s:${text}`, kind: 'sentence', text, state: 'pool', ...extra })
+  make({ id: `s:zh:${text}`, kind: 'sentence', text, state: 'pool', ...extra })
 
 /** Everything unknown unless the test says otherwise. */
 const unknownCount = (item: Item) =>
@@ -31,7 +32,10 @@ const unknownCount = (item: Item) =>
 
 /** Ranks live outside the card now, exactly as an uploaded list does. */
 const RANKS = new Map<string, number>()
-const rankOf = (headword: string) => RANKS.get(headword)
+// Takes the card, not the headword: a rank belongs to a word *in a language*,
+// and the card is what knows which. Keyed on text alone here because every
+// fixture in this file is Chinese.
+const rankOf = (item: Item) => RANKS.get(item.text)
 
 const limits = { newSentencesPerDay: 5, rankOf }
 
@@ -164,7 +168,7 @@ describe('buildQueue', () => {
 
 describe('new words', () => {
   const SEEN = new Map<string, number>()
-  const seenCount = (headword: string) => SEEN.get(headword) ?? 0
+  const seenCount = (item: Item) => SEEN.get(item.text) ?? 0
   beforeEach(() => SEEN.clear())
 
   test('frequency leads once a word list has been uploaded', () => {
@@ -506,7 +510,7 @@ describe('practice', () => {
   test('the ids of the drilled cards come back with them', () => {
     const items = [word('复习', { state: 'review', due: NOW - DAY_MS }), settled('练习')]
     const session = buildSession({ items, now: NOW, ...limits, unknownCount, limit: 5 })
-    expect([...session.extra]).toEqual(['w:练习'])
+    expect([...session.extra]).toEqual(['w:zh:练习'])
   })
 
   test('counts report the whole eligible set, not what the cap allows', () => {

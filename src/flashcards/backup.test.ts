@@ -7,8 +7,9 @@ const DAY0 = Date.UTC(2026, 0, 1)
 
 function word(text: string, extra: Partial<Item> = {}): Item {
   return {
-    id: `w:${text}`,
+    id: `w:zh:${text}`,
     kind: 'word',
+    lang: 'zh',
     text,
     state: 'new',
     interval: 0,
@@ -23,7 +24,7 @@ function word(text: string, extra: Partial<Item> = {}): Item {
 }
 
 const review = (text: string, at: number, grade: Review['grade'] = 'good'): Review => ({
-  itemId: `w:${text}`,
+  itemId: `w:zh:${text}`,
   at,
   grade,
   style: 'recognise',
@@ -45,10 +46,17 @@ function v1(partial: Record<string, unknown>): Backup {
   return { ...emptyBackup(), version: 1, ...partial } as unknown as Backup
 }
 
+/** A version 2 file: renamed, but written before any id carried a language. */
+function v2(partial: Record<string, unknown>): Backup {
+  return { ...emptyBackup(), version: 2, ...partial } as unknown as Backup
+}
+
 describe('upgrade', () => {
   test('moves bvid onto videoId for per-video words', () => {
     const upgraded = upgrade(v1({ videoWords: [{ bvid: 'BV1xx', headword: '憔悴', count: 4 }] }))
-    expect(upgraded.videoWords).toEqual([{ videoId: 'BV1xx', headword: '憔悴', count: 4 }])
+    expect(upgraded.videoWords).toEqual([
+      { videoId: 'BV1xx', lang: 'zh', headword: '憔悴', count: 4 },
+    ])
   })
 
   test('moves it for watched videos, keeping the rest of the row', () => {
@@ -100,8 +108,71 @@ describe('upgrade', () => {
   })
 
   test('is idempotent, so a current file passes through untouched', () => {
-    const current = backup({ videoWords: [{ videoId: 'BV1xx', headword: '憔悴', count: 4 }] })
+    const current = backup({
+      videoWords: [{ videoId: 'BV1xx', lang: 'zh', headword: '憔悴', count: 4 }],
+    })
     expect(upgrade(current)).toBe(current)
+  })
+
+  test('namespaces every card id, and says so on the card', () => {
+    const upgraded = upgrade(v2({ items: [{ ...word('憔悴'), id: 'w:憔悴', lang: undefined }] }))
+    expect(upgraded.items[0].id).toBe('w:zh:憔悴')
+    expect(upgraded.items[0].lang).toBe('zh')
+  })
+
+  test('repoints the review log, so no card is imported with its history orphaned', () => {
+    // The one thing this lift exists to get right. A review pointing at `w:憔悴`
+    // when the card is now `w:zh:憔悴` is a card whose whole schedule is gone —
+    // `replay` filters the log by `item.id`.
+    const upgraded = upgrade(
+      v2({
+        items: [{ ...word('憔悴'), id: 'w:憔悴', lang: undefined }],
+        reviews: [{ ...review('憔悴', DAY0), itemId: 'w:憔悴' }],
+      }),
+    )
+    expect(upgraded.reviews[0].itemId).toBe(upgraded.items[0].id)
+  })
+
+  test('gives exposures and per-video words the language they were always in', () => {
+    const upgraded = upgrade(
+      v2({
+        exposures: [{ headword: '我', count: 3, firstSeen: 1, lastSeen: 2 }],
+        videoWords: [{ videoId: 'BV1', headword: '我', count: 3 }],
+      }),
+    )
+    expect(upgraded.exposures[0].lang).toBe('zh')
+    expect(upgraded.videoWords[0].lang).toBe('zh')
+  })
+
+  test('leaves a video alone, because a video is not in a language', () => {
+    const video = {
+      videoId: 'BV1',
+      title: 'A',
+      url: 'u',
+      firstWatched: 1,
+      lastWatched: 2,
+      lines: 9,
+    }
+    expect(upgrade(v2({ videos: [video] })).videos).toEqual([video])
+  })
+
+  test('a version 1 file goes through both steps and lands where a version 2 one does', () => {
+    // The steps compose. Before they did, a v1 file took the rename and was
+    // stamped with the current version number without ever being namespaced.
+    const upgraded = upgrade(
+      v1({
+        items: [{ ...word('憔悴'), id: 'w:憔悴', lang: undefined }],
+        videoWords: [{ bvid: 'BV1xx', headword: '憔悴', count: 4 }],
+      }),
+    )
+    expect(upgraded.version).toBe(3)
+    expect(upgraded.items[0].id).toBe('w:zh:憔悴')
+    expect(upgraded.videoWords[0]).toEqual({
+      videoId: 'BV1xx',
+      lang: 'zh',
+      headword: '憔悴',
+      count: 4,
+    })
   })
 
   test('tolerates a file missing the video arrays entirely', () => {
@@ -278,11 +349,16 @@ describe('merge', () => {
 
   test('sums exposure counts and widens the window', () => {
     const merged = merge(
-      backup({ exposures: [{ headword: '我', count: 10, firstSeen: 100, lastSeen: 200 }] }),
-      backup({ exposures: [{ headword: '我', count: 5, firstSeen: 50, lastSeen: 300 }] }),
+      backup({
+        exposures: [{ lang: 'zh', headword: '我', count: 10, firstSeen: 100, lastSeen: 200 }],
+      }),
+      backup({
+        exposures: [{ lang: 'zh', headword: '我', count: 5, firstSeen: 50, lastSeen: 300 }],
+      }),
       options,
     )
     expect(merged.exposures[0]).toEqual({
+      lang: 'zh',
       headword: '我',
       count: 15,
       firstSeen: 50,
@@ -309,8 +385,8 @@ describe('merge', () => {
 
   test('sums per-video word counts', () => {
     const merged = merge(
-      backup({ videoWords: [{ videoId: 'BV1', headword: '我', count: 3 }] }),
-      backup({ videoWords: [{ videoId: 'BV1', headword: '我', count: 4 }] }),
+      backup({ videoWords: [{ videoId: 'BV1', lang: 'zh', headword: '我', count: 3 }] }),
+      backup({ videoWords: [{ videoId: 'BV1', lang: 'zh', headword: '我', count: 4 }] }),
       options,
     )
     expect(merged.videoWords[0].count).toBe(7)
@@ -391,7 +467,7 @@ describe('merge', () => {
 
     test('reports only genuine disagreements about what you know', () => {
       expect(conflictsOf(local, incoming)).toEqual([
-        { id: 'w:我', text: '我', local: true, incoming: false },
+        { id: 'w:zh:我', text: '我', local: true, incoming: false },
       ])
     })
 
@@ -426,7 +502,7 @@ describe('merge', () => {
     const source = backup({
       items: [word('学习')],
       reviews: [review('学习', DAY0)],
-      exposures: [{ headword: '我', count: 3, firstSeen: 1, lastSeen: 2 }],
+      exposures: [{ lang: 'zh', headword: '我', count: 3, firstSeen: 1, lastSeen: 2 }],
     })
     const merged = merge(emptyBackup(), source, options)
 

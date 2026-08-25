@@ -10,7 +10,7 @@ import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards/queries'
 import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
-import { rankMap } from '../background/flashcards-store'
+import { rankKey, rankMap } from '../background/flashcards-store'
 import { packFor } from '../lang/packs'
 import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
 import { installedSources } from '../dict/sources'
@@ -71,7 +71,7 @@ export function Review() {
       known: knownSetOf(items),
       // What orders the word pool. Passively collected words have no other
       // claim on your attention than how often you have actually met them.
-      seen: new Map(exposures.map((e) => [e.headword, e.count])),
+      seen: new Map(exposures.map((e) => [rankKey(e.lang, e.headword), e.count])),
     }
   }, [lang])
   const { data, loading, reload } = useAsync(load)
@@ -85,9 +85,15 @@ export function Review() {
     [data],
   )
 
-  const rankOf = useCallback((headword: string) => data?.ranks.get(headword), [data])
+  // Both maps are keyed by headword *within* a language, and the card is what
+  // knows which — see `rankMapIn`. The pairing stays here, where the maps are,
+  // so `queue.ts` remains a pure ordering module.
+  const rankOf = useCallback((item: Item) => data?.ranks.get(rankKey(item.lang, item.text)), [data])
 
-  const seenCount = useCallback((headword: string) => data?.seen.get(headword) ?? 0, [data])
+  const seenCount = useCallback(
+    (item: Item) => data?.seen.get(rankKey(item.lang, item.text)) ?? 0,
+    [data],
+  )
 
   /**
    * Which languages the picker can offer: enabled, and actually installed.

@@ -17,7 +17,7 @@ import type { Cue } from '../../media/cue'
 import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
 import { vocabularyIn } from '../../flashcards/capture'
-import { KNOWN_SET_KEY } from '../../flashcards/known'
+import { KNOWN_SET_KEY, knownWordsFor } from '../../flashcards/known'
 import { packFor } from '../../lang/packs'
 import { dictDb, getLexiconIn } from '../../dict/store'
 import { lineWindow } from '../../llm/context'
@@ -77,9 +77,10 @@ export function trackFor(videoId: string): Promise<Cue[]> {
   return fetching
 }
 
-async function knownSet(): Promise<Set<string>> {
+/** The words already known *in this language* — see `knownMirror`. */
+async function knownSet(lang: string): Promise<Set<string>> {
   const stored = await chrome.storage.local.get(KNOWN_SET_KEY)
-  return new Set((stored[KNOWN_SET_KEY] as string[] | undefined) ?? [])
+  return knownWordsFor(stored[KNOWN_SET_KEY], lang)
 }
 
 export interface ExplainRequest {
@@ -140,7 +141,7 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   try {
     const settings = await loadSettings()
     const lang = resolveStudyLang(settings)
-    const [lexicon, known] = await Promise.all([loadWords(lang), knownSet()])
+    const [lexicon, known] = await Promise.all([loadWords(lang), knownSet(lang)])
     const words = lexicon ? vocabularyIn(lexicon.segment(req.line)) : []
     const defs = await lookupDefs(lang, words, settings.useTraditional)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)

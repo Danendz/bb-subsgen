@@ -2,7 +2,7 @@
 // IndexedDB origin, so every write goes to the worker as a message — the same
 // arrangement as dict-client.ts and for the same reason.
 
-import { KNOWN_SET_KEY } from '../flashcards/known'
+import { KNOWN_SET_KEY, knownWordsFor } from '../flashcards/known'
 import type { Context, ExposureBatch, Signal } from '../flashcards/types'
 import type { FlashcardsMessage } from './messages'
 
@@ -21,8 +21,8 @@ function send(message: FlashcardsMessage): void {
   }
 }
 
-export function discoverWord(headword: string, context?: Context): void {
-  send({ type: 'bb-subsgen:discover-word', headword, context })
+export function discoverWord(lang: string, headword: string, context?: Context): void {
+  send({ type: 'bb-subsgen:discover-word', lang, headword, context })
 }
 
 /**
@@ -34,17 +34,18 @@ export function discoverWord(headword: string, context?: Context): void {
  * transaction — see `captureSentenceIn`.
  */
 export function captureSentence(
+  lang: string,
   text: string,
   context: Context,
   target?: string,
   words?: string[],
   patterns?: string[],
 ): void {
-  send({ type: 'bb-subsgen:capture-sentence', text, context, target, words, patterns })
+  send({ type: 'bb-subsgen:capture-sentence', lang, text, context, target, words, patterns })
 }
 
-export function markKnown(headword: string, known: boolean): void {
-  send({ type: 'bb-subsgen:mark-known', headword, known })
+export function markKnown(lang: string, headword: string, known: boolean): void {
+  send({ type: 'bb-subsgen:mark-known', lang, headword, known })
 }
 
 export function recordSignal(signal: Signal): void {
@@ -70,7 +71,7 @@ export interface ExposureBuffer {
  * is per video: `main.ts` builds one after resolving the videoId and stops it on
  * teardown, so a batch can never be attributed to the video that replaced it.
  */
-export function createExposureBuffer(video?: ExposureBatch['video']): ExposureBuffer {
+export function createExposureBuffer(lang: string, video?: ExposureBatch['video']): ExposureBuffer {
   let words: Record<string, number> = {}
   let lines = 0
   let pending = false
@@ -81,7 +82,7 @@ export function createExposureBuffer(video?: ExposureBatch['video']): ExposureBu
     words = {}
     lines = 0
     pending = false
-    send({ type: 'bb-subsgen:record-exposures', batch })
+    send({ type: 'bb-subsgen:record-exposures', lang, batch })
   }
 
   const timer = setInterval(flush, FLUSH_MS)
@@ -107,20 +108,23 @@ export function createExposureBuffer(video?: ExposureBatch['video']): ExposureBu
 }
 
 /**
- * The set of words the overlay should stop annotating, kept live.
+ * The set of words the overlay should stop annotating in one language, kept live.
  *
  * Mirrored into `chrome.storage.local` by the worker so this is a synchronous
  * read after the first load — hiding pinyin is a per-token decision on every
  * rendered line, and a message round trip per line is not viable.
  */
-export function watchKnownSet(onChange: (known: Set<string>) => void): () => void {
+export function watchKnownSet(lang: string, onChange: (known: Set<string>) => void): () => void {
   void chrome.storage.local.get(KNOWN_SET_KEY).then((stored) => {
-    onChange(new Set((stored[KNOWN_SET_KEY] as string[] | undefined) ?? []))
+    onChange(knownWordsFor(stored[KNOWN_SET_KEY], lang))
   })
 
   const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName !== 'local' || !changes[KNOWN_SET_KEY]) return
-    onChange(new Set((changes[KNOWN_SET_KEY].newValue as string[] | undefined) ?? []))
+    // Lifted here too, not only on the first read: the mirror is `chrome.storage`
+    // and has no upgrade hook, so a change event carrying the old array shape
+    // would otherwise empty the set on the page.
+    onChange(knownWordsFor(changes[KNOWN_SET_KEY].newValue, lang))
   }
   chrome.storage.onChanged.addListener(listener)
   return () => chrome.storage.onChanged.removeListener(listener)

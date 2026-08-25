@@ -53,6 +53,19 @@ export interface Item {
   /** Deterministic — see `wordId` / `sentenceId`. Two browsers derive the same id. */
   id: string
   kind: ItemKind
+  /**
+   * Which language this card is in — `pack.code`.
+   *
+   * Duplicates the segment the id already carries, exactly as `kind` duplicates
+   * the `w:` / `s:` / `g:` prefix. The id is an opaque unique key that nothing
+   * parses; a query that needs to know the language reads this field instead, so
+   * "cards in the language I am studying" never becomes a string split.
+   *
+   * Plain `string`, not a union: `pack.code` and `settings.studyLang` are both
+   * `string`, and a `LangCode` union would have to be kept in step with a
+   * registry that is deliberately open.
+   */
+  lang: string
   /** Headword for a word; the whole line for a sentence; the skeleton for a pattern. */
   text: string
   /**
@@ -154,15 +167,18 @@ export interface Review {
 }
 
 export interface Exposure {
+  /** Keyed `[lang, headword]` since schema 4 — 生 is two words, not one. */
+  lang: string
   headword: string
   count: number
   firstSeen: number
   lastSeen: number
 }
 
-/** Per-video exposure, keyed `[videoId, headword]`. */
+/** Per-video exposure, keyed `[videoId, lang, headword]`. */
 export interface VideoWord {
   videoId: string
+  lang: string
   headword: string
   count: number
 }
@@ -208,6 +224,13 @@ export interface ExposureBatch {
 }
 
 export interface Rank {
+  /**
+   * Which language's list this row came from, keyed `[lang, headword]`.
+   *
+   * Without it an uploaded Japanese frequency list and an uploaded HSK list are
+   * the same table, and 生 gets whichever rank was written last.
+   */
+  lang: string
   headword: string
   /** 1 = most frequent. Absent when no frequency data has been built. */
   rank?: number
@@ -215,8 +238,19 @@ export interface Rank {
   hsk?: number
 }
 
-export function wordId(headword: string): string {
-  return `w:${headword}`
+/**
+ * Ids carry their language, because a headword alone is ambiguous.
+ *
+ * Chinese 生 and Japanese 生 are the same string and different words, with
+ * different readings, different meanings and separate review histories. Before
+ * schema 4 they were one card sharing an exposure count and an HSK rank.
+ *
+ * Nothing in `src/` parses an id — no `startsWith('w:')`, no split — and nothing
+ * should start. The language segment makes the key unique; `Item.lang` is what
+ * anything asking a question about the language reads.
+ */
+export function wordId(lang: string, headword: string): string {
+  return `w:${lang}:${headword}`
 }
 
 /**
@@ -224,8 +258,8 @@ export function wordId(headword: string): string {
  * the same line met twice is one card that accumulates two contexts. Lines are
  * capped at 220 characters upstream (`MAX_SENTENCE_LENGTH`), so keys stay bounded.
  */
-export function sentenceId(text: string): string {
-  return `s:${text.trim()}`
+export function sentenceId(lang: string, text: string): string {
+  return `s:${lang}:${text.trim()}`
 }
 
 /**
@@ -234,6 +268,21 @@ export function sentenceId(text: string): string {
  * quiz with. This is why `Pattern.id` must never move: it carries the card's
  * whole review history.
  */
-export function grammarId(patternId: string): string {
-  return `g:${patternId}`
+export function grammarId(lang: string, patternId: string): string {
+  return `g:${lang}:${patternId}`
+}
+
+/**
+ * Lifts an id written before ids carried a language.
+ *
+ * The prefix and its separator are already there, and the language segment goes
+ * in the same place for all three kinds — so this inserts rather than parses.
+ * Splitting on `:` would be wrong for a sentence id, whose text may contain one.
+ *
+ * Used by the schema-4 database migration and by the version-3 backup lift, which
+ * have to agree exactly: the review log points at cards by id, and an id derived
+ * two different ways is a card whose history has been orphaned.
+ */
+export function namespaceLegacyId(lang: string, id: string): string {
+  return `${id.slice(0, 2)}${lang}:${id.slice(2)}`
 }

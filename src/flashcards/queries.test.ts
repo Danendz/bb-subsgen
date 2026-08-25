@@ -5,6 +5,7 @@ import type { Item, Rank } from './types'
 
 function item(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item {
   return {
+    lang: 'zh',
     state: 'new',
     interval: 0,
     ease: 2.5,
@@ -18,10 +19,10 @@ function item(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item
 }
 
 const word = (text: string, extra: Partial<Item> = {}) =>
-  item({ id: `w:${text}`, kind: 'word', text, ...extra })
+  item({ id: `w:zh:${text}`, kind: 'word', text, ...extra })
 
 const sentence = (text: string, extra: Partial<Item> = {}) =>
-  item({ id: `s:${text}`, kind: 'sentence', text, state: 'pool', ...extra })
+  item({ id: `s:zh:${text}`, kind: 'sentence', text, state: 'pool', ...extra })
 
 describe('knownSetOf', () => {
   test('collects declared and matured words, and nothing else', () => {
@@ -80,11 +81,11 @@ describe('deckCounts', () => {
 
 describe('hskProgress', () => {
   const ranks: Rank[] = [
-    { headword: '我', hsk: 1, rank: 1 },
-    { headword: '你', hsk: 1, rank: 2 },
-    { headword: '学习', hsk: 2, rank: 412 },
+    { lang: 'zh', headword: '我', hsk: 1, rank: 1 },
+    { lang: 'zh', headword: '你', hsk: 1, rank: 2 },
+    { lang: 'zh', headword: '学习', hsk: 2, rank: 412 },
     // No HSK level — carries a frequency rank only, as most words do.
-    { headword: '憔悴', rank: 20000 },
+    { lang: 'zh', headword: '憔悴', rank: 20000 },
   ]
 
   test('reports known against the level total, ordered by level', () => {
@@ -103,13 +104,14 @@ describe('hskProgress', () => {
 
   test('is empty when no HSK dataset was built in', () => {
     // The app renders nothing at all rather than a chart of zeroes.
-    expect(hskProgress([{ headword: '我', rank: 1 }], new Set())).toEqual([])
+    expect(hskProgress([{ lang: 'zh', headword: '我', rank: 1 }], new Set())).toEqual([])
     expect(hskProgress([], new Set())).toEqual([])
   })
 })
 
 describe('deckCounts with grammar', () => {
   const item = (over: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text'>): Item => ({
+    lang: 'zh',
     state: 'pool',
     interval: 0,
     ease: 2.5,

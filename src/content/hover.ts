@@ -147,7 +147,7 @@ export function attachHover({
 
     // The popup opening is the interaction that counts as discovery: it follows
     // a deliberate dwell, not a pointer crossing the line on its way elsewhere.
-    discoverWord(headword, currentContext() ?? undefined)
+    discoverWord(pack.code, headword, currentContext() ?? undefined)
     onLookup(headword)
     openedAt = Date.now()
 
@@ -163,7 +163,7 @@ export function attachHover({
       {
         pack,
         toneColors: showToneColors(),
-        onMarkKnown: (next) => markKnown(headword, next),
+        onMarkKnown: (next) => markKnown(pack.code, headword, next),
         ...(openExplain && canExplain?.() !== false
           ? { onExplain: () => void explain(headword) }
           : {}),

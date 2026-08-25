@@ -286,7 +286,7 @@ async function main() {
   // Mirrored from the worker; drives what the overlay stops annotating and
   // which lines are still worth capturing.
   let known = new Set<string>()
-  watchKnownSet((next) => {
+  watchKnownSet(lang, (next) => {
     known = next
   })
 
@@ -742,7 +742,11 @@ async function main() {
       let engagedMs = 0
       let captured = false
 
-      const buffer = createExposureBuffer({ videoId, title: document.title, url: location.href })
+      const buffer = createExposureBuffer(lang, {
+        videoId,
+        title: document.title,
+        url: location.href,
+      })
 
       /**
        * Where a word or line was met, frozen for the card.
@@ -939,6 +943,7 @@ async function main() {
         const { text } = cues[lastIndex]
         if (!isCapturableText(text, pack) || !shouldCaptureLine(seen, known)) return
         captureSentence(
+          lang,
           text,
           contextFor(lastIndex),
           undefined,
@@ -965,7 +970,7 @@ async function main() {
         if (captured || lastIndex < 0) return
         const { text } = cues[lastIndex]
         if (!isCapturableText(text, pack)) return
-        captureSentence(text, contextFor(lastIndex), undefined, [], patternsInLine())
+        captureSentence(lang, text, contextFor(lastIndex), undefined, [], patternsInLine())
         captured = true
       }
 

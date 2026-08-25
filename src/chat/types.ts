@@ -51,7 +51,15 @@ export interface Chat {
    * reopening an old chat says which model actually produced it.
    */
   model: string
-  /** The flashcard it was opened from, when it was opened from one. */
+  /**
+   * The flashcard it was opened from, when it was opened from one.
+   *
+   * A cross-database foreign key, and schema 4 of the flashcards database
+   * renamed every card — so any id stored before then points at nothing. Left
+   * that way on purpose: `by-item` (`chat/db.ts`) is never queried and nothing
+   * reads this back, so migrating it would be work to keep a value inert in a
+   * new form. Anything that starts reading it has to deal with the gap.
+   */
   itemId?: string
   context?: ChatContext
   createdAt: number

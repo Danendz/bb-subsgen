@@ -230,7 +230,7 @@ export function attachReader({
     // actually rested on.
     discoveryTimer = setTimeout(() => {
       discoveryTimer = null
-      discoverWord(match.text, pageContext(sentence))
+      discoverWord(pack.code, match.text, pageContext(sentence))
     }, DISCOVERY_DWELL_MS)
 
     const card = buildCard(
@@ -247,7 +247,7 @@ export function attachReader({
       {
         pack,
         toneColors: showToneColors,
-        onMarkKnown: (next) => markKnown(match.text, next),
+        onMarkKnown: (next) => markKnown(pack.code, match.text, next),
       },
     )
 
@@ -497,12 +497,13 @@ export function attachReader({
 
     const context = pageContext(target.text)
     if (target.kind === 'word') {
-      discoverWord(target.text, context)
+      discoverWord(pack.code, target.text, context)
       return
     }
 
     if (context) {
       captureSentence(
+        pack.code,
         target.text,
         context,
         undefined,

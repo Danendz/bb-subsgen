@@ -98,13 +98,13 @@ async function getDictStatus(): Promise<DictStatus[]> {
 function handleFlashcards(msg: FlashcardsMessage): Promise<void> {
   switch (msg.type) {
     case 'bb-subsgen:record-exposures':
-      return recordExposures(msg.batch)
+      return recordExposures(msg.lang, msg.batch)
     case 'bb-subsgen:discover-word':
-      return discoverWord(msg.headword, msg.context)
+      return discoverWord(msg.lang, msg.headword, msg.context)
     case 'bb-subsgen:capture-sentence':
-      return captureSentence(msg.text, msg.context, msg.target, msg.words, msg.patterns)
+      return captureSentence(msg.lang, msg.text, msg.context, msg.target, msg.words, msg.patterns)
     case 'bb-subsgen:mark-known':
-      return markKnown(msg.headword, msg.known)
+      return markKnown(msg.lang, msg.headword, msg.known)
     case 'bb-subsgen:record-signal':
       return recordSignal(msg.signal)
   }

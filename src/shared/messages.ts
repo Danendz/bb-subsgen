@@ -133,12 +133,21 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
  * are all fire-and-forget writes with the same handling, and the worker's
  * dispatch reads better as a single switch. Nothing here expects a response —
  * a dropped capture is not worth blocking a hover on.
+ *
+ * The four that write a headword carry a **required** `lang`. Since schema 4 a
+ * card is keyed `w:zh:生` and the headword stores key `[lang, headword]`, so
+ * there is no row to write without one — Chinese 生 and Japanese 生 are two
+ * cards. Required rather than optional-defaulting-to-`'zh'`, because a default
+ * is a silent mis-file the moment a second pack ships, and every sender already
+ * holds the language: the content script resolved it at startup, and the reader
+ * holds a `pack`.
  */
 export type FlashcardsMessage =
-  | { type: 'bb-subsgen:record-exposures'; batch: ExposureBatch }
-  | { type: 'bb-subsgen:discover-word'; headword: string; context?: Context }
+  | { type: 'bb-subsgen:record-exposures'; lang: string; batch: ExposureBatch }
+  | { type: 'bb-subsgen:discover-word'; lang: string; headword: string; context?: Context }
   | {
       type: 'bb-subsgen:capture-sentence'
+      lang: string
       text: string
       context: Context
       target?: string
@@ -161,7 +170,7 @@ export type FlashcardsMessage =
        */
       patterns?: string[]
     }
-  | { type: 'bb-subsgen:mark-known'; headword: string; known: boolean }
+  | { type: 'bb-subsgen:mark-known'; lang: string; headword: string; known: boolean }
   | { type: 'bb-subsgen:record-signal'; signal: Signal }
 
 const FLASHCARDS_TYPES = new Set<string>([

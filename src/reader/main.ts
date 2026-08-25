@@ -37,13 +37,12 @@ async function main(): Promise<void> {
   let translator: SentenceTranslator | null = null
   let detach: (() => void) | null = null
 
-  // Subscribed once for the page's lifetime rather than per attach: the set
-  // changes rarely, and re-reading it every time the reader is toggled on for
-  // an origin would be work for nothing.
+  // Per attach rather than once for the page's lifetime, since #12: the mirror
+  // is keyed by language, and `apply()` can restart the reader in a different
+  // one. A subscription that outlived the attach would keep handing the new
+  // language the old language's known words.
   let known = new Set<string>()
-  watchKnownSet((next) => {
-    known = next
-  })
+  let stopKnown: (() => void) | null = null
 
   // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
   // the modifier down, and never on a page you just read past. Dropped by
@@ -56,10 +55,13 @@ async function main(): Promise<void> {
     detach?.()
     translator?.destroy()
     mount?.destroy()
+    stopKnown?.()
     detach = null
     translator = null
     mount = null
     words = null
+    stopKnown = null
+    known = new Set()
     activeLang = null
   }
 
@@ -89,6 +91,10 @@ async function main(): Promise<void> {
 
     const getWords = () => (words ??= loadLexicon(lang))
     activeLang = lang
+
+    stopKnown = watchKnownSet(lang, (next) => {
+      known = next
+    })
 
     mount = mountReader()
     translator = createSentenceTranslator({ lang: () => settings.translationLang })
