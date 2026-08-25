@@ -178,3 +178,44 @@ describe('dimming function words', () => {
     expect(el.classList.contains('function')).toBe(false)
   })
 })
+
+describe('positioning a reading over its characters', () => {
+  const style = { showPinyin: true, showToneColors: true }
+
+  test('splits a word its reading aligns to into one column per character', () => {
+    const el = buildWordElement(
+      { text: '学习', reading: parts('学习', 'xue2 xi2'), kind: 'content' },
+      style,
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => n.textContent)).toEqual(['学', '习'])
+    expect([...el.querySelectorAll('.pinyin')].map((n) => n.textContent)).toEqual(['xué', 'xí'])
+  })
+
+  // 不入虎穴，焉得虎子 is nine code points and eight syllables — the comma is
+  // written and not said. Unalignable falls back to the flat run drawn before #22.
+  test('draws a word it cannot align as one run, keeping every character', () => {
+    const el = buildWordElement(
+      {
+        text: '不入虎穴，焉得虎子',
+        reading: parts('不入虎穴，焉得虎子', 'bu4 ru4 hu3 xue2 yan1 de2 hu3 zi3'),
+        kind: 'content',
+      },
+      style,
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => n.textContent)).toEqual([
+      '不入虎穴，焉得虎子',
+    ])
+    expect(el.querySelectorAll('.pinyin')).toHaveLength(1)
+  })
+
+  // Nothing renders row 1 here, so the characters must not be auto-placed into it.
+  test('keeps characters on the lower row when no reading is drawn above them', () => {
+    const el = buildWordElement(
+      { text: '学习', reading: parts('学习', 'xue2 xi2'), kind: 'content' },
+      { showPinyin: false, showToneColors: false },
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => (n as HTMLElement).style.gridRow)).toEqual(
+      ['2', '2'],
+    )
+  })
+})

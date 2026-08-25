@@ -2,7 +2,7 @@
 // reader. Both mount it into a shadow root of their own, so this module owns
 // the markup and the styles but never the positioning.
 
-import { readingFromText, readingText, toneColor } from '../lang/reading'
+import { readingColumns, readingFromText, readingText, toneColor } from '../lang/reading'
 import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
 import type { Token } from '../lang/pack'
 import type { Entry } from '../lang/pack'
@@ -18,11 +18,19 @@ export const WORD_STYLE = `
   align-items: flex-end;
 }
 
+/* A grid, not nested flex columns: a word's columns are independent in width
+   and not in baseline. 食べる carries furigana over 食 and nothing over べる,
+   so as separate flex columns the two are different heights and the characters
+   stop sitting on one line. A grid row shares its height across every column by
+   construction. A column with a reading wider than its characters widens — the
+   alternatives were shrinking 承/うけたまわ to unreadable, or letting it overflow
+   into the word beside it. */
 .word {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: auto auto;
+  row-gap: 3px;
+  justify-items: center;
   padding: 3px 5px;
   border-radius: 7px;
   pointer-events: auto;
@@ -39,6 +47,8 @@ export const WORD_STYLE = `
   white-space: nowrap;
   color: #c3c8d0;
 }
+/* Only ever fires inside a column that holds a whole unaligned reading, which
+   is the one place the syllables are not already spaced by their characters. */
 .pinyin .syl + .syl { margin-left: 0.25em; }
 
 /* Withheld, not removed — the row keeps its height so a line of mixed known
@@ -396,14 +406,18 @@ export function buildReadingElement(
 ): HTMLElement {
   const el = document.createElement('span')
   el.className = className
-  for (const part of parts) {
-    const sylEl = document.createElement('span')
-    sylEl.className = 'syl'
-    sylEl.textContent = part.text
-    if (toneColors && part.tone !== null) sylEl.style.color = toneColor(part.tone)
-    el.appendChild(sylEl)
-  }
+  for (const part of parts) el.appendChild(buildSyllableElement(part, toneColors))
   return el
+}
+
+/** One syllable, coloured. Extracted so the tone rule lives once — the card's
+ *  flat runs and the line's columns both draw a syllable this way. */
+function buildSyllableElement(part: ReadingPart, toneColors: boolean): HTMLElement {
+  const sylEl = document.createElement('span')
+  sylEl.className = 'syl'
+  sylEl.textContent = part.text
+  if (toneColors && part.tone !== null) sylEl.style.color = toneColor(part.tone)
+  return sylEl
 }
 
 /** The subset of settings that word rendering depends on. */
@@ -434,16 +448,30 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   // split: whoever reads it hands it straight to `pack.rank`.
   if (token.reading?.length) word.dataset.reading = readingText(token.reading)
 
-  if (token.reading !== null && options.showPinyin) {
-    const reading = buildReadingElement(token.reading, 'pinyin', options.showToneColors)
-    if (options.hidePinyin) reading.classList.add('withheld')
-    word.appendChild(reading)
-  }
+  // One column per stretch of characters the reading is known to sit over, so
+  // furigana lands on the kanji it reads rather than centred over the word. A
+  // reading its producer could not align comes back as a single column, which is
+  // the flat run every Chinese line drew before #22 — so there is no branch here.
+  const showReading = token.reading !== null && options.showPinyin
+  for (const column of readingColumns(token.text, token.reading)) {
+    if (showReading) {
+      const reading = buildReadingElement(column.parts, 'pinyin', options.showToneColors)
+      // Emitted even when empty: a kana column with no furigana still has to
+      // hold its share of the upper row, or the withheld/hover behaviour and the
+      // row height stop being uniform across a mixed line.
+      reading.style.gridRow = '1'
+      if (options.hidePinyin) reading.classList.add('withheld')
+      word.appendChild(reading)
+    }
 
-  const hanziEl = document.createElement('span')
-  hanziEl.className = 'hanzi'
-  hanziEl.textContent = token.text
-  word.appendChild(hanziEl)
+    const hanziEl = document.createElement('span')
+    hanziEl.className = 'hanzi'
+    hanziEl.textContent = column.base
+    // Explicit, because column-flow auto-placement would otherwise fill row 1
+    // with characters wherever a reading is not being drawn.
+    hanziEl.style.gridRow = '2'
+    word.appendChild(hanziEl)
+  }
 
   return word
 }
