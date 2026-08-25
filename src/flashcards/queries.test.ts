@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { deckCounts, hskProgress, knownSetOf } from './queries'
+import { deckCounts, hskProgress, knownSetOf, listItems, listRanks, videoWords } from './queries'
+import { openFlashcardsDb, STORES } from './db'
+import { done } from '../shared/idb'
 import { MATURE_INTERVAL_DAYS } from './known'
 import type { Item, Rank } from './types'
 
@@ -143,5 +145,69 @@ describe('deckCounts with grammar', () => {
     ])
 
     expect(counts.pool).toBe(2)
+  })
+})
+
+/**
+ * A deck holding both languages' 生 — the collision the language filter exists
+ * for. The Chinese card is known and the Japanese one is new, so a read that
+ * merges them is visible as a wrong answer and not just a wrong count.
+ */
+async function seedBothLanguages(name: string): Promise<IDBDatabase> {
+  const db = await openFlashcardsDb(name)
+
+  const tx = db.transaction([STORES.items, STORES.ranks, STORES.videoWords], 'readwrite')
+  const items = tx.objectStore(STORES.items)
+  items.put(item({ id: 'w:zh:生', kind: 'word', text: '生', state: 'known' }))
+  items.put(item({ id: 'w:ja:生', kind: 'word', text: '生', lang: 'ja' }))
+
+  const ranks = tx.objectStore(STORES.ranks)
+  ranks.put({ lang: 'zh', headword: '生', rank: 40, hsk: 1 } satisfies Rank)
+  ranks.put({ lang: 'zh', headword: '學', rank: 90, hsk: 1 } satisfies Rank)
+  ranks.put({ lang: 'ja', headword: '生', rank: 12, hsk: 1 } satisfies Rank)
+
+  const videoWords = tx.objectStore(STORES.videoWords)
+  videoWords.put({ videoId: 'BV1', lang: 'zh', headword: '生', count: 3 })
+  videoWords.put({ videoId: 'BV1', lang: 'ja', headword: '生', count: 5 })
+  videoWords.put({ videoId: 'BV2', lang: 'ja', headword: '猫', count: 2 })
+
+  await done(tx)
+  return db
+}
+
+describe('listItems', () => {
+  test('a Japanese 生 is not a Chinese card, however the deck was collected', async () => {
+    const db = await seedBothLanguages('lang-filter-items')
+
+    expect((await listItems(db, 'ja')).map((i) => i.id)).toEqual(['w:ja:生'])
+    // The known set is what the overlay stops annotating on. Reading the merged
+    // deck would make 生 known in Japanese because it is known in Chinese.
+    expect([...knownSetOf(await listItems(db, 'ja'))]).toEqual([])
+    expect([...knownSetOf(await listItems(db, 'zh'))]).toEqual(['生'])
+  })
+})
+
+describe('listRanks', () => {
+  test("counts one language's frequency list, not both stacked into one chart", async () => {
+    const db = await seedBothLanguages('lang-filter-ranks')
+
+    const zh = await listRanks(db, 'zh')
+    expect(zh.map((r) => r.headword).sort()).toEqual(['學', '生'])
+    expect(hskProgress(zh, knownSetOf(await listItems(db, 'zh')))).toEqual([
+      { level: 1, known: 1, total: 2 },
+    ])
+  })
+})
+
+describe('videoWords', () => {
+  test('scores a video against the words it was actually watched in', async () => {
+    const db = await seedBothLanguages('lang-filter-video-words')
+
+    expect(await videoWords(db, 'BV1', 'ja')).toEqual([
+      { videoId: 'BV1', lang: 'ja', headword: '生', count: 5 },
+    ])
+    // A video watched only in the other language reads as no words at all,
+    // which is what lets the Videos list leave it out.
+    expect(await videoWords(db, 'BV2', 'zh')).toEqual([])
   })
 })

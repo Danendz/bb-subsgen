@@ -6,7 +6,7 @@ import { lookupDefs } from '../shared/dict-client'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { packFor } from '../lang/packs'
 import { Pinyin } from './pinyin'
-import type { VideoWord } from '../flashcards/types'
+import type { Video, VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { canSpeak, speak } from '../shared/speak'
 
@@ -46,13 +46,23 @@ function CoverageBar({ coverage }: { coverage: Coverage }) {
 function VideoList() {
   const load = useCallback(async () => {
     const db = await flashcardsDb()
-    const [items, videos] = await Promise.all([listItems(db), listVideos(db)])
+    const lang = resolveStudyLang(await loadSettings())
+    const [items, videos] = await Promise.all([listItems(db, lang), listVideos(db)])
     const known = knownSetOf(items)
     const coverage = new Map<string, Coverage>()
+    // A video is a place you watched, not a language, so which videos belong to
+    // this list is derived from the words captured from them — a genuinely
+    // bilingual one appears under both, scored correctly in each. Listing a
+    // video with nothing captured in this language would render it as "0% of
+    // what is said — you know 0 of 0 distinct words here."
+    const shown: Video[] = []
     for (const video of videos) {
-      coverage.set(video.videoId, coverageOf(await videoWords(db, video.videoId), known))
+      const words = await videoWords(db, video.videoId, lang)
+      if (!words.length) continue
+      coverage.set(video.videoId, coverageOf(words, known))
+      shown.push(video)
     }
-    return { videos, coverage }
+    return { videos: shown, coverage }
   }, [])
   const { data, loading } = useAsync(load)
 
@@ -100,9 +110,9 @@ function VideoDetail({ videoId }: { videoId: string }) {
     const db = await flashcardsDb()
     const lang = resolveStudyLang(await loadSettings())
     const [items, videos, words] = await Promise.all([
-      listItems(db),
+      listItems(db, lang),
       listVideos(db),
-      videoWords(db, videoId),
+      videoWords(db, videoId, lang),
     ])
     return {
       video: videos.find((v) => v.videoId === videoId) ?? null,

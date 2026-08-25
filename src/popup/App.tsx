@@ -41,6 +41,7 @@ import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import { dictStatus } from '../shared/dict-client'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
 
 type TabStatus = Status | 'no-video'
 
@@ -79,7 +80,10 @@ async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
  */
 async function coverageFor(videoId: string): Promise<{ tokens: number; types: string } | null> {
   const db = await flashcardsDb()
-  const [items, counts] = await Promise.all([listItems(db), videoWords(db, videoId)])
+  const lang = resolveStudyLang(await loadSettings())
+  const [items, counts] = await Promise.all([listItems(db, lang), videoWords(db, videoId, lang)])
+  // Also how a video watched in another language reads as no coverage at all,
+  // rather than as 0%.
   if (!counts.length) return null
 
   const coverage = coverageOf(counts, knownSetOf(items))

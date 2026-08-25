@@ -54,7 +54,7 @@ export function Review() {
     const dict = await dictDb()
     const db = await flashcardsDb()
     const [items, words, installed, ranks, streak, exposures] = await Promise.all([
-      listItems(db),
+      listItems(db, lang),
       loadWords(lang),
       getAllMeta(dict),
       rankMap(),
