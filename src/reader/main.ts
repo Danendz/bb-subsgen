@@ -13,8 +13,8 @@ import type { Lexicon } from '../lang/pack'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { packFor } from '../lang/packs'
 import { loadLexicon, lookupDefs } from '../shared/dict-client'
-import { loadSettings, onSettingsChanged, resolveStudyLang } from '../shared/settings'
-import { readerEnabledFor } from '../shared/reader-sites'
+import { loadSettings, onSettingsChanged } from '../shared/settings'
+import { readerEnabledFor, resolveReaderLang } from '../shared/reader-sites'
 import { watchKnownSet } from '../shared/flashcards-client'
 
 declare global {
@@ -37,25 +37,6 @@ async function main(): Promise<void> {
   let translator: SentenceTranslator | null = null
   let detach: (() => void) | null = null
 
-  // Fixed for as long as the script is loaded, for the same reason the lexicon
-  // below is memoized: a mid-page change would leave the segmenter on one
-  // language and the definitions on another.
-  const lang = resolveStudyLang(settings)
-
-  // No pack means no segmenter and no script test, which is every question the
-  // reader would ask — so it never attaches at all, rather than attaching and
-  // finding nothing anywhere.
-  const pack = packFor(lang)
-  if (!pack) {
-    console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
-    return
-  }
-
-  // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
-  // the modifier down, and never on a page you just read past.
-  let words: Promise<Lexicon | null> | null = null
-  const getWords = () => (words ??= loadLexicon(lang))
-
   // Subscribed once for the page's lifetime rather than per attach: the set
   // changes rarely, and re-reading it every time the reader is toggled on for
   // an origin would be work for nothing.
@@ -64,6 +45,13 @@ async function main(): Promise<void> {
     known = next
   })
 
+  // Lazy and memoized: 4.5MB is only asked for the first time you actually hold
+  // the modifier down, and never on a page you just read past. Dropped by
+  // `stop()` because it belongs to a language, not to the page.
+  let words: Promise<Lexicon | null> | null = null
+  /** The language the attached reader was built for, so `apply` can spot a change. */
+  let activeLang: string | null = null
+
   const stop = () => {
     detach?.()
     translator?.destroy()
@@ -71,10 +59,37 @@ async function main(): Promise<void> {
     detach = null
     translator = null
     mount = null
+    words = null
+    activeLang = null
   }
 
+  /**
+   * The language, the pack and the lexicon are resolved here rather than once
+   * for the page, because `resolveReaderLang` can now answer differently for
+   * the same page — an override written from another surface arrives through
+   * the `onSettingsChanged` subscription below.
+   *
+   * `apply()` already tears the reader down and builds it again on every
+   * settings change, so all three move in one step and the segmenter can never
+   * end up on a different language from the definitions.
+   */
   const start = () => {
     if (detach) return
+
+    const lang = resolveReaderLang(settings, location.origin)
+
+    // No pack means no segmenter and no script test, which is every question the
+    // reader would ask — so it never attaches at all, rather than attaching and
+    // finding nothing anywhere.
+    const pack = packFor(lang)
+    if (!pack) {
+      console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
+      return
+    }
+
+    const getWords = () => (words ??= loadLexicon(lang))
+    activeLang = lang
+
     mount = mountReader()
     translator = createSentenceTranslator({ lang: () => settings.translationLang })
     // Torn down by `detach()` rather than here, so the page gets its own
@@ -92,12 +107,19 @@ async function main(): Promise<void> {
       settings: () => settings,
       known: () => known,
     })
-    console.log('[bb-subsgen] reader active on', location.origin)
+    console.log('[bb-subsgen] reader active on', location.origin, 'in', lang)
   }
 
   const apply = () => {
-    if (readerEnabledFor(settings, location.origin)) start()
-    else stop()
+    if (!readerEnabledFor(settings, location.origin)) {
+      stop()
+      return
+    }
+    // `start()` is a no-op while attached, so a language that changed under a
+    // running reader has to be torn down first — otherwise the segmenter stays
+    // on the old language while the definitions follow the new one.
+    if (detach && resolveReaderLang(settings, location.origin) !== activeLang) stop()
+    start()
   }
 
   apply()

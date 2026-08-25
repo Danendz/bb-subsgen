@@ -14,9 +14,10 @@ import { rankMap } from '../background/flashcards-store'
 import { packFor } from '../lang/packs'
 import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
 import { installedSources } from '../dict/sources'
-import { loadSettings, resolveStudyLang, saveSettings } from '../shared/settings'
+import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
+import { useSettings } from '../settings/useSettings'
 import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
@@ -36,17 +37,20 @@ async function loadWords(lang: string) {
 }
 
 export function Review() {
-  const [override, setOverride] = useState<Partial<SessionSetup>>({})
+  // Through the hook rather than `loadSettings`/`saveSettings`: the panel used
+  // to lay a local `override` over a loaded snapshot to answer immediately, and
+  // that is `useSettings`' pending ref written a second time.
+  const { settings, loaded, update } = useSettings()
 
-  // The language this visit is working in, if it was changed here. Held out of
-  // `override` for the load's dependency list: everything else in the setup
-  // only shapes a queue built from data already in hand, but this decides which
-  // lexicon is read, so changing it has to re-run the read.
-  const chosenLang = override.studyLang ?? ''
+  // The one setting the load depends on. Everything else in the setup only
+  // shapes a queue built from data already in hand, but this decides which
+  // lexicon `loadWords` reads, so changing it has to re-run the read.
+  const lang = loaded ? resolveStudyLang(settings) : ''
 
   const load = useCallback(async () => {
-    const settings = await loadSettings()
-    const lang = chosenLang || resolveStudyLang(settings)
+    // Nothing to read the deck against until the settings land: reading it on
+    // the defaults would load one lexicon and then immediately load another.
+    if (!lang) return null
     const dict = await dictDb()
     const db = await flashcardsDb()
     const [items, words, installed, ranks, streak, exposures] = await Promise.all([
@@ -60,9 +64,8 @@ export function Review() {
     return {
       items,
       words,
-      settings,
       lang,
-      languages: installedSources(settings.enabledLanguages, new Set(Object.keys(installed))),
+      installedLangs: new Set(Object.keys(installed)),
       ranks,
       streak,
       known: knownSetOf(items),
@@ -70,7 +73,7 @@ export function Review() {
       // claim on your attention than how often you have actually met them.
       seen: new Map(exposures.map((e) => [e.headword, e.count])),
     }
-  }, [chosenLang])
+  }, [lang])
   const { data, loading, reload } = useAsync(load)
 
   const [session, setSession] = useState<QueueSession | null>(null)
@@ -86,9 +89,22 @@ export function Review() {
 
   const seenCount = useCallback((headword: string) => data?.seen.get(headword) ?? 0, [data])
 
-  // The saved setup, with anything changed this visit laid over the top. Kept
-  // local as well as saved so the panel responds immediately rather than after
-  // a round trip to chrome.storage.
+  /**
+   * Which languages the picker can offer: enabled, and actually installed.
+   *
+   * Out of `load` rather than in it, because it is the only thing there that
+   * reads a setting the load does not otherwise depend on — putting
+   * `enabledLanguages` in the dependency list would re-read the whole deck on
+   * every storage echo.
+   */
+  const languages = useMemo(
+    () => (data ? installedSources(settings.enabledLanguages, data.installedLangs) : []),
+    [data, settings.enabledLanguages],
+  )
+
+  // The saved setup. No local copy laid over the top: `update` applies the
+  // change to the hook's state before the write goes out, so the panel already
+  // answers immediately.
   const setup: SessionSetup | null = useMemo(
     () =>
       data
@@ -97,13 +113,12 @@ export function Review() {
             // installed nothing has ever written `studyLang`, and the control
             // has to show that language as the one in use.
             studyLang: data.lang,
-            studyMode: data.settings.studyMode,
-            studyInclude: data.settings.studyInclude,
-            studySessionSize: data.settings.studySessionSize,
-            ...override,
+            studyMode: settings.studyMode,
+            studyInclude: settings.studyInclude,
+            studySessionSize: settings.studySessionSize,
           }
         : null,
-    [data, override],
+    [data, settings.studyMode, settings.studyInclude, settings.studySessionSize],
   )
 
   const counts = useMemo(
@@ -112,14 +127,14 @@ export function Review() {
         ? queueCounts({
             items: data.items,
             now: Date.now(),
-            newSentencesPerDay: data.settings.newSentencesPerDay,
+            newSentencesPerDay: settings.newSentencesPerDay,
             include: setup.studyInclude,
             unknownCount,
             rankOf,
             seenCount,
           })
         : null,
-    [data, setup, unknownCount, rankOf, seenCount],
+    [data, setup, settings.newSentencesPerDay, unknownCount, rankOf, seenCount],
   )
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
@@ -130,17 +145,12 @@ export function Review() {
   // pretending the screen is still loading.
   if (!data.words) return <p class="muted">No language pack for {data.lang}.</p>
 
-  const change = (patch: Partial<SessionSetup>) => {
-    setOverride((current) => ({ ...current, ...patch }))
-    void saveSettings(patch)
-  }
-
   const start = () => {
     setSession(
       buildSession({
         items: data.items,
         now: Date.now(),
-        newSentencesPerDay: data.settings.newSentencesPerDay,
+        newSentencesPerDay: settings.newSentencesPerDay,
         include: setup.studyInclude,
         limit: setup.studySessionSize,
         unknownCount,
@@ -226,7 +236,7 @@ export function Review() {
         </div>
 
         {editing && (
-          <Setup setup={setup} canSpeak={canSpeak()} languages={data.languages} onChange={change} />
+          <Setup setup={setup} canSpeak={canSpeak()} languages={languages} onChange={update} />
         )}
       </div>
 

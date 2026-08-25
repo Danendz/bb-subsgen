@@ -32,6 +32,21 @@ export const READER_MODIFIERS: ReadonlyArray<{ code: ReaderModifier; label: stri
   { code: 'ctrl', label: 'Ctrl' },
 ]
 
+/**
+ * A site the page reader is switched on for.
+ *
+ * `lang` is absent until something declares one, and an absent code means
+ * "resolve it per page" rather than "Chinese" — a site opted into before the
+ * code existed has made no decision about its language, and recording one on
+ * its behalf would be a guess that outlives the moment a second pack makes it
+ * wrong.
+ */
+export interface ReaderOrigin {
+  origin: string
+  /** Absent = resolve per page. Written only by an explicit override. */
+  lang?: string
+}
+
 export interface Settings {
   enabled: boolean
   /**
@@ -59,14 +74,19 @@ export interface Settings {
   translationLayout: TranslationLayout
   translationLang: TranslationLang
   /**
-   * Origins the page reader runs on, e.g. `https://zhihu.com`.
+   * Sites the page reader runs on, each with the language it is read in.
    *
    * Chrome's granted host permissions are the real gate — the reader can't be
    * injected without one — but this is what the popup renders and what the
    * content script checks, so revoking permission and switching the toggle off
    * stay in step.
+   *
+   * A plain `string[]` until #11. Both read paths run it through `normalise`,
+   * because a stored list written before the change is still a list of strings
+   * and the shallow merge with `DEFAULT_SETTINGS` would hand it through typed
+   * as the new shape.
    */
-  readerOrigins: string[]
+  readerOrigins: ReaderOrigin[]
   readerModifier: ReaderModifier
   readerSentenceTranslation: boolean
   /**
@@ -298,10 +318,40 @@ export function clampSpeechRate(rate: number): number {
 
 const STORAGE_KEY = 'bbSubsgenSettings'
 
+/**
+ * A stored blob as the current `Settings`, migrating what has changed shape.
+ *
+ * Both read paths go through this rather than only `loadSettings`: they each do
+ * their own `{ ...DEFAULT_SETTINGS, ...saved }`, and a shallow merge hands an
+ * old `readerOrigins: string[]` straight through typed as the new shape — a lie
+ * the compiler cannot catch. Missing the echo path would silently un-migrate
+ * the list the moment anything else wrote a setting.
+ */
+function normalise(saved: Partial<Settings> | undefined): Settings {
+  const merged = { ...DEFAULT_SETTINGS, ...saved }
+  return { ...merged, readerOrigins: readerOriginsFrom(merged.readerOrigins) }
+}
+
+/** `['https://a']` and `[{ origin: 'https://a' }]` both read as the latter. */
+function readerOriginsFrom(stored: unknown): ReaderOrigin[] {
+  if (!Array.isArray(stored)) return []
+  const origins: ReaderOrigin[] = []
+  for (const entry of stored) {
+    if (typeof entry === 'string') {
+      if (entry) origins.push({ origin: entry })
+      continue
+    }
+    if (typeof entry !== 'object' || entry === null) continue
+    const { origin, lang } = entry as { origin?: unknown; lang?: unknown }
+    if (typeof origin !== 'string' || !origin) continue
+    origins.push(typeof lang === 'string' && lang ? { origin, lang } : { origin })
+  }
+  return origins
+}
+
 export async function loadSettings(): Promise<Settings> {
   const stored = await chrome.storage.sync.get(STORAGE_KEY)
-  const saved = stored[STORAGE_KEY] as Partial<Settings> | undefined
-  return { ...DEFAULT_SETTINGS, ...saved }
+  return normalise(stored[STORAGE_KEY] as Partial<Settings> | undefined)
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
@@ -313,7 +363,7 @@ export function onSettingsChanged(callback: (settings: Settings) => void): () =>
   const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName !== 'sync' || !changes[STORAGE_KEY]) return
     const saved = changes[STORAGE_KEY].newValue as Partial<Settings> | undefined
-    callback({ ...DEFAULT_SETTINGS, ...saved })
+    callback(normalise(saved))
   }
   chrome.storage.onChanged.addListener(listener)
   return () => chrome.storage.onChanged.removeListener(listener)

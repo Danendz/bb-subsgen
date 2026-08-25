@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { hostLabel, originFromInput, sortedSites } from './sites'
+import type { ReaderOrigin } from '../shared/settings'
 
 describe('originFromInput', () => {
   test('assumes https for a bare domain', () => {
@@ -48,15 +49,33 @@ describe('hostLabel', () => {
 })
 
 describe('sortedSites', () => {
+  const site = (origin: string, lang?: string): ReaderOrigin =>
+    lang ? { origin, lang } : { origin }
+
   test('orders by name, not by when it was granted', () => {
     expect(
-      sortedSites(['https://zhihu.com', 'https://baidu.com', 'https://www.bilibili.com']),
-    ).toEqual(['https://baidu.com', 'https://www.bilibili.com', 'https://zhihu.com'])
+      sortedSites([
+        site('https://zhihu.com'),
+        site('https://baidu.com'),
+        site('https://www.bilibili.com'),
+      ]),
+    ).toEqual([
+      site('https://baidu.com'),
+      site('https://www.bilibili.com'),
+      site('https://zhihu.com'),
+    ])
+  })
+
+  test('carries each site’s language with it, since that is what the row renders', () => {
+    expect(sortedSites([site('https://zhihu.com', 'zh'), site('https://baidu.com')])).toEqual([
+      site('https://baidu.com'),
+      site('https://zhihu.com', 'zh'),
+    ])
   })
 
   test('leaves the caller’s array alone', () => {
-    const origins = ['https://zhihu.com', 'https://baidu.com']
+    const origins = [site('https://zhihu.com'), site('https://baidu.com')]
     sortedSites(origins)
-    expect(origins).toEqual(['https://zhihu.com', 'https://baidu.com'])
+    expect(origins).toEqual([site('https://zhihu.com'), site('https://baidu.com')])
   })
 })

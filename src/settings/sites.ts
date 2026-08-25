@@ -7,6 +7,7 @@
 // wants the exact origin, so the tidying happens once, here.
 
 import { originOf } from '../shared/reader-sites'
+import type { ReaderOrigin } from '../shared/settings'
 
 /** Anything of the shape `scheme://`, which is what we must not double up. */
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
@@ -37,6 +38,6 @@ export function hostLabel(origin: string): string {
  * `readerOrigins` grows in the order you granted, which is meaningless a week
  * later and makes a site you are looking for move about.
  */
-export function sortedSites(origins: readonly string[]): string[] {
-  return [...origins].sort((a, b) => hostLabel(a).localeCompare(hostLabel(b)))
+export function sortedSites(origins: readonly ReaderOrigin[]): ReaderOrigin[] {
+  return [...origins].sort((a, b) => hostLabel(a.origin).localeCompare(hostLabel(b.origin)))
 }

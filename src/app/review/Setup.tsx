@@ -14,9 +14,9 @@ export interface SessionSetup {
   /**
    * Which language's lexicon the session segments against.
    *
-   * A real `Settings` key rather than local state, because `change` in
-   * Review.tsx writes every key of this straight to `saveSettings` — and
-   * because it is shared with the Dictionary tab on purpose.
+   * A real `Settings` key rather than local state, because Review.tsx hands
+   * `onChange` straight to `useSettings`' `update` — every key of this has to
+   * be one — and because it is shared with the Dictionary tab on purpose.
    */
   studyLang: string
   studyMode: StudyMode
