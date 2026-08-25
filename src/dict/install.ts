@@ -8,8 +8,12 @@
 //
 // `fetch` is an injected parameter, per src/llm/sse.ts and .claude/rules/testing.md:
 // a test constructs a `ReadableStream` and never touches the network.
-import type { CedictRow } from '../lang/zh/cedict-row'
-import { buildLexiconText, groupByHeadword, parseCedictLine } from './cedict'
+//
+// The format is the parser's business, not this file's — see `parser.ts`. This
+// is the download, the chunking and the write order, and it is the same for a
+// 3.9MB gzip of lines and a 10.5MB gzip of XML.
+import type { DictRow } from '../lang/pack'
+import { parserFor } from './parsers'
 import { clearLangIn, putDefsChunk, putLexicon, putMeta, type DictMeta } from './store'
 import type { DictSource } from './sources'
 
@@ -42,6 +46,9 @@ export async function installDictionary({
   onProgress,
   signal,
 }: InstallOptions): Promise<DictMeta> {
+  const parser = parserFor(source.lang)
+  if (!parser) throw new Error(`no parser for ${source.lang}`)
+
   const response = await doFetch(source.url, { signal })
   if (!response.ok || !response.body) {
     throw new Error(`could not download ${source.name}: HTTP ${response.status}`)
@@ -71,37 +78,34 @@ export async function installDictionary({
     new TextDecoderStream() as unknown as ReadableWritablePair<string, Uint8Array>,
   )
 
-  // The 9.9MB decompressed source is never held whole — only the entries
-  // parsed out of it, line by line, as the stream delivers them.
-  const entries: CedictRow[] = []
-  let buffer = ''
+  // The decompressed source is never held whole — 9.9MB for CC-CEDICT, 63MB for
+  // JMdict — only what the parser keeps of the chunks as they arrive.
   const reader = textStream.getReader()
   try {
     for (;;) {
       const { done: streamDone, value } = await reader.read()
       if (streamDone) break
-      buffer += value
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        const entry = parseCedictLine(line)
-        if (entry) entries.push(entry)
-      }
+      parser.push(value)
     }
-    const last = parseCedictLine(buffer)
-    if (last) entries.push(last)
   } finally {
     reader.releaseLock()
   }
 
-  const byHeadword = groupByHeadword(entries)
+  const byHeadword = parser.finish()
+
+  // Records, not keys: a row is shared by reference across every headword it can
+  // be looked up under, so the map is larger than the dictionary. CC-CEDICT's
+  // 124,911 lines key ~198k headwords and JMdict's 218,607 entries key 465,168,
+  // and the count the wizard shows should be the dictionary's, not the index's.
+  const records = new Set<DictRow>()
+  for (const rows of byHeadword.values()) for (const row of rows) records.add(row)
 
   // Cleared first: if the writes below fail partway, the store reads as
   // "not installed" rather than as a mix of two versions.
   await clearLangIn(db, source.lang)
 
   let written = 0
-  let chunk = new Map<string, CedictRow[]>()
+  let chunk = new Map<string, DictRow[]>()
   for (const [headword, defs] of byHeadword) {
     chunk.set(headword, defs)
     if (chunk.size >= DEFS_CHUNK_SIZE) {
@@ -117,13 +121,13 @@ export async function installDictionary({
     onProgress?.({ phase: 'import', loaded: written, total: byHeadword.size })
   }
 
-  await putLexicon(db, source.lang, buildLexiconText(byHeadword))
+  await putLexicon(db, source.lang, parser.lexiconText(byHeadword))
 
   const meta: DictMeta = {
     url: source.url,
     lastModified,
     installedAt: Date.now(),
-    entryCount: entries.length,
+    entryCount: records.size,
     formatVersion: 2,
   }
   // Last, and in its own transaction: absence of `meta` is what makes a failed

@@ -40,9 +40,19 @@ export function toneColor(tone: number): string {
  * The separator is a parameter because the two callers genuinely disagree: a
  * reading read back off the DOM wants spaces between syllables, and the card's
  * `also read` line runs them together the way a dictionary prints a word.
+ *
+ * Parts with nothing drawn over them are skipped rather than joined as empties.
+ * A Japanese word carries one — 食べる is `[食/たべ, べる/'']` — so joining every
+ * part gave `'たべ '`, and that trailing space travelled into `dataset.reading`
+ * and on into `pack.rank`, where the strongest ranking signal there is stopped
+ * matching the entry it came from. Chinese never produces an empty part, so no
+ * Chinese reading moves.
  */
 export function readingText(parts: readonly ReadingPart[], separator = ' '): string {
-  return parts.map((part) => part.text).join(separator)
+  return parts
+    .filter((part) => part.text)
+    .map((part) => part.text)
+    .join(separator)
 }
 
 /**

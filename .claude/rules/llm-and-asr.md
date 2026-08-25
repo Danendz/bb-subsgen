@@ -60,8 +60,10 @@ not re-teach 是 and 了.
 ## Dictionary data
 
 Downloaded and parsed at install time, from the setup wizard — see `src/dict/` in
-`architecture.md`. CC-CEDICT is CC BY-SA 4.0; attribution is required wherever the derived data is
-shown or shipped.
+`architecture.md`. CC-CEDICT and JMdict are both CC BY-SA 4.0 — © MDBG and © the Electronic
+Dictionary Research and Development Group respectively — and attribution is required wherever
+either's derived data is shown or shipped. `DICT_SOURCES` carries the line to print; use it rather
+than writing one out.
 
 Definitions go through the service worker (`src/dict/store.ts`, batched via `lookupDefsIn`) rather
 than being loaded per page: a content script copy would be held once per page origin.

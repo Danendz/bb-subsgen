@@ -1,9 +1,10 @@
 // The registry of downloadable dictionaries, one entry per language.
 //
-// A single-entry `Record` today, but the shape a second language (#14) only has
-// to extend rather than invent: `lang` is the key the store and the messages
-// already use, and `licence`/`attribution` exist because CC-CEDICT's CC BY-SA
-// 4.0 requires attribution wherever the derived data is shown or redistributed.
+// `lang` is the key the store, the settings and the messages already use, and
+// `licence`/`attribution` exist because both dictionaries here are CC BY-SA 4.0,
+// which requires attribution wherever the derived data is shown or
+// redistributed. Which parser reads a source is deliberately not a field on it —
+// see `parsers.ts` for why.
 export interface DictSource {
   lang: string
   /**
@@ -28,6 +29,20 @@ export const DICT_SOURCES: Record<string, DictSource> = {
     url: 'https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz',
     licence: 'CC BY-SA 4.0',
     attribution: 'Dictionary data from CC-CEDICT, © MDBG, CC BY-SA 4.0.',
+  },
+  ja: {
+    lang: 'ja',
+    langName: 'Japanese',
+    name: 'JMdict',
+    // `www.edrdg.org`, not the `ftp.edrdg.org` path the file is usually quoted
+    // as: that host serves a certificate that does not match the name, and
+    // plain http from a `chrome-extension://` page is blocked as mixed content.
+    // This host serves the same bytes and sends `Last-Modified`, so the
+    // wizard's "check for update" HEAD works against it unchanged.
+    url: 'https://www.edrdg.org/pub/Nihongo/JMdict_e.gz',
+    licence: 'CC BY-SA 4.0',
+    attribution:
+      'Dictionary data from JMdict, © Electronic Dictionary Research and Development Group, CC BY-SA 4.0.',
   },
 }
 

@@ -11,7 +11,8 @@
     "https://*.bilivideo.cn/*",
     "https://*.akamaized.net/*",
     "https://www.youtube.com/*",
-    "https://www.mdbg.net/*"
+    "https://www.mdbg.net/*",
+    "https://www.edrdg.org/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {

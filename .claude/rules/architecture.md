@@ -71,10 +71,17 @@ holds the Chinese implementation — the segmenter, the tone and reading rules, 
 ranking, the grammar pattern table, the sentence terminators and the hover match. Everything
 directly under `src/lang/` is language-neutral.
 
-A language directory can exist before its pack does. `src/lang/ja/` is pure modules only — script
-classification and furigana alignment — and is registered by nothing: `PACKS` is still `{ zh }`
-until #14 adds `japanesePack`. Adding a module there is not adding a language, which is what
-`src/lang/packs.test.ts` continuing to pass unchanged proves.
+`src/lang/ja/` is the second one, added in #14: script classification, furigana alignment, the
+JMdict entry ranking, a longest-match segmenter and the sentence terminators. It is a language
+rather than a directory of modules because `PACKS` names it — `packs.test.ts` is what ties that to
+there being a `ja` dictionary to download.
+
+**A second pack shares an interface, not an algorithm.** `zh/segment.ts` scores whole parses and
+`ja/segment.ts` is a plain longest match, because the two languages are hard in different places;
+`zh/entries.ts` puts every ranking signal in `rank` and `ja/entries.ts` cannot, because whether a
+spelling is the common one is a fact about a JMdict row and an `Entry` has nowhere to keep it. Both
+of those are the interface working, not being worked around. What is *not* allowed is widening
+`Entry` or `Tag` so that one language's fields ride on every language's shape.
 
 Three files carry the split, modelled on `Site` / `siteFor` in `src/media/`:
 
@@ -83,7 +90,8 @@ Three files carry the split, modelled on `Site` / `siteFor` in `src/media/`:
 - `packs.ts` — `PACKS` and `packFor(code)`, which is null for a code with no pack. Separate from
   `pack.ts` for the reason `sites.ts` is separate from `site.ts`: so that everything needing only
   the shape does not pull in every language.
-- `zh/pack.ts` — `chinesePack`, assembled from the modules beside it.
+- `zh/pack.ts` and `ja/pack.ts` — `chinesePack` and `japanesePack`, each assembled from the
+  modules beside it, and each the only file in its directory anything outside reaches.
 
 `PACKS` and `DICT_SOURCES` (`src/dict/sources.ts`) are keyed by the same codes and neither imports
 the other — otherwise the popup and the badge, which only ever ask where a dictionary is
@@ -106,15 +114,33 @@ on purpose, and each says so where it names the language:
   than by importing the table, so the surviving `'zh'` literals read as an inventory of what is
   still pinned. `src/background/flashcards-store.ts` no longer belongs here: #12 gave the deck a
   language, so it resolves `packFor(lang)` from what the caller sends.
-- `src/dict/cedict.ts` is the CC-CEDICT parser and is Chinese by definition; #14 gives Japanese its
-  own.
+- `src/dict/cedict.ts` and `src/dict/jmdict.ts` are the two dictionaries' parsers, and each is its
+  language by definition. They import from `src/lang/<code>/` — that is the direction that is
+  allowed; nothing in `src/lang/` imports either of them.
 Tests may import a language's modules directly — a fixture has to name a language.
 
 ## `src/dict/`
 
-The dictionary, end to end: `cedict.ts` parses CC-CEDICT text, `sources.ts` is the registry of
-downloadable sources (one per language), `store.ts` is the schema-2 database above, and
-`install.ts` streams a download straight into it.
+The dictionary, end to end: `sources.ts` is the registry of downloadable sources (one per
+language), `store.ts` is the schema-2 database above, and `install.ts` streams a download straight
+into it.
+
+**One installer, two formats.** `install.ts` owns the download, the `DEFS_CHUNK_SIZE` chunking and
+the rule that `meta` is written last; it reads no format. `parser.ts` is the `DictParser` seam —
+`push` / `finish` / `lexiconText` — and `cedict.ts` and `jmdict.ts` implement it. The shape is
+incremental because a record is a line in one format and a multi-line `<entry>` block in the other,
+so where a record ends is the parser's answer and not the installer's.
+
+`parsers.ts` maps a language to its parser, and is imported by `install.ts` and nothing else. It is
+deliberately not a function field on `DictSource`, for the reason `packs.ts` records against
+merging itself into `sources.ts`: the popup and the badge import `sources.ts` to ask where a
+dictionary comes from, and a parser hanging off that record would pull every format into both of
+their bundles.
+
+There is no `DOMParser` in the `node` suite, so `jmdict.ts` is a hand-rolled regex parser over
+strings. Reaching for jsdom to parse 63MB of XML is the smell `.claude/rules/testing.md` names, and
+a fragment parse does not reliably expand JMdict's DTD entities — which is where every
+part-of-speech code lives.
 
 **The store holds opaque rows.** `DictRow` is `unknown`, and what a row *is* belongs to the
 language — `src/lang/zh/cedict-row.ts` for Chinese, with a hand-written guard because a row read

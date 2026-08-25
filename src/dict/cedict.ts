@@ -8,6 +8,7 @@
 //
 // CC-CEDICT is CC BY-SA 4.0 (https://cc-cedict.org). Attribution required
 // wherever this derived data is shown or redistributed.
+import type { DictParser } from './parser'
 import type { CedictRow } from '../lang/zh/cedict-row'
 import { bestRow, excludeFromSegmentation } from '../lang/zh/entries'
 import { functionWord } from '../lang/zh/grammar/function-words'
@@ -89,4 +90,38 @@ export function buildLexiconText(byHeadword: Map<string, CedictRow[]>): string {
     lines.push(`${word}\t${row.pinyin}${excludeFromSegmentation(entry, word) ? '\tp' : ''}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * CC-CEDICT as a `DictParser`: buffer, cut on newlines, parse each line.
+ *
+ * The buffering is the installer's old loop, moved rather than rewritten — the
+ * installer split the stream on '\n' itself, which was fine while one format
+ * existed and is a CC-CEDICT fact the moment a second one arrives. Its tests
+ * and `install.test.ts` still pass unchanged, which is what says the move
+ * changed no behaviour.
+ */
+export function cedictParser(): DictParser<CedictRow> {
+  const rows: CedictRow[] = []
+  let buffer = ''
+
+  return {
+    push(chunk) {
+      buffer += chunk
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        const row = parseCedictLine(line)
+        if (row) rows.push(row)
+      }
+    },
+    finish() {
+      // The last line has no terminator, so it is still sitting in the buffer.
+      const last = parseCedictLine(buffer)
+      if (last) rows.push(last)
+      buffer = ''
+      return groupByHeadword(rows)
+    },
+    lexiconText: buildLexiconText,
+  }
 }

@@ -12,10 +12,12 @@
 // which languages exist, which is the part that actually has to stay true.
 
 import type { LanguagePack } from './pack'
+import { japanesePack } from './ja/pack'
 import { chinesePack } from './zh/pack'
 
 export const PACKS: Record<string, LanguagePack> = {
   zh: chinesePack,
+  ja: japanesePack,
 }
 
 /**

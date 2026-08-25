@@ -41,6 +41,15 @@ const FLAGS: Record<string, () => JSX.Element> = {
       </g>
     </svg>
   ),
+  // 30×20 rather than the flag's official 3:2 at full size, to match the
+  // viewBox above so the two cards draw at one scale. The disc is centred and
+  // its diameter is 3/5 of the height, which is the proportion in the 1999 law.
+  ja: () => (
+    <svg viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect width="30" height="20" fill="#fff" />
+      <circle cx="15" cy="10" r="6" fill="#bc002d" />
+    </svg>
+  ),
 }
 
 export function Flag({ lang }: { lang: string }) {

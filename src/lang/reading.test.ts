@@ -102,3 +102,17 @@ describe('readingColumns', () => {
     expect(readingColumns('食べる', parts)).toEqual([{ base: '食べる', parts }])
   })
 })
+
+describe('readingText, on a partly-annotated word', () => {
+  // 食べる: furigana over 食 alone, and the べる run read as it is written. The
+  // empty part used to join as a separator, so the reading ranking compares
+  // against arrived with a trailing space and matched nothing.
+  test('drops the runs nothing is drawn over, rather than joining them as gaps', () => {
+    expect(
+      readingText([
+        { base: '食', text: 'た', tone: null },
+        { base: 'べる', text: '', tone: null },
+      ]),
+    ).toBe('た')
+  })
+})
