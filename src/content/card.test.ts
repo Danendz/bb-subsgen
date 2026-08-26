@@ -24,39 +24,6 @@ const xuexi = () => entry('学习', 'xue2 xi2', 'to learn', 'to study')
 const xue = entry('学', 'xue2', 'to learn', 'school')
 const xi = entry('习', 'xi2', 'to practice')
 
-describe('characterBreakdown', () => {
-  test('returns one row per character with its own reading and gloss', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack)).toEqual([
-      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
-      { char: '习', reading: parts('习', 'xi2'), gloss: 'to practice' },
-    ])
-  })
-
-  test('breaks down nothing for a single character', () => {
-    // The breakdown of 我 is 我 — noise, not information.
-    expect(characterBreakdown('学', { 学: [xue] }, chinesePack)).toEqual([])
-  })
-
-  test('skips characters the dictionary has no entry for', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [] }, chinesePack)).toEqual([
-      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
-    ])
-  })
-
-  test('ignores non-Han characters in the headword', () => {
-    // Punctuation and latin never get a row, and never count toward the
-    // two-character minimum either.
-    expect(characterBreakdown('学!', { 学: [xue] }, chinesePack)).toEqual([])
-  })
-
-  test('drops entries whose definitions are all classifier notation', () => {
-    const clOnly = entry('习', 'xi2', 'CL:個|个[ge4]')
-    expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] }, chinesePack)).toEqual([
-      { char: '学', reading: parts('学', 'xue2'), gloss: 'to learn; school' },
-    ])
-  })
-})
-
 describe('buildCard', () => {
   const opts = { pack: chinesePack }
 

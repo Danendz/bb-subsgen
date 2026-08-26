@@ -4,6 +4,12 @@
 
 import { readingColumns, readingFromText, readingText, toneColor } from '../lang/reading'
 import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
+// The card's data model lives beside this file rather than in it, so that a
+// `node` test can reach it without loading a module full of `document`. Both
+// are re-exported here: every existing caller imports them from `./card`.
+import type { CharacterGloss } from './card-data'
+export { characterBreakdown } from './card-data'
+export type { CharacterGloss, CardInput } from './card-data'
 import type { Token } from '../lang/pack'
 import type { Entry } from '../lang/pack'
 
@@ -524,41 +530,6 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   }
 
   return word
-}
-
-export interface CharacterGloss {
-  char: string
-  reading: ReadingPart[]
-  gloss: string
-}
-
-/**
- * Builds the per-character rows for a multi-character word.
- *
- * Single characters get nothing: the breakdown of 我 is 我, which is noise.
- * Characters with no entry of their own are dropped rather than shown blank.
- */
-export function characterBreakdown(
-  headword: string,
-  found: Record<string, Entry[]>,
-  pack: LanguagePack,
-): CharacterGloss[] {
-  // The same list the lookup was batched from, minus the whole word: a
-  // breakdown is exactly the pieces that lookup already asked about.
-  const chars = pack.cardHeadwords(headword).slice(1)
-  if (!chars.length) return []
-
-  const rows: CharacterGloss[] = []
-  for (const char of chars) {
-    const [primary] = pack.rank(found[char] ?? [], char)
-    if (!primary?.senses.length) continue
-    rows.push({
-      char,
-      reading: primary.reading,
-      gloss: primary.senses.map((sense) => sense.gloss).join('; '),
-    })
-  }
-  return rows
 }
 
 export interface CardData {

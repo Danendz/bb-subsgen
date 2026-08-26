@@ -6,10 +6,11 @@
 // shared/reader-sites.ts for the registration half.
 
 import { attachReader } from './reader'
+import { planAttach } from './attach-plan'
 import { mountReader, type ReaderMount } from './mount'
 import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
-import type { Lexicon } from '../lang/pack'
+import type { LanguagePack, Lexicon } from '../lang/pack'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { packFor } from '../lang/packs'
 import { loadLexicon, lookupDefs } from '../shared/dict-client'
@@ -89,29 +90,16 @@ async function main(): Promise<void> {
   }
 
   /**
-   * The language, the pack and the lexicon are resolved here rather than once
-   * for the page, because `resolveReaderLang` can now answer differently for
-   * the same page — an override written from another surface arrives through
-   * the `onSettingsChanged` subscription below.
+   * Builds the reader for one language.
    *
-   * `apply()` already tears the reader down and builds it again on every
-   * settings change, so all three move in one step and the segmenter can never
-   * end up on a different language from the definitions.
+   * The language and its pack are resolved by `apply()` and passed in rather
+   * than read here, because `resolveReaderLang` can now answer differently for
+   * the same page — an override written from another surface arrives through
+   * the `onSettingsChanged` subscription below. `apply()` tears the reader down
+   * and builds it again when that happens, so the segmenter, the pack and the
+   * definitions move in one step and can never end up on different languages.
    */
-  const start = () => {
-    if (detach) return
-
-    const lang = effectiveLang()
-
-    // No pack means no segmenter and no script test, which is every question the
-    // reader would ask — so it never attaches at all, rather than attaching and
-    // finding nothing anywhere.
-    const pack = packFor(lang)
-    if (!pack) {
-      console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
-      return
-    }
-
+  const start = (lang: string, pack: LanguagePack) => {
     const getWords = () => (words ??= loadLexicon(lang))
     activeLang = lang
 
@@ -153,19 +141,46 @@ async function main(): Promise<void> {
         apply()
       },
     })
-    console.log('[bb-subsgen] reader active on', location.origin, 'in', lang)
   }
 
   const apply = () => {
-    if (!readerEnabledFor(settings, location.origin)) {
-      stop()
-      return
+    const lang = effectiveLang()
+    // Resolved here and handed to `planAttach` as a boolean: the plan decides,
+    // and every effect below — including which registry answered — stays out
+    // here where it can be seen.
+    const pack = packFor(lang)
+    const { action, verdict } = planAttach({
+      enabled: readerEnabledFor(settings, location.origin),
+      resolvedLang: lang,
+      activeLang,
+      attached: detach !== null,
+      hasPack: pack !== null,
+    })
+
+    switch (action) {
+      case 'nothing':
+        // Silent in the steady state — `apply()` runs on every settings echo.
+        // The one case worth a line is a page the reader can never start on.
+        if (!pack) console.warn('[bb-subsgen]', verdict, '— reader not starting')
+        return
+      case 'stop':
+        console.log('[bb-subsgen] reader stopping on', location.origin, '—', verdict)
+        stop()
+        return
+      case 'restart':
+        // The segmenter, the pack and the lexicon move in one step, so the
+        // language changing under a running reader is a teardown and a rebuild.
+        stop()
+        break
+      case 'start':
+        break
     }
-    // `start()` is a no-op while attached, so a language that changed under a
-    // running reader has to be torn down first — otherwise the segmenter stays
-    // on the old language while the definitions follow the new one.
-    if (detach && effectiveLang() !== activeLang) stop()
-    start()
+
+    // Narrowing, not a second check: `planAttach` only answers `start` or
+    // `restart` when it was told there is a pack.
+    if (!pack) return
+    start(lang, pack)
+    console.log('[bb-subsgen] reader active on', location.origin, '—', verdict)
   }
 
   apply()
