@@ -50,6 +50,26 @@ async function main(): Promise<void> {
   let words: Promise<Lexicon | null> | null = null
   /** The language the attached reader was built for, so `apply` can spot a change. */
   let activeLang: string | null = null
+  /**
+   * A language picked from a card, overriding the site's declaration.
+   *
+   * Sticky for the life of the attached reader rather than per card: a learner
+   * on a Japanese page whose site declaration says `zh` would otherwise
+   * re-toggle on every single word. Never written to storage, so a reload
+   * returns to the declaration and that stays the single source of truth for
+   * what a site is.
+   */
+  let sessionLang: string | null = null
+
+  /**
+   * The language to read this page in, override first.
+   *
+   * Used by `start()` *and* `apply()`. If `apply()` kept calling
+   * `resolveReaderLang` directly it would compare the stored language against
+   * the overridden one and tear the reader down on the next settings echo,
+   * silently reverting the toggle.
+   */
+  const effectiveLang = () => sessionLang ?? resolveReaderLang(settings, location.origin)
 
   const stop = () => {
     detach?.()
@@ -63,6 +83,9 @@ async function main(): Promise<void> {
     stopKnown = null
     known = new Set()
     activeLang = null
+    // `sessionLang` deliberately survives. The toggle sets it and then calls
+    // `apply()`, which stops before it starts — clearing it here would make the
+    // rebuild undo the very change that asked for it.
   }
 
   /**
@@ -78,7 +101,7 @@ async function main(): Promise<void> {
   const start = () => {
     if (detach) return
 
-    const lang = resolveReaderLang(settings, location.origin)
+    const lang = effectiveLang()
 
     // No pack means no segmenter and no script test, which is every question the
     // reader would ask — so it never attaches at all, rather than attaching and
@@ -112,6 +135,23 @@ async function main(): Promise<void> {
       words: getWords,
       settings: () => settings,
       known: () => known,
+      // Read at card-build time, not captured: `enabledLanguages` can change
+      // under an attached reader. A user with one pack installed sees no
+      // control at all, and finding that out costs no round trip — which is
+      // why this is the setting rather than one `bb-subsgen:dict-status` per
+      // language inside an otherwise synchronous card build.
+      otherLanguages: () =>
+        settings.enabledLanguages
+          .filter((code) => code !== activeLang)
+          .flatMap((code) => {
+            const other = packFor(code)
+            return other ? [{ code: other.code, name: other.name }] : []
+          }),
+      onLanguage: (code) => {
+        if (code === activeLang) return
+        sessionLang = code
+        apply()
+      },
     })
     console.log('[bb-subsgen] reader active on', location.origin, 'in', lang)
   }
@@ -124,7 +164,7 @@ async function main(): Promise<void> {
     // `start()` is a no-op while attached, so a language that changed under a
     // running reader has to be torn down first — otherwise the segmenter stays
     // on the old language while the definitions follow the new one.
-    if (detach && resolveReaderLang(settings, location.origin) !== activeLang) stop()
+    if (detach && effectiveLang() !== activeLang) stop()
     start()
   }
 

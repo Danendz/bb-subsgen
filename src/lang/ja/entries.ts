@@ -13,7 +13,9 @@
 // whether it is `rK`-rare are facts about the *row*, and an `Entry` deliberately
 // has nowhere to put them — widening `Tag` for them would turn every exhaustive
 // switch over `Tag` in the card renderers into a compile error for the sake of
-// two booleans nothing draws.
+// two booleans nothing draws. What #17 *did* widen it for is `pos` and `misc`,
+// which the card draws as chips — that is the difference the objection turned
+// on, and it is why the ranking signals still are not on the entry.
 //
 // So the split is by what the signal is a fact about, not by convenience:
 // `entriesFrom` applies everything the row knows and the entry cannot carry,
@@ -25,7 +27,7 @@
 import type { DictRow, Entry, Sense, Tag } from '../pack'
 import { readingText } from '../reading'
 import { furiganaParts } from './furigana'
-import { type JmdictKana, type JmdictRow, isJmdictRow } from './jmdict-row'
+import { type JmdictKana, type JmdictRow, type JmdictSense, isJmdictRow } from './jmdict-row'
 import { isKana, toHiragana } from './script'
 
 /** `ke_inf` codes that say a spelling is not how the word is normally written. */
@@ -114,14 +116,121 @@ function isNameRow(row: JmdictRow): boolean {
   )
 }
 
+/**
+ * JMdict's classification codes, in words a learner can read.
+ *
+ * `pos`, `misc` and `field` share one table and one `Tag` variant, because the
+ * card cannot usefully draw three chip styles and the difference between "godan
+ * verb" and "usually kana" is not one a reader needs pointed out. Every godan
+ * class collapses to one label for the same reason: `v5k` against `v5r` matters
+ * to the deinflection table and to nobody looking at a card.
+ *
+ * **A code that is not here renders nothing.** JMdict has well over a hundred
+ * of them, many of which are notes to lexicographers, and a chip reading
+ * `v5uru` is worse than no chip — it looks like something the learner has
+ * failed to learn.
+ */
+const CODE_LABELS: Record<string, string> = {
+  // Parts of speech.
+  n: 'noun',
+  pn: 'pronoun',
+  adj: 'adjective',
+  'adj-i': 'i-adjective',
+  'adj-ix': 'i-adjective',
+  'adj-na': 'na-adjective',
+  'adj-no': 'no-adjective',
+  'adj-pn': 'prenominal',
+  adv: 'adverb',
+  'adv-to': 'adverb',
+  v1: 'ichidan verb',
+  'v1-s': 'ichidan verb',
+  v5aru: 'godan verb',
+  v5b: 'godan verb',
+  v5g: 'godan verb',
+  v5k: 'godan verb',
+  'v5k-s': 'godan verb',
+  v5m: 'godan verb',
+  v5n: 'godan verb',
+  v5r: 'godan verb',
+  'v5r-i': 'godan verb',
+  v5s: 'godan verb',
+  v5t: 'godan verb',
+  v5u: 'godan verb',
+  'v5u-s': 'godan verb',
+  v5uru: 'godan verb',
+  vk: 'irregular verb',
+  vz: 'zuru verb',
+  vs: 'suru verb',
+  'vs-i': 'suru verb',
+  'vs-s': 'suru verb',
+  vt: 'transitive',
+  vi: 'intransitive',
+  aux: 'auxiliary',
+  'aux-v': 'auxiliary verb',
+  'aux-adj': 'auxiliary adjective',
+  conj: 'conjunction',
+  prt: 'particle',
+  int: 'interjection',
+  exp: 'expression',
+  pref: 'prefix',
+  suf: 'suffix',
+  ctr: 'counter',
+  num: 'numeric',
+  // Usage. `uk` is the one that earns its place hardest: it is the difference
+  // between a learner writing 有難う and writing ありがとう.
+  uk: 'usually kana',
+  abbr: 'abbreviation',
+  col: 'colloquial',
+  sl: 'slang',
+  vulg: 'vulgar',
+  derog: 'derogatory',
+  pol: 'polite',
+  hon: 'honorific',
+  hum: 'humble',
+  'on-mim': 'onomatopoeia',
+  id: 'idiom',
+  proverb: 'proverb',
+  yoji: 'four-character idiom',
+  arch: 'archaic',
+  obs: 'obsolete',
+  rare: 'rare',
+  surname: 'surname',
+  given: 'given name',
+  place: 'place name',
+  // Field of use.
+  comp: 'computing',
+  med: 'medicine',
+  ling: 'linguistics',
+  math: 'mathematics',
+  law: 'law',
+  bus: 'business',
+  finc: 'finance',
+  food: 'food',
+  music: 'music',
+  sports: 'sports',
+  mil: 'military',
+  gramm: 'grammar',
+}
+
+/** The drawable codes on one sense, in JMdict's order and without repeats. */
+function tagsOf(sense: JmdictSense): Tag[] {
+  const labels: string[] = []
+  for (const code of [...sense.pos, ...sense.misc, ...sense.field]) {
+    const label = CODE_LABELS[code]
+    // Every v5 class carries the same label, so a sense tagged both `v5r` and
+    // `vt` must not print "godan verb" twice.
+    if (label && !labels.includes(label)) labels.push(label)
+  }
+  return labels.map((label): Tag => ({ kind: 'pos', label }))
+}
+
 function sensesOf(row: JmdictRow): Sense[] {
   const senses: Sense[] = []
   for (const sense of row.senses) {
     // JMdict separates the glosses of one sense with a semicolon when it prints
-    // them, and so does the card. `pos` and `field` ride along in the stored row
-    // unread — #17 is what puts them on screen.
+    // them, and so does the card.
     const gloss = sense.gloss.filter(Boolean).join('; ')
-    if (gloss) senses.push({ gloss, tags: [] })
+    if (gloss) senses.push({ gloss, tags: tagsOf(sense) })
   }
   return senses
 }
@@ -222,14 +331,14 @@ export function rank(entries: Entry[], _headword: string, displayedReading?: str
 }
 
 /**
- * Verb and adjective classes #15's deinflection has to know, as JMdict writes
- * them.
+ * Verb and adjective classes the deinflection table has to know, as JMdict
+ * writes them.
  *
  * Kept in the lexicon line rather than looked up when needed, because the
  * candidate loop that validates a guessed dictionary form runs *inside* the
  * segmenter, which is synchronous over the lexicon text — there is no async
  * round trip to the definitions store available there. And the lexicon is
- * written once, at install time: a field added in #17 instead would cost every
+ * written once, at install time: a field added afterwards would cost every
  * Japanese user a 10.5MB re-download.
  */
 const WORD_CLASSES: ReadonlySet<string> = new Set([

@@ -11,6 +11,12 @@ const LEXICON = [
   'ください\tください',
   '茲\tここ\tr',
   'ここ\tここ',
+  '行く\tいく\tv5k-s',
+  '言う\tいう\tv5u',
+  '飲む\tのむ\tv5m',
+  '書く\tかく\tv5k',
+  '勉強\tべんきょう\tvs',
+  'ありがとう\tありがとう',
 ].join('\n')
 
 const lexicon = loadJapanese(LEXICON, japanesePack)
@@ -35,13 +41,53 @@ describe('segment', () => {
     expect(lexicon.has('茲')).toBe(true)
   })
 
-  test('an inflected verb is one unmatched run, not the word it inflects', () => {
-    // 食べました is 食べる, and nothing here knows that: deinflection is #15's
-    // table and #17 is what hangs the candidate loop off this match. Until then
-    // the honest answer is one token saying "not a headword" rather than a
-    // confident 食 followed by wreckage.
+  test('takes an inflected verb whole, and says which headword it is a form of', () => {
+    // The reason the whole port exists. Before the candidate loop this was one
+    // unmatched run — an honest "not a headword", and useless to a learner, who
+    // does not meet 食べる on a page and does meet 食べました.
     expect(cut('食べました')).toEqual(['食べました'])
-    expect(cut('食べる')).toEqual(['食べる'])
+    const [word] = lexicon.segment('食べました')
+    expect(word.kind).toBe('content')
+    expect(word.dictionary).toBe('食べる')
+  })
+
+  test('leaves `dictionary` off a word that is already its own headword', () => {
+    // Absent rather than equal to `text`, so a caller reading
+    // `dictionary ?? text` never has to ask whether the two agree.
+    expect(lexicon.segment('食べる')[0].dictionary).toBeUndefined()
+  })
+
+  // Both are real past tenses of real verbs and the table offers both spellings
+  // for either surface. Rule order does not decide this — only the class the
+  // lexicon recorded does, which is what `index.classes` was written for.
+  test('separates 行った from 言った by class, since the table cannot', () => {
+    expect(lexicon.segment('行った')[0].dictionary).toBe('行く')
+    expect(lexicon.segment('言った')[0].dictionary).toBe('言う')
+  })
+
+  // 行つ is a `v5t` word the table offers and the dictionary has never heard of.
+  // Without the class check it would be taken, and the card would gloss a verb
+  // that does not exist.
+  test('never takes a candidate the lexicon does not hold at the claimed class', () => {
+    expect(lexicon.segment('行った')[0].dictionary).not.toBe('行つ')
+  })
+
+  test('files a する compound under the noun, which is the headword JMdict has', () => {
+    expect(lexicon.segment('勉強した')[0].dictionary).toBe('勉強')
+  })
+
+  test('draws furigana over the kanji of the surface, not of the headword', () => {
+    // たべる over 食べて would be furigana for a word that is not on the page.
+    // The swap is the headword's reading with the suffix put back: たべる − る
+    // + て.
+    expect(lexicon.segment('食べて')[0].reading).toEqual([
+      { base: '食', text: 'た', tone: null },
+      { base: 'べて', text: '', tone: null },
+    ])
+    expect(lexicon.segment('飲んだ')[0].reading).toEqual([
+      { base: '飲', text: 'の', tone: null },
+      { base: 'んだ', text: '', tone: null },
+    ])
   })
 
   test('keeps the Latin and the punctuation as they were', () => {

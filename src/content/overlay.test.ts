@@ -13,6 +13,7 @@ const other = (text: string): Token => ({ text, reading: null, kind: 'other' })
 
 function view(partial: Partial<CueView> & Pick<CueView, 'tokens'>): CueView {
   return {
+    lang: 'zh',
     translation: 'I am studying Chinese.',
     translationSource: 'nmt',
     known: new Set(),

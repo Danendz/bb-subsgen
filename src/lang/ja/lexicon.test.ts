@@ -3,7 +3,8 @@ import { loadJapanese } from './lexicon'
 import { japanesePack } from './pack'
 
 // Real lines in the format the install writes: headword, reading, and flags —
-// `r` for a spelling segmentation must not take, plus the word class #15 needs.
+// `r` for a spelling segmentation must not take, plus the word class a
+// deinflection is validated against.
 const LEXICON = [
   '猫\tねこ',
   'ねこ\tねこ',
@@ -13,6 +14,8 @@ const LEXICON = [
   '茲\tここ\tr',
   'ここ\tここ',
   'ラーメン\tラーメン',
+  'ありがとう\tありがとう',
+  '茲る\tここる\tv1,r',
 ].join('\n')
 
 const lexicon = loadJapanese(LEXICON, japanesePack)
@@ -62,6 +65,32 @@ describe('loadJapanese', () => {
 
   test('leaves the Latin and the punctuation alone', () => {
     expect(lexicon.matchAt('OK猫', 0)).toBeNull()
+  })
+
+  test('hovering an inflected verb answers with the headword and the surface both', () => {
+    // The card looks the headword up and the highlight underlines the surface,
+    // so the match has to carry both — 食べる underlined over 私は食べました
+    // would sit on the wrong three characters.
+    const match = lexicon.matchAt('私は食べました', 3)
+    expect(match?.text).toBe('食べました')
+    expect(match?.dictionary).toBe('食べる')
+    expect(match?.start).toBe(2)
+    expect(match?.end).toBe(7)
+  })
+
+  test('finds a kana-only word with no deinflection involved at all', () => {
+    // ありがとう is a headword, not a conjugation, and 41,195 JMdict entries
+    // are like it. The candidate loop must not be what makes kana findable.
+    const match = lexicon.matchAt('ありがとう。', 2)
+    expect(match?.text).toBe('ありがとう')
+    expect(match?.dictionary).toBeUndefined()
+  })
+
+  test('deinflects to a rare spelling on hover, the way it matches one literally', () => {
+    // The asymmetry the module already documents, extended to the candidate
+    // loop rather than stopping at it: findable, never found.
+    expect(lexicon.matchAt('茲た', 0)?.dictionary).toBe('茲る')
+    expect(lexicon.segment('茲た')[0].kind).toBe('other')
   })
 })
 

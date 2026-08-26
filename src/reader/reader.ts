@@ -44,6 +44,16 @@ export interface ReaderDeps {
   settings: () => Settings
   /** Words the reader should stop annotating, mirrored from the worker. */
   known: () => Set<string>
+  /**
+   * The other languages this page could be read in, read live.
+   *
+   * A getter rather than a captured list, because `enabledLanguages` can change
+   * under an attached reader. Empty renders no control at all — which is every
+   * user with one pack installed, and costs no round trip to discover.
+   */
+  otherLanguages: () => { code: string; name: string }[]
+  /** Rereads the page in another language, for as long as this reader stays attached. */
+  onLanguage: (code: string) => void
 }
 
 /** Where an open card came from, so a repeat hover doesn't rebuild it. */
@@ -62,6 +72,8 @@ export function attachReader({
   words,
   settings,
   known,
+  otherLanguages,
+  onLanguage,
 }: ReaderDeps): () => void {
   const { shadowRoot } = mount
   const highlight = createWordHighlight()
@@ -219,8 +231,15 @@ export function attachReader({
     const token = ++pending
     const { showToneColors } = settings()
 
+    // What the card is *about*, which on an inflected word is not what is on
+    // the page: hovering 食べました asks the dictionary about 食べる, files 食べる
+    // into the deck, and marks 食べる known. `match.text` stays the surface,
+    // because that is what the highlight underlines and what `patternsForWord`
+    // finds in the segmented line.
+    const headword = match.dictionary ?? match.text
+
     // One round trip for the word and every one of its characters.
-    const found = await lookup(pack.cardHeadwords(match.text))
+    const found = await lookup(pack.cardHeadwords(headword))
     if (token !== pending) return // a later hover superseded this one
 
     removeCard()
@@ -230,24 +249,29 @@ export function attachReader({
     // actually rested on.
     discoveryTimer = setTimeout(() => {
       discoveryTimer = null
-      discoverWord(pack.code, match.text, pageContext(sentence))
+      discoverWord(pack.code, headword, pageContext(sentence))
     }, DISCOVERY_DWELL_MS)
 
     const card = buildCard(
       {
-        headword: match.text,
-        displayedReading: displayedReading ?? readingText(match.reading),
-        entries: found[match.text] ?? [],
-        breakdown: characterBreakdown(match.text, found, pack),
+        headword,
+        // The reading on screen belongs to the surface — たべました, not たべる
+        // — so on a deinflected word it is not the signal `pack.rank`
+        // documents and must not be handed over as one. The headword's own
+        // reading comes off whichever entry wins instead.
+        displayedReading: displayedReading ?? (match.dictionary ? '' : readingText(match.reading)),
+        entries: found[headword] ?? [],
+        breakdown: characterBreakdown(headword, found, pack),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
         patterns: wordList ? pack.patternsForWord(wordList.segment(sentence), match.text) : [],
-        known: known().has(match.text),
+        known: known().has(headword),
       },
       {
         pack,
         toneColors: showToneColors,
-        onMarkKnown: (next) => markKnown(pack.code, match.text, next),
+        onMarkKnown: (next) => markKnown(pack.code, headword, next),
+        onLanguage: { options: otherLanguages(), pick: onLanguage },
       },
     )
 
@@ -463,6 +487,10 @@ export function attachReader({
     // goes to the card as one — that is what `displayedReading` below is for.
     const match: Match = {
       text,
+      // Written by `buildWordElement` when the segmenter deinflected the word,
+      // so a verb hovered inside the selection card resolves to the same
+      // headword it would have on the page.
+      ...(wordEl.dataset.dictionary ? { dictionary: wordEl.dataset.dictionary } : {}),
       reading: [],
       start: 0,
       end: text.length,
@@ -523,9 +551,11 @@ export function attachReader({
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,
+        lang: pack.code,
         // Same rule as the subtitle overlay: readings you have earned stop
         // being drawn, and hovering the card brings every one of them back.
-        hidePinyin: config.quizMode || known().has(token.text),
+        // Keyed on the headword, which is what the deck matured.
+        hidePinyin: config.quizMode || known().has(token.dictionary ?? token.text),
       })
       wordEl.dataset.index = String(index)
       wordsEl.appendChild(wordEl)

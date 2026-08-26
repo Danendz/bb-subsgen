@@ -98,6 +98,17 @@ the other — otherwise the popup and the badge, which only ever ask where a dic
 downloaded from, would transitively import a segmenter. `src/lang/packs.test.ts` asserts their key
 sets agree, which is the part that has to stay true.
 
+**`Match.dictionary` and `Token.dictionary` are position and identity coming apart.** A Japanese
+surface is rarely its own headword — 食べる appears as 食べて, 食べた, 食べません — so a cut carries
+both the span as it is written and the headword it is a form of. Everything that *draws* reads
+`text`: the highlight range, `word.dataset.text`, the furigana, the pattern lookup against the
+segmented line. Everything that *identifies* reads `dictionary ?? text`: the definitions lookup,
+`discoverWord`, `markKnown`, the known-set test, `vocabularyIn`, the card's headword. Collapse the
+two and one of them breaks — a subtitle rendering 食べる where the video says 食べて, or a deck with
+one card per conjugation. This is not the widening the next paragraph forbids: that is about one
+language's ranking signals riding on `Entry` and `Tag`, and this is the same kind of slot as
+`ReadingPart.tone`. Chinese never sets it.
+
 **Two levels, as `Site` → `Video` is two levels.** A `LanguagePack` is stateless and says what is
 true of the language. `pack.load(raw)` returns a `Lexicon` whose methods close over the parsed
 download, and which carries its own `pack` back-reference so code holding one never has to be

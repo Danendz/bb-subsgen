@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { buildCard, buildWordElement, characterBreakdown, setCardTranslation } from './card'
 import type { Entry } from '../lang/pack'
+import { japanesePack } from '../lang/ja/pack'
 import { chinesePack } from '../lang/zh/pack'
 import { readingParts as parts } from '../lang/zh/reading'
 import { PATTERNS } from '../lang/zh/grammar/patterns'
@@ -217,5 +218,88 @@ describe('positioning a reading over its characters', () => {
     expect([...el.querySelectorAll('.hanzi')].map((n) => (n as HTMLElement).style.gridRow)).toEqual(
       ['2', '2'],
     )
+  })
+})
+
+describe('the part-of-speech chips', () => {
+  const opts = { pack: japanesePack }
+  const taberu = () =>
+    japanesePack.entriesFrom(
+      [
+        {
+          kanji: [{ text: '食べる', common: true, tags: [] }],
+          kana: [{ text: 'たべる', common: true, tags: [], restrictedTo: [], nokanji: false }],
+          senses: [
+            { pos: ['v1', 'vt'], misc: [], field: [], info: [], gloss: ['to eat'] },
+            { pos: ['n'], misc: ['uk'], field: [], info: [], gloss: ['food'] },
+          ],
+        },
+      ],
+      '食べる',
+      { traditional: false },
+    )
+
+  test('draws a chip row per sense, because a part of speech is per sense', () => {
+    const card = buildCard({ headword: '食べる', entries: taberu() }, opts)
+    const rows = card.querySelectorAll('.popup-sense-tags')
+    expect(rows.length).toBe(2)
+    expect([...rows[0].querySelectorAll('.popup-sense-tag')].map((el) => el.textContent)).toEqual([
+      'ichidan verb',
+      'transitive',
+    ])
+    expect(rows[1].textContent).toContain('usually kana')
+  })
+
+  test('draws no row at all for a language whose senses carry no codes', () => {
+    // CC-CEDICT has no part of speech. An empty chip row would cost the card a
+    // line of height on every Chinese word for nothing.
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, { pack: chinesePack })
+    expect(card.querySelector('.popup-sense-tags')).toBeNull()
+  })
+})
+
+describe('reading a word as another language', () => {
+  const opts = { pack: chinesePack }
+
+  test('renders no control when the caller offers nowhere to switch to', () => {
+    // Every user with one pack installed. The absence is the setting being
+    // empty, not a round trip that came back with nothing.
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
+    expect(card.querySelector('.popup-lang')).toBeNull()
+    const empty = buildCard(
+      { headword: '学习', entries: [xuexi()] },
+      { ...opts, onLanguage: { options: [], pick: () => {} } },
+    )
+    expect(empty.querySelector('.popup-lang')).toBeNull()
+  })
+
+  test('hands back the code that was picked, and writes nothing itself', () => {
+    const picked: string[] = []
+    const card = buildCard(
+      { headword: '生', entries: [] },
+      {
+        ...opts,
+        onLanguage: { options: [{ code: 'ja', name: 'Japanese' }], pick: (c) => picked.push(c) },
+      },
+    )
+    card.querySelector<HTMLButtonElement>('.popup-lang-button')?.click()
+    expect(picked).toEqual(['ja'])
+  })
+})
+
+describe('which glyph forms the text is drawn with', () => {
+  // 直, 骨, 今 and 学 have different standard forms in Japanese and in
+  // Simplified Chinese. A font stack cannot separate them — the first face
+  // carrying the glyph wins whatever the text is — so the card says which
+  // language it is in and lets the shaper choose.
+  test('marks the card and its words with the language they are in', () => {
+    expect(buildCard({ headword: '生', entries: [] }, { pack: japanesePack }).lang).toBe('ja')
+    expect(buildCard({ headword: '生', entries: [] }, { pack: chinesePack }).lang).toBe('zh')
+
+    const word = buildWordElement(
+      { text: '生', reading: null, kind: 'content' },
+      { showPinyin: false, showToneColors: false, lang: 'ja' },
+    )
+    expect(word.lang).toBe('ja')
   })
 })

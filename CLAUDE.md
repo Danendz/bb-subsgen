@@ -1,10 +1,12 @@
 # bb-subsgen
 
-A Chrome MV3 extension that puts hover pinyin and CC-CEDICT glosses over Chinese text — on
-Bilibili and YouTube subtitles, on opted-in web pages, and in a flashcards app. Chromium only.
-No backend, no accounts. Every LLM/ASR network call goes to `localhost`; the one exception is
-the setup wizard's one-time download of a dictionary source (`src/dict/sources.ts`) from its
-own host.
+A Chrome MV3 extension that puts hover readings and dictionary glosses over Chinese and Japanese
+text — on Bilibili and YouTube subtitles, on opted-in web pages, and in a flashcards app. Pinyin
+over hanzi from CC-CEDICT, furigana over kanji from JMdict, with conjugations resolved back to the
+dictionary form. Which language a surface is read in is a per-site setting, not a global one.
+Chromium only. No backend, no accounts. Every LLM/ASR network call goes to `localhost`; the one
+exception is the setup wizard's one-time download of a dictionary source (`src/dict/sources.ts`)
+from its own host.
 
 ## Commands
 

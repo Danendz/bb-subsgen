@@ -137,7 +137,13 @@ export function attachHover({
     popup = null
   }
 
-  const openPopup = async (wordEl: HTMLElement, headword: string) => {
+  const openPopup = async (wordEl: HTMLElement, surface: string) => {
+    // What the card is about, which on an inflected word is not what the
+    // overlay drew: 食べました is rendered over the subtitle and looked up,
+    // discovered and marked known as 食べる. `surface` still finds the pattern,
+    // because that is what the segmented line holds.
+    const headword = wordEl.dataset.dictionary || surface
+
     // Asks for the characters alongside the word, in one batched round trip, so
     // this card carries the same per-character breakdown the reader's does — it
     // was asking for the headword alone and silently rendering a poorer card.
@@ -154,10 +160,13 @@ export function attachHover({
     popup = buildCard(
       {
         headword,
-        displayedReading: wordEl.dataset.reading ?? '',
+        // The reading drawn over a conjugated word is the surface's, so it is
+        // not the ranking signal `pack.rank` documents — see the same call in
+        // reader/reader.ts.
+        displayedReading: wordEl.dataset.dictionary ? '' : (wordEl.dataset.reading ?? ''),
         entries: found[headword] ?? [],
         breakdown: characterBreakdown(headword, found, pack),
-        patterns: pack.patternsForWord(currentTokens(), headword),
+        patterns: pack.patternsForWord(currentTokens(), surface),
         known: known().has(headword),
       },
       {

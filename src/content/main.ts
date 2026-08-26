@@ -893,6 +893,7 @@ async function main() {
         const { text, source } = translationFor(lastIndex)
         return {
           tokens: currentTokens,
+          lang: pack.code,
           translation: text,
           translationSource: source,
           known,

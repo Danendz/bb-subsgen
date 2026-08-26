@@ -8,9 +8,18 @@ import type { LanguagePack, Lexicon } from '../lang/pack'
 /** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
 
-/** The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary. */
+/**
+ * The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary.
+ *
+ * The headword, not the surface: 食べました is one exposure to 食べる, and a deck
+ * that filed the surface would hold a separate card per conjugation and never
+ * mature any of them. Chinese sets no `dictionary`, so this reads as `t.text`
+ * there.
+ */
 export function vocabularyIn(tokens: Token[]): string[] {
-  return tokens.filter((t) => t.kind !== 'other' && t.text.length > 0).map((t) => t.text)
+  return tokens
+    .filter((t) => t.kind !== 'other' && t.text.length > 0)
+    .map((t) => t.dictionary ?? t.text)
 }
 
 export function unknownIn(words: string[], known: ReadonlySet<string>): string[] {
