@@ -11,8 +11,6 @@ import {
 } from './overlay'
 import { watchPlayback } from './sync'
 import { attachHover } from './hover'
-import { withUserActivation } from './activation'
-import { runTranslationPass } from './translations'
 import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './controls'
 import { siteFor } from '../media/sites'
 import { watchVideoChange, type Site, type Video } from '../media/site'
@@ -36,16 +34,9 @@ import { vocabularyIn, isCapturableText, shouldCaptureLine, unknownIn } from '..
 import { packFor } from '../lang/packs'
 import type { Context } from '../flashcards/types'
 import {
-  createTranslator,
-  isTranslatorSupported,
-  translatorAvailability,
-  type TranslatorLike,
-} from '../lang/translate'
-import {
   loadSettings,
   onSettingsChanged,
   resolveStudyLang,
-  TRANSLATION_LANGS,
   type TranslationLang,
 } from '../shared/settings'
 import {
@@ -62,6 +53,7 @@ import { alignCues } from '../llm/timing'
 import { openExplainDrawer } from './explain-drawer'
 import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
 import { planTranscription } from './transcribe-plan'
+import { createTranslatorPool, labelFor } from './translator-pool'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -105,95 +97,6 @@ async function loadCuesForCurrentVideo(site: Site): Promise<LoadedVideo | null> 
   return { cues: await video.fetchCues(), video }
 }
 
-function labelFor(lang: TranslationLang): string {
-  return TRANSLATION_LANGS.find((l) => l.code === lang)?.label ?? lang
-}
-
-/**
- * One translator per language, for the life of the page.
- *
- * Memoised because the pass is restarted every time a transcript grows — it
- * translates a snapshot, so new lines need a new run — and creating a translator
- * is the expensive half: it waits on a user gesture and, the first time, on a
- * language pack download. The promise rather than the translator is stored, so
- * two restarts arriving together share one creation instead of racing.
- *
- * Deliberately not cleared between videos. A translator is per language; the
- * video it was first wanted for has nothing to do with it.
- */
-const translators = new Map<TranslationLang, Promise<TranslatorLike>>()
-
-function translatorFor(
-  lang: TranslationLang,
-  onDownload: (fraction: number) => void,
-): Promise<TranslatorLike> {
-  const existing = translators.get(lang)
-  if (existing) return existing
-
-  // Needs a user gesture on the page; resolves on the first click or keypress.
-  // No abort signal: waiting for a gesture belongs to the page, not to whichever
-  // pass happened to ask first, and cancelling it on every restart would mean a
-  // transcript that keeps growing keeps throwing away the wait.
-  const created = withUserActivation(() => createTranslator(lang, onDownload))
-  translators.set(lang, created)
-  // A failure must not be remembered as the answer — the usual cause is a page
-  // that has not been clicked yet, and the next attempt may well succeed.
-  created.catch(() => translators.delete(lang))
-  return created
-}
-
-interface TranslateTrackDeps {
-  lang: TranslationLang
-  texts: string[]
-  currentIndex: () => number
-  /** Fires only when a language pack actually has to be fetched. */
-  onDownload: (fraction: number) => void
-  /** The translator exists; from here on the pass is the thing to report. */
-  onReady: () => void
-  onResult: (index: number, translated: string) => void
-  signal: AbortSignal
-}
-
-/**
- * Acquires a translator and runs the whole track through it in the background.
- *
- * Silently does nothing where the API doesn't exist (non-Chrome, Chrome < 138,
- * mobile) — an absent translated line is the correct fallback, never a broken one.
- */
-async function translateTrack({
-  lang,
-  texts,
-  currentIndex,
-  onDownload,
-  onReady,
-  onResult,
-  signal,
-}: TranslateTrackDeps): Promise<void> {
-  if (!isTranslatorSupported()) {
-    console.log(
-      '[bb-subsgen] Translator API not exposed here — skipping translation.',
-      'Needs desktop Chrome 138+.',
-    )
-    return
-  }
-  if (!translators.has(lang)) {
-    console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
-  }
-
-  let translator: TranslatorLike
-  try {
-    translator = await translatorFor(lang, onDownload)
-  } catch (e) {
-    if (!signal.aborted) console.warn('[bb-subsgen] could not create translator', e)
-    return
-  }
-  if (signal.aborted) return
-  onReady()
-
-  console.log('[bb-subsgen] translating', texts.length, 'cues to', lang)
-  await runTranslationPass({ texts, translator, currentIndex, onResult, signal })
-}
-
 async function main() {
   // Definitions now come from the service worker, so nothing here opens a
   // database — clear the one older versions left under bilibili.com's origin.
@@ -231,6 +134,9 @@ async function main() {
     console.warn('[bb-subsgen] no language pack for', lang, '— doing nothing')
     return
   }
+
+  // One per language and never rebuilt between videos; see the pool's header.
+  const translators = createTranslatorPool()
 
   /**
    * The dictionary, asked for the first time a video actually needs it.
@@ -1082,7 +988,7 @@ async function main() {
       progress = { phase: 'pass', done: cache.size, total: translatable() }
       repaintProgress?.()
 
-      void translateTrack({
+      void translators.translateTrack({
         lang,
         // Blanking already-translated cues makes the pass skip them, so toggling
         // the setting off and back on — or a chunk landing — doesn't redo
