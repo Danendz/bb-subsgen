@@ -30,7 +30,13 @@ import {
   recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
-import { vocabularyIn, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
+import {
+  vocabularyIn,
+  isCapturableText,
+  shouldCaptureLine,
+  struggledOn,
+  unknownIn,
+} from '../flashcards/capture'
 import { packFor } from '../lang/packs'
 import type { Context } from '../flashcards/types'
 import {
@@ -55,6 +61,7 @@ import { bufferedAhead, BUFFER_CUES, type Shown } from './tier'
 import { createLanes } from './lanes'
 import { planTranscription } from './transcribe-plan'
 import { settingsEffect } from './settings-effect'
+import { asrOutcome } from './asr-outcome'
 import { createTranslatorPool, labelFor } from './translator-pool'
 
 console.log('[bb-subsgen] content script loaded', location.href)
@@ -446,14 +453,7 @@ async function main() {
      */
     let notice: { text: string; action: string; onAction: () => void } | null = null
     let dismissed = false
-    /**
-     * The last coverage a run reported, kept for the next one to start from.
-     *
-     * A retry re-fetches and re-decodes before it can say anything, and without
-     * this the bar would blanket a video that already has forty-five minutes of
-     * subtitles for the half-minute that takes. What the failed run last sent is
-     * exactly right: it is the complement of the stretches still missing.
-     */
+    /** The last coverage a run reported, carried into the next; see `asrOutcome`. */
     let covered: Span[] = []
 
     /**
@@ -676,16 +676,14 @@ async function main() {
           if (translationWithheld(cueView())) captureCurrentLine()
         },
 
-        // Otherwise the evidence is weaker and cumulative: dwelling long enough
-        // on one line suggests something was off. The threshold is a guess, so
-        // every sample is logged raw and it can be moved to wherever the real
-        // "I'm stuck" pauses turn out to sit.
+        // Otherwise the evidence is weaker and accumulates over the line; see
+        // `struggledOn`. Every sample is logged raw whether or not it captured,
+        // which is what the threshold can later be moved on.
         onLookupEnd: (ms) => {
           if (lastIndex < 0) return
           engagedMs += ms
           const withheld = translationWithheld(cueView())
-          const overThreshold = engagedMs >= settings.struggleThresholdMs
-          if (overThreshold) captureCurrentLine()
+          if (struggledOn(engagedMs, settings.struggleThresholdMs)) captureCurrentLine()
           recordSignal({
             at: Date.now(),
             videoId,
@@ -1070,22 +1068,20 @@ async function main() {
       cues.length = 0
       cues.push(...alignCues(msg.cues))
 
-      if (msg.complete) {
-        // Whether it worked or not, the worker no longer needs holding open.
-        releaseAsrPort()
-        transcribeState = null
-        if (msg.error) {
-          console.warn('[bb-subsgen] transcription:', msg.error)
-          // A new failure is worth showing even if the last one was dismissed.
-          notice = retryNotice(msg.error)
-          dismissed = false
-        }
-        console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
-      } else {
-        covered = msg.covered ?? covered
-        transcribeState = { done: msg.done, total: msg.total, covered }
-        console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
+      const outcome = asrOutcome(msg, covered)
+      covered = outcome.covered
+      transcribeState = outcome.transcribeState
+      // Whether it worked or not, the worker no longer needs holding open.
+      if (outcome.releasePort) releaseAsrPort()
+      if (outcome.notice) {
+        console.warn('[bb-subsgen] transcription:', outcome.notice)
+        notice = retryNotice(outcome.notice)
+        // Undismissed here rather than in `asrOutcome`, which does not know
+        // whether the last notice was ever closed.
+        dismissed = false
       }
+      if (msg.complete) console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
+      else console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
 
       refreshCues?.()
 
@@ -1093,11 +1089,7 @@ async function main() {
       // the speech server, so it costs nothing the transcription is waiting on,
       // and it is what makes a line readable the moment it appears.
       startTranslation?.()
-      // The model pass waits for the whole track. There is one GPU behind all of
-      // this and the speech server is on it until the last chunk lands; a pass
-      // racing it would finish later than the two run in order. It also gets
-      // batch seams that are actually adjacent, which a growing track does not.
-      if (msg.complete) startLlmTranslation?.()
+      if (outcome.startLlm) startLlmTranslation?.()
       repaintProgress?.()
     })
 

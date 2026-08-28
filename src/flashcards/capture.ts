@@ -27,6 +27,25 @@ export function unknownIn(words: string[], known: ReadonlySet<string>): string[]
 }
 
 /**
+ * Whether the time spent on one line's cards has become evidence you were stuck.
+ *
+ * The other way into the deck is vocabulary — `shouldCaptureLine` above — and it
+ * finds lines with a word you have not met. This finds the ones whose difficulty
+ * was never vocabulary: every word known, and you still stopped.
+ *
+ * Cumulative across separate lookups on the same line rather than per lookup.
+ * One long dwell and four short ones on the same sentence are the same evidence,
+ * and only the sum distinguishes reading slowly from being stuck.
+ *
+ * The threshold is a setting because it is a guess. Every dwell is logged raw by
+ * `recordSignal` precisely so it can be moved to wherever the real "I'm stuck"
+ * pauses turn out to sit, rather than argued about.
+ */
+export function struggledOn(engagedMs: number, thresholdMs: number): boolean {
+  return engagedMs >= thresholdMs
+}
+
+/**
  * Whether a subtitle line is worth keeping.
  *
  * One rule, no beginner/advanced switch: a line qualifies when it contains
