@@ -1,13 +1,16 @@
 # bb-subsgen
 
-Hover pinyin + CC-CEDICT glosses over Chinese text. A Chrome MV3 extension —
-no backend, no account. A first-run wizard downloads the ~4MB CC-CEDICT export
-from MDBG; everything after that runs offline.
+Hover readings and dictionary glosses over Chinese and Japanese text — pinyin
+over hanzi from CC-CEDICT, furigana over the kanji it belongs to from JMdict. A
+Chrome MV3 extension, no backend and no account. A first-run wizard downloads the
+dictionary for each language you pick — a 3.9MB export from MDBG for Chinese, a
+10.5MB one from the EDRDG for Japanese — and everything after that runs offline.
 
 Two ways in:
 
-- **Bilibili subtitles** — the player's subtitle track, re-rendered with pinyin
-  above each word and a dictionary card on hover, characters broken down and all.
+- **Bilibili subtitles** — the player's subtitle track, re-rendered with the
+  reading above each word and a dictionary card on hover, characters broken down
+  and all.
 - **Page reader** — hold Shift on any site you opt into and point at a word to
   get the same card, characters broken down and all. Select a phrase — by
   dragging or by double-clicking — for a segmented card with its translation,
@@ -25,6 +28,18 @@ The reader is off everywhere until you enable it per site from the extension
 popup, which is also where Chrome asks for access to that origin. Sentence
 translation uses Chrome's on-device Translator API (desktop Chrome 138+); where
 it isn't available the card simply renders without it.
+
+Which language a site is read in is a property of the site, not a global switch,
+so a Japanese blog and a Chinese one can both be open. Where the guess is wrong,
+a card offers to reread the page in another installed language for as long as the
+tab is open; nothing is written down, so a reload goes back to the site's own
+setting.
+
+Japanese words are found in the form they are written in. 食べる turns up as
+食べました, 食べて, 食べさせられなかった, and none of those is a dictionary
+headword — the reader undoes the conjugation, shows you the dictionary form, and
+files that in the deck rather than one card per ending. Furigana lands over the
+kanji it reads and nothing is drawn over the kana.
 
 ## Flashcards
 
@@ -63,8 +78,8 @@ move a card up the ladder: answering early shows you know it today, which isn't
 what the interval claimed. Getting one wrong does count, because failing a card
 ahead of its due date says the interval was too long.
 
-As words become known, the overlay stops annotating them — pinyin disappears from
-words you've declared known or reviewed to maturity, and a line whose words you
+As words become known, the overlay stops annotating them — the reading disappears
+from words you've declared known or reviewed to maturity, and a line whose words you
 all know loses its translation too. Hovering always brings both back, and doing
 so is itself taken as a signal that the line was harder than its vocabulary
 suggested, so it gets kept. **Alt+Q** hides everything at once, for testing
@@ -105,5 +120,6 @@ Conventions for this codebase are written down in `CLAUDE.md` and
 ## Attribution
 
 Dictionary data is derived from [CC-CEDICT](https://cc-cedict.org), © MDBG and
-contributors, licensed under
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+contributors, and from [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html),
+© the Electronic Dictionary Research and Development Group. Both are licensed
+under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).

@@ -147,6 +147,36 @@ describe('entriesFrom', () => {
   })
 })
 
+describe('sense tags', () => {
+  const tagsOn = (jmdictSense: JmdictSense): string[] => {
+    const [entry] = entriesFrom([row({ kanji: [kanji('食')], senses: [jmdictSense] })], '食', {
+      traditional: false,
+    })
+    return entry.senses[0].tags.flatMap((tag) => (tag.kind === 'pos' ? [tag.label] : []))
+  }
+
+  test('says what kind of word a sense is, in words rather than in JMdict codes', () => {
+    expect(tagsOn(sense('to eat', { pos: ['v1', 'vt'] }))).toEqual(['ichidan verb', 'transitive'])
+  })
+
+  // The one that changes what a learner writes: 有難う and ありがとう are the
+  // same word, and only one of them is how it is actually spelled.
+  test('carries `uk`, which is the difference between 有難う and ありがとう', () => {
+    expect(tagsOn(sense('thank you', { misc: ['uk'] }))).toContain('usually kana')
+  })
+
+  // Every v5 class shares a label, because which one it is matters to the
+  // deinflection table and to nobody reading a card.
+  test('never prints one label twice, however many codes map onto it', () => {
+    expect(tagsOn(sense('to buy', { pos: ['v5u', 'v5u-s'] }))).toEqual(['godan verb'])
+  })
+
+  // A chip reading `v2a-s` looks like something the learner failed to learn.
+  test('drops a code with no learner-facing label rather than printing the code', () => {
+    expect(tagsOn(sense('to be', { pos: ['v2a-s', 'unc'], field: ['ornith'] }))).toEqual([])
+  })
+})
+
 describe('lexiconFacts', () => {
   test('a kana headword reads as itself — there is nothing to draw above it', () => {
     const kudasai = row({ kana: [kana('ください', { common: true })], senses: [sense('please')] })

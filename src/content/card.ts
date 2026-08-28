@@ -4,6 +4,12 @@
 
 import { readingColumns, readingFromText, readingText, toneColor } from '../lang/reading'
 import type { LanguagePack, Pattern, ReadingPart } from '../lang/pack'
+// The card's data model lives beside this file rather than in it, so that a
+// `node` test can reach it without loading a module full of `document`. Both
+// are re-exported here: every existing caller imports them from `./card`.
+import type { CharacterGloss } from './card-data'
+export { characterBreakdown } from './card-data'
+export type { CharacterGloss, CardInput } from './card-data'
 import type { Token } from '../lang/pack'
 import type { Entry } from '../lang/pack'
 
@@ -92,7 +98,9 @@ export const CARD_STYLE = `
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   color: #eef0f4;
-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, "PingFang SC", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Microsoft YaHei",
+    sans-serif;
   font-size: 13px;
   line-height: 1.45;
   /* Interactive so the text can be selected and copied — the hover region
@@ -152,6 +160,21 @@ export const CARD_STYLE = `
   background: rgba(255, 255, 255, 0.12);
 }
 .popup-def + .popup-def { margin-top: 3px; }
+.popup-sense-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+.popup-sense-tag {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #b9c0cc;
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+}
 .popup-cl {
   display: flex;
   flex-wrap: wrap;
@@ -212,6 +235,25 @@ export const CARD_STYLE = `
 
 /* Sits above the translation, so a translation arriving late grows the card
    downward rather than shifting the button out from under the pointer. */
+.popup-lang {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: #8a92a3;
+  font-size: 11px;
+}
+.popup-lang-button {
+  padding: 1px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: transparent;
+  color: #cfd5df;
+  font: inherit;
+  cursor: pointer;
+}
+.popup-lang-button:hover { background: rgba(255, 255, 255, 0.08); }
 .popup-actions {
   display: flex;
   gap: 6px;
@@ -434,15 +476,29 @@ export interface WordStyleOptions {
    * about the layout.
    */
   hidePinyin?: boolean
+  /**
+   * The language being drawn, as a BCP-47 code.
+   *
+   * Same job as `lang` on the card root: 直 and 骨 have different standard
+   * forms in Japanese and Simplified Chinese, and without this the first face
+   * in the stack that has the glyph at all decides which the reader sees.
+   */
+  lang?: string
 }
 
 export function buildWordElement(token: Token, options: WordStyleOptions): HTMLElement {
   const word = document.createElement('span')
   word.className = 'word'
+  // The subtitle line itself, for the reason the card root carries it.
+  if (options.lang) word.lang = options.lang
   // Structure reads dimmer than vocabulary. Costs no height, which is the whole
   // reason it is a colour and not a label — see `.word.function` in WORD_STYLE.
   if (token.kind === 'function') word.classList.add('function')
   word.dataset.text = token.text
+  // Only when the two differ. What is drawn and highlighted is the surface;
+  // what is looked up, discovered and filed into the deck is the headword, and
+  // the card builders downstream read `dictionary ?? text`.
+  if (token.dictionary) word.dataset.dictionary = token.dictionary
   // Lets the hover card show a reading even when the dictionary has no entry,
   // and is the ranking signal it passes back as `displayedReading`. Whole, not
   // split: whoever reads it hands it straight to `pack.rank`.
@@ -474,41 +530,6 @@ export function buildWordElement(token: Token, options: WordStyleOptions): HTMLE
   }
 
   return word
-}
-
-export interface CharacterGloss {
-  char: string
-  reading: ReadingPart[]
-  gloss: string
-}
-
-/**
- * Builds the per-character rows for a multi-character word.
- *
- * Single characters get nothing: the breakdown of 我 is 我, which is noise.
- * Characters with no entry of their own are dropped rather than shown blank.
- */
-export function characterBreakdown(
-  headword: string,
-  found: Record<string, Entry[]>,
-  pack: LanguagePack,
-): CharacterGloss[] {
-  // The same list the lookup was batched from, minus the whole word: a
-  // breakdown is exactly the pieces that lookup already asked about.
-  const chars = pack.cardHeadwords(headword).slice(1)
-  if (!chars.length) return []
-
-  const rows: CharacterGloss[] = []
-  for (const char of chars) {
-    const [primary] = pack.rank(found[char] ?? [], char)
-    if (!primary?.senses.length) continue
-    rows.push({
-      char,
-      reading: primary.reading,
-      gloss: primary.senses.map((sense) => sense.gloss).join('; '),
-    })
-  }
-  return rows
 }
 
 export interface CardData {
@@ -558,6 +579,20 @@ export interface CardOptions {
    * only possible outcome is an apology is worse than no button.
    */
   onExplain?: () => void
+  /**
+   * Other languages this word could be read in, and what to do when one is
+   * picked.
+   *
+   * Omitted renders no control at all, which is every user with one pack
+   * installed — and the video overlay, which pins its language for the content
+   * script's lifetime. Grouped rather than two optional fields because neither
+   * half means anything without the other, and because "there is nowhere to
+   * switch to" and "switching is not offered here" should be one absence.
+   *
+   * Names rather than codes, resolved by the caller: the card renderer has no
+   * business importing the pack registry to turn `ja` into "Japanese".
+   */
+  onLanguage?: { options: { code: string; name: string }[]; pick: (code: string) => void }
 }
 
 /**
@@ -568,7 +603,7 @@ export interface CardOptions {
  * than reflowing around the text you're reading.
  */
 export function buildCard(data: CardData, options: CardOptions): HTMLElement {
-  const { pack, toneColors = true, onMarkKnown, onExplain } = options
+  const { pack, toneColors = true, onMarkKnown, onExplain, onLanguage } = options
   const { headword, displayedReading = '', entries: rawEntries } = data
 
   // File order puts variant spellings first for some characters, so rank
@@ -577,6 +612,12 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
 
   const el = document.createElement('div')
   el.className = 'popup'
+  // Not a font stack: with a stack the first face carrying the glyph wins, so
+  // PingFang SC would keep serving Japanese kanji their Simplified Chinese
+  // forms — 直, 骨, 今 and 学 are all drawn differently, and a learner copying
+  // one off the card is copying the wrong character. `lang` is what makes the
+  // shaper pick the Japanese forms out of a face that has both.
+  el.lang = pack.code
 
   const head = document.createElement('div')
   head.className = 'popup-head'
@@ -619,6 +660,23 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       def.className = 'popup-def'
       def.textContent = sense.gloss
       el.appendChild(def)
+
+      // Under the gloss it belongs to rather than under the whole card,
+      // because a part of speech is per sense: 生きる is a verb and 生き is a
+      // noun in the same entry, and one row at the bottom would say which of
+      // those about neither.
+      const labels = sense.tags.filter((tag) => tag.kind === 'pos')
+      if (!labels.length) continue
+
+      const tags = document.createElement('div')
+      tags.className = 'popup-sense-tags'
+      for (const { label } of labels) {
+        const chip = document.createElement('span')
+        chip.className = 'popup-sense-tag'
+        chip.textContent = label
+        tags.appendChild(chip)
+      }
+      el.appendChild(tags)
     }
 
     // Measure words are a tag rather than a sense, so they neither show as raw
@@ -716,6 +774,25 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
       structure.appendChild(row)
     }
     el.appendChild(structure)
+  }
+
+  if (onLanguage?.options.length) {
+    const row = document.createElement('div')
+    row.className = 'popup-lang'
+
+    const label = document.createElement('span')
+    label.textContent = 'Read as'
+    row.appendChild(label)
+
+    for (const { code, name } of onLanguage.options) {
+      const button = document.createElement('button')
+      button.className = 'popup-lang-button'
+      button.type = 'button'
+      button.textContent = name
+      button.addEventListener('click', () => onLanguage.pick(code))
+      row.appendChild(button)
+    }
+    el.appendChild(row)
   }
 
   if (onMarkKnown || onExplain) {

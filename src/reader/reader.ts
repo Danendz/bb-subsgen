@@ -1,31 +1,21 @@
-import {
-  buildCard,
-  buildWordElement,
-  characterBreakdown,
-  setCardTranslation,
-} from '../content/card'
+import { buildCard, buildWordElement, setCardTranslation } from '../content/card'
+import { cardData, headwordOf } from '../content/card-data'
 import type { LanguagePack, Lexicon, Match } from '../lang/pack'
-import { readingText } from '../lang/reading'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
 import { blockAncestor, createBlockCache, indexOf, rangeOf, rootElement } from './block'
 import { caretAt } from './caret'
 import { createWordHighlight } from './highlight'
-import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
+import { dismisses, hoverOutcome, modifierMatches, sameWord, type CardIdentity } from './lifecycle'
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
 import type { SentenceTranslator } from './translator'
 import type { DefsLookup } from '../shared/dict-client'
 import type { ReaderMount } from './mount'
 import type { PageMode } from './page-mode'
-import type { ReaderModifier, Settings } from '../shared/settings'
-
-const MODIFIER_PROPERTY: Record<ReaderModifier, 'shiftKey' | 'altKey' | 'ctrlKey'> = {
-  shift: 'shiftKey',
-  alt: 'altKey',
-  ctrl: 'ctrlKey',
-}
+import type { Settings } from '../shared/settings'
+import { wordAt } from './word-at'
 
 export interface ReaderDeps {
   mount: ReaderMount
@@ -44,6 +34,16 @@ export interface ReaderDeps {
   settings: () => Settings
   /** Words the reader should stop annotating, mirrored from the worker. */
   known: () => Set<string>
+  /**
+   * The other languages this page could be read in, read live.
+   *
+   * A getter rather than a captured list, because `enabledLanguages` can change
+   * under an attached reader. Empty renders no control at all — which is every
+   * user with one pack installed, and costs no round trip to discover.
+   */
+  otherLanguages: () => { code: string; name: string }[]
+  /** Rereads the page in another language, for as long as this reader stays attached. */
+  onLanguage: (code: string) => void
 }
 
 /** Where an open card came from, so a repeat hover doesn't rebuild it. */
@@ -62,6 +62,8 @@ export function attachReader({
   words,
   settings,
   known,
+  otherLanguages,
+  onLanguage,
 }: ReaderDeps): () => void {
   const { shadowRoot } = mount
   const highlight = createWordHighlight()
@@ -79,7 +81,14 @@ export function attachReader({
   let dictionaryMissing = false
 
   const modifierHeld = (e: MouseEvent | KeyboardEvent): boolean =>
-    e[MODIFIER_PROPERTY[settings().readerModifier]]
+    modifierMatches(settings().readerModifier, {
+      shift: e.shiftKey,
+      alt: e.altKey,
+      ctrl: e.ctrlKey,
+    })
+
+  /** What is open, in the terms `lifecycle.ts` decides about. */
+  const openIdentity = () => open?.identity ?? null
 
   /**
    * How long a card must stay open on one word before that counts as
@@ -125,15 +134,10 @@ export function attachReader({
     highlight.clear()
   }
 
-  /** Cards opened by hovering the page, as opposed to the selection card's words. */
-  const pageCardOpen = () => open?.identity.source === 'page'
-
   const closeSelectionCard = () => {
     selectionCard?.remove()
     selectionCard = null
-    // A word card anchored to the selection card has nothing left to sit
-    // beside, so it goes with it rather than being left floating.
-    if (open?.identity.source === 'selection') closeCard()
+    if (dismisses('selection-card-closed', openIdentity())) closeCard()
   }
 
   const place = (card: HTMLElement, anchor: Anchor) => {
@@ -219,8 +223,10 @@ export function attachReader({
     const token = ++pending
     const { showToneColors } = settings()
 
+    const headword = headwordOf(match)
+
     // One round trip for the word and every one of its characters.
-    const found = await lookup(pack.cardHeadwords(match.text))
+    const found = await lookup(pack.cardHeadwords(headword))
     if (token !== pending) return // a later hover superseded this one
 
     removeCard()
@@ -230,24 +236,26 @@ export function attachReader({
     // actually rested on.
     discoveryTimer = setTimeout(() => {
       discoveryTimer = null
-      discoverWord(pack.code, match.text, pageContext(sentence))
+      discoverWord(pack.code, headword, pageContext(sentence))
     }, DISCOVERY_DWELL_MS)
 
     const card = buildCard(
-      {
-        headword: match.text,
-        displayedReading: displayedReading ?? readingText(match.reading),
-        entries: found[match.text] ?? [],
-        breakdown: characterBreakdown(match.text, found, pack),
+      cardData({
+        match,
+        found,
+        lexicon: wordList,
+        pack,
+        known: known(),
         // Segmented from the sentence under the pointer, which is the same text
         // the translation below the card is for.
-        patterns: wordList ? pack.patternsForWord(wordList.segment(sentence), match.text) : [],
-        known: known().has(match.text),
-      },
+        sentence,
+        shownReading: displayedReading,
+      }),
       {
         pack,
         toneColors: showToneColors,
-        onMarkKnown: (next) => markKnown(pack.code, match.text, next),
+        onMarkKnown: (next) => markKnown(pack.code, headword, next),
+        onLanguage: { options: otherLanguages(), pick: onLanguage },
       },
     )
 
@@ -277,13 +285,13 @@ export function attachReader({
     const index = indexOf(block, caret.node, caret.offset)
     if (index === null) return null
 
-    const match = wordList.matchAt(block.text, index)
-    if (!match) return null
+    const found = wordAt(wordList, block.text, index)
+    if (!found) return null
 
-    const range = rangeOf(block, match.start, match.end)
+    const range = rangeOf(block, found.match.start, found.match.end)
     if (!range) return null
 
-    return { match, range, sentence: pack.sentenceTextAt(block.text, index) }
+    return { ...found, range }
   }
 
   const onPointerMove = (e: PointerEvent) => {
@@ -306,7 +314,7 @@ export function attachReader({
       const found = wordUnder(clientX, clientY)
       // 'keep' covers both "same word" and "no word here" — see lifecycle.ts.
       // The `!found` half is what makes pointing at a button a non-event.
-      if (hoverOutcome(open?.identity ?? null, found?.match ?? null) === 'keep' || !found) return
+      if (hoverOutcome(openIdentity(), found?.match ?? null) === 'keep' || !found) return
 
       highlight.show(found.range)
       void openCard(found.match, found.range.getBoundingClientRect(), found.sentence, {
@@ -319,7 +327,7 @@ export function attachReader({
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      closeCard()
+      if (dismisses('escape', openIdentity())) closeCard()
       closeSelectionCard()
       return
     }
@@ -345,9 +353,7 @@ export function attachReader({
     held = false
     dragging = false
     pageMode.deactivate()
-    // Only the card the modifier opened. One hovered from the selection card
-    // never needed the key held, so releasing it must not take that away.
-    if (pageCardOpen()) closeCard()
+    if (dismisses('release', openIdentity())) closeCard()
   }
 
   const onKeyUp = (e: KeyboardEvent) => {
@@ -389,9 +395,7 @@ export function attachReader({
     if (held) {
       e.stopPropagation()
       dragging = true
-      // The word card is about to be dragged across. It goes now rather than on
-      // the first move, so it never flashes over the text you're selecting.
-      if (pageCardOpen()) closeCard()
+      if (dismisses('drag', openIdentity())) closeCard()
       // Shift+mousedown *extends* an existing selection rather than starting a
       // new one, so a second lookup would otherwise run all the way back to the
       // last one's anchor. Dropping the ranges leaves nothing to extend from.
@@ -463,6 +467,10 @@ export function attachReader({
     // goes to the card as one — that is what `displayedReading` below is for.
     const match: Match = {
       text,
+      // Written by `buildWordElement` when the segmenter deinflected the word,
+      // so a verb hovered inside the selection card resolves to the same
+      // headword it would have on the page.
+      ...(wordEl.dataset.dictionary ? { dictionary: wordEl.dataset.dictionary } : {}),
       reading: [],
       start: 0,
       end: text.length,
@@ -523,9 +531,11 @@ export function attachReader({
       const wordEl = buildWordElement(token, {
         showPinyin: true,
         showToneColors: config.showToneColors,
+        lang: pack.code,
         // Same rule as the subtitle overlay: readings you have earned stop
         // being drawn, and hovering the card brings every one of them back.
-        hidePinyin: config.quizMode || known().has(token.text),
+        // Keyed on the headword, which is what the deck matured.
+        hidePinyin: config.quizMode || known().has(token.dictionary ?? token.text),
       })
       wordEl.dataset.index = String(index)
       wordsEl.appendChild(wordEl)
@@ -586,7 +596,7 @@ export function attachReader({
    * neither is a word card anchored to that panel.
    */
   const onScroll = () => {
-    if (pageCardOpen()) closeCard()
+    if (dismisses('scroll', openIdentity())) closeCard()
   }
 
   // Every one of these is capture phase on `window`, the first node an event
@@ -623,7 +633,15 @@ export function attachReader({
   CANCELLED.forEach((type) => window.addEventListener(type, onCancelledEvent, true))
 
   return () => {
+    // Invalidates any lookup already in flight. Without it an `openCard`
+    // awaiting `lookup` passes its `token !== pending` check, arms the
+    // discovery timer, and writes a card into the flashcards deck half a second
+    // after the reader was torn off the page.
+    pending++
     if (frame) cancelAnimationFrame(frame)
+    // Unconditional, and the 'teardown' row of the dismissal table is why: both
+    // sources go. `closeCard` on nothing is a no-op that also clears the
+    // highlight, which `destroy` below would do anyway.
     closeCard()
     closeSelectionCard()
     highlight.destroy()

@@ -47,6 +47,22 @@ export interface ReadingPart {
 /** One cut of a line: a word, or the punctuation and Latin between two of them. */
 export interface Token {
   text: string
+  /**
+   * The headword this is a form of. Absent when the surface already is it.
+   *
+   * Position and identity have come apart, and neither `text` alone can serve
+   * both readers. What is drawn, highlighted and measured has to be the surface
+   * — a Japanese subtitle that renders 食べる where the video says 食べて is
+   * wrong on screen. What is looked up, discovered and filed into the deck has
+   * to be the headword, or the deck fills with conjugations and nothing
+   * resolves.
+   *
+   * Not the widening `architecture.md` forbids: that is about one language's
+   * *ranking signals* riding on `Entry` and `Tag`. This is the same kind of
+   * slot as `ReadingPart.tone`, null "where the language marks no tone", and
+   * `Entry.variants`, which only Chinese fills. Chinese never sets it.
+   */
+  dictionary?: string
   /** null means "not a dictionary word", which is not the same as an empty reading. */
   reading: ReadingPart[] | null
   /**
@@ -64,6 +80,8 @@ export interface Token {
 /** A dictionary word found in running text, with where it sits. */
 export interface Match {
   text: string
+  /** The headword this is a form of. Absent when the surface already is it — see `Token`. */
+  dictionary?: string
   /** The reading, or `[]` when only the characters are known. */
   reading: ReadingPart[]
   start: number
@@ -129,6 +147,15 @@ export type Tag =
   | { kind: 'phrase' }
   /** A name. Ranked below ordinary senses, because a surname is rarely what was meant. */
   | { kind: 'proper-noun' }
+  /**
+   * What kind of thing a sense is: a part of speech, or a usage note.
+   *
+   * On `Sense.tags` in practice rather than `Entry.tags`, because JMdict's
+   * `pos` is per sense. One variant for both because the card cannot usefully
+   * draw two chip styles, and `label` is already carried — splitting it later
+   * is additive rather than a migration.
+   */
+  | { kind: 'pos'; label: string }
 
 /** One meaning, in words a learner can read. No dictionary notation survives into `gloss`. */
 export interface Sense {

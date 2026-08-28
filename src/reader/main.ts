@@ -6,10 +6,11 @@
 // shared/reader-sites.ts for the registration half.
 
 import { attachReader } from './reader'
+import { planAttach } from './attach-plan'
 import { mountReader, type ReaderMount } from './mount'
 import { createPageMode } from './page-mode'
 import { createSentenceTranslator, type SentenceTranslator } from './translator'
-import type { Lexicon } from '../lang/pack'
+import type { LanguagePack, Lexicon } from '../lang/pack'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { packFor } from '../lang/packs'
 import { loadLexicon, lookupDefs } from '../shared/dict-client'
@@ -50,6 +51,26 @@ async function main(): Promise<void> {
   let words: Promise<Lexicon | null> | null = null
   /** The language the attached reader was built for, so `apply` can spot a change. */
   let activeLang: string | null = null
+  /**
+   * A language picked from a card, overriding the site's declaration.
+   *
+   * Sticky for the life of the attached reader rather than per card: a learner
+   * on a Japanese page whose site declaration says `zh` would otherwise
+   * re-toggle on every single word. Never written to storage, so a reload
+   * returns to the declaration and that stays the single source of truth for
+   * what a site is.
+   */
+  let sessionLang: string | null = null
+
+  /**
+   * The language to read this page in, override first.
+   *
+   * Used by `start()` *and* `apply()`. If `apply()` kept calling
+   * `resolveReaderLang` directly it would compare the stored language against
+   * the overridden one and tear the reader down on the next settings echo,
+   * silently reverting the toggle.
+   */
+  const effectiveLang = () => sessionLang ?? resolveReaderLang(settings, location.origin)
 
   const stop = () => {
     detach?.()
@@ -63,32 +84,22 @@ async function main(): Promise<void> {
     stopKnown = null
     known = new Set()
     activeLang = null
+    // `sessionLang` deliberately survives. The toggle sets it and then calls
+    // `apply()`, which stops before it starts — clearing it here would make the
+    // rebuild undo the very change that asked for it.
   }
 
   /**
-   * The language, the pack and the lexicon are resolved here rather than once
-   * for the page, because `resolveReaderLang` can now answer differently for
-   * the same page — an override written from another surface arrives through
-   * the `onSettingsChanged` subscription below.
+   * Builds the reader for one language.
    *
-   * `apply()` already tears the reader down and builds it again on every
-   * settings change, so all three move in one step and the segmenter can never
-   * end up on a different language from the definitions.
+   * The language and its pack are resolved by `apply()` and passed in rather
+   * than read here, because `resolveReaderLang` can now answer differently for
+   * the same page — an override written from another surface arrives through
+   * the `onSettingsChanged` subscription below. `apply()` tears the reader down
+   * and builds it again when that happens, so the segmenter, the pack and the
+   * definitions move in one step and can never end up on different languages.
    */
-  const start = () => {
-    if (detach) return
-
-    const lang = resolveReaderLang(settings, location.origin)
-
-    // No pack means no segmenter and no script test, which is every question the
-    // reader would ask — so it never attaches at all, rather than attaching and
-    // finding nothing anywhere.
-    const pack = packFor(lang)
-    if (!pack) {
-      console.warn('[bb-subsgen] no language pack for', lang, '— reader not starting')
-      return
-    }
-
+  const start = (lang: string, pack: LanguagePack) => {
     const getWords = () => (words ??= loadLexicon(lang))
     activeLang = lang
 
@@ -112,20 +123,64 @@ async function main(): Promise<void> {
       words: getWords,
       settings: () => settings,
       known: () => known,
+      // Read at card-build time, not captured: `enabledLanguages` can change
+      // under an attached reader. A user with one pack installed sees no
+      // control at all, and finding that out costs no round trip — which is
+      // why this is the setting rather than one `bb-subsgen:dict-status` per
+      // language inside an otherwise synchronous card build.
+      otherLanguages: () =>
+        settings.enabledLanguages
+          .filter((code) => code !== activeLang)
+          .flatMap((code) => {
+            const other = packFor(code)
+            return other ? [{ code: other.code, name: other.name }] : []
+          }),
+      onLanguage: (code) => {
+        if (code === activeLang) return
+        sessionLang = code
+        apply()
+      },
     })
-    console.log('[bb-subsgen] reader active on', location.origin, 'in', lang)
   }
 
   const apply = () => {
-    if (!readerEnabledFor(settings, location.origin)) {
-      stop()
-      return
+    const lang = effectiveLang()
+    // Resolved here and handed to `planAttach` as a boolean: the plan decides,
+    // and every effect below — including which registry answered — stays out
+    // here where it can be seen.
+    const pack = packFor(lang)
+    const { action, verdict } = planAttach({
+      enabled: readerEnabledFor(settings, location.origin),
+      resolvedLang: lang,
+      activeLang,
+      attached: detach !== null,
+      hasPack: pack !== null,
+    })
+
+    switch (action) {
+      case 'nothing':
+        // Silent in the steady state — `apply()` runs on every settings echo.
+        // The one case worth a line is a page the reader can never start on.
+        if (!pack) console.warn('[bb-subsgen]', verdict, '— reader not starting')
+        return
+      case 'stop':
+        console.log('[bb-subsgen] reader stopping on', location.origin, '—', verdict)
+        stop()
+        return
+      case 'restart':
+        // The segmenter, the pack and the lexicon move in one step, so the
+        // language changing under a running reader is a teardown and a rebuild.
+        stop()
+        break
+      case 'start':
+        break
     }
-    // `start()` is a no-op while attached, so a language that changed under a
-    // running reader has to be torn down first — otherwise the segmenter stays
-    // on the old language while the definitions follow the new one.
-    if (detach && resolveReaderLang(settings, location.origin) !== activeLang) stop()
-    start()
+
+    // Narrowing, not a second check: `planAttach` only answers `start` or
+    // `restart` when it was told there is a pack.
+    if (!pack) return
+    start(lang, pack)
+    console.log('[bb-subsgen] reader active on', location.origin, '—', verdict)
   }
 
   apply()

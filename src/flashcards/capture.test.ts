@@ -7,6 +7,7 @@ import {
   isCapturableText,
   selectionTarget,
   shouldCaptureLine,
+  struggledOn,
   unknownIn,
 } from './capture'
 import type { Token } from '../lang/pack'
@@ -176,5 +177,34 @@ describe('graduationOrder', () => {
 describe('unknownIn', () => {
   test('keeps duplicates, since a line can repeat an unknown word', () => {
     expect(unknownIn(['学', '学', '我'], new Set(['我']))).toEqual(['学', '学'])
+  })
+})
+
+describe('struggledOn', () => {
+  test('says nothing on a glance, which is looking a word up and reading on', () => {
+    expect(struggledOn(800, 4000)).toBe(false)
+  })
+
+  /**
+   * Cumulative on purpose. Four short lookups on one sentence are the same
+   * evidence as one long one, and only the sum tells reading slowly apart from
+   * being stuck — per-lookup, neither would ever reach the threshold.
+   */
+  test('adds up across separate lookups on the same line', () => {
+    const dwells = [1200, 900, 1500, 700]
+    let engaged = 0
+    const captures = dwells.map((ms) => struggledOn((engaged += ms), 4000))
+
+    expect(captures).toEqual([false, false, false, true])
+  })
+
+  test('fires exactly on the threshold, so the setting means what it says', () => {
+    expect(struggledOn(4000, 4000)).toBe(true)
+    expect(struggledOn(3999, 4000)).toBe(false)
+  })
+
+  /** Lowering the setting to nothing captures every line the cards were opened on. */
+  test('captures on any dwell at all where the threshold is zero', () => {
+    expect(struggledOn(1, 0)).toBe(true)
   })
 })

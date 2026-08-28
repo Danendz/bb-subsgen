@@ -3,8 +3,8 @@
 // The Japanese counterpart of `zh/lexicon.ts`: the index is private to this
 // module, and what leaves is the object below, whose methods close over it. The
 // two languages hold genuinely different indexes — Chinese keeps a set of
-// phrasebook spans, Japanese keeps a word class per headword for #15 to
-// deinflect against — and neither has to be visible to the other or to any
+// phrasebook spans, Japanese keeps a word class per headword to validate a
+// deinflection against — and neither has to be visible to the other or to any
 // caller, which is what the `Lexicon` split in `pack.ts` was for.
 
 import type { LanguagePack, Lexicon, Match, Token } from '../pack'
@@ -58,6 +58,10 @@ export function loadJapanese(raw: string, pack: LanguagePack): Lexicon {
       if (!found) return null
       return {
         text: found.text,
+        ...(found.dictionary ? { dictionary: found.dictionary } : {}),
+        // Of the surface, not of the headword: 食べて is drawn over the
+        // characters on the page, and たべる over 食べて would be furigana for a
+        // word the reader is not looking at.
         reading: furiganaParts(found.text, found.reading),
         start: found.start,
         end: found.end,
