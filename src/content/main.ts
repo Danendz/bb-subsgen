@@ -1,3 +1,34 @@
+// The overlay orchestrator: everything that has to happen in the page's own
+// world for a subtitle to end up annotated.
+//
+// It owns no decisions worth testing. Which of the two translations a line shows
+// is `lanes.ts` over `tier.ts`; what a settings change does to a running pass is
+// `settings-effect.ts`; what a transcription chunk changes is `asr-outcome.ts`;
+// when a dwell counts as struggling is `flashcards/capture.ts`. What is left
+// here is wiring, and three nested scopes that are load-bearing in a way no
+// individual line shows:
+//
+//   page    — `main()`. The site adapter, the study language and its pack, the
+//             lexicon, the translator pool and the lanes. One per document,
+//             never rebuilt, because none of them is about a particular video.
+//   video   — `loadCurrentVideo()`. The cue array, the transcription run, the
+//             translation passes, the notice and the progress state. Torn down
+//             and rebuilt on every video change.
+//   overlay — the `mount` callback. The shadow root, the hover card, the
+//             playback watcher, the geometry. Rebuilt every time the player
+//             swaps its `<video>` element, which on bangumi it does during DASH
+//             and DRM setup.
+//
+// The middle scope is the whole point. A pass has to outlive a remount: it runs
+// for minutes, the overlay under it may be replaced several times while it does,
+// and a chunk or a batch landing in the gap must not be lost. That is why the
+// passes and their subscriptions sit in the video scope and the mount only
+// publishes hooks that paint them. Getting it wrong is not a visual glitch —
+// it previously left both passes dead for the rest of the video.
+//
+// So: before moving a `let` in here, ask which of the three scopes it belongs
+// to. That question is what this file is arranged to answer.
+
 import { mount } from './mount'
 import {
   renderCue,
@@ -431,13 +462,10 @@ async function main() {
 
     // ── Video scope ────────────────────────────────────────────────────────
     //
-    // `mount` re-runs its callback whenever Bilibili replaces the `<video>`
-    // element, which on bangumi it does during DASH and DRM setup. Everything
-    // inside it is therefore per-overlay and may happen several times. A
-    // transcription and a translation pass are per-video and must happen once,
-    // so they live out here and the mount only publishes the hooks that paint
-    // them. Getting this wrong is what previously left both passes dead for the
-    // rest of a video whenever the player swapped its element.
+    // Everything from here to the end of this function happens once per video.
+    // Everything inside the `mount` callback below happens once per overlay,
+    // which is several times per video. See this file's header for why that
+    // boundary is where it is; what follows it is the state it protects.
 
     /**
      * What the notice is currently saying, and whether it has been closed.
@@ -547,17 +575,15 @@ async function main() {
     const translatable = () => cues.filter((cue) => cue.text.trim()).length
 
     /**
-     * The translation a line shows, recomputed rather than remembered.
+     * The translation a line shows, asked afresh on every paint.
      *
-     * Nothing is pinned here. A line used to keep whatever it first displayed,
-     * so that a batch landing mid-read could not rewrite it — but the pin
-     * outlived the line, and every line watched before the gate opened stayed on
-     * the on-device translation for the rest of the session, seek back to it or
-     * not. Recomputing means a line shows the best translation that exists at the
-     * moment it is painted, including the moment the gate opens under it.
+     * Nothing is pinned here — see tier.ts for the freeze-on-display rule that
+     * used to be, and what it cost. Asking again means a line shows the best
+     * translation that exists at the moment it is painted, including the moment
+     * the gate opens under it.
      *
-     * It cannot flicker: the two caches only ever grow and `latch` never closes,
-     * so a line moves nothing → on-device → model and never back.
+     * It cannot flicker: the lanes only ever grow and the gate never closes, so
+     * a line moves nothing → on-device → model and never back.
      */
     const translationFor = (index: number): Shown => {
       const start = index < 0 ? undefined : cues[index]?.start
