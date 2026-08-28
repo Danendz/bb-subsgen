@@ -35,8 +35,13 @@ export interface QueueInput extends QueueLimits {
    * missing on every card that predates the upload — which is all of them —
    * so ordering would silently not improve. Looking it up here means an upload
    * reorders the existing deck immediately, and a deletion un-does it.
+   *
+   * Takes the card rather than its headword: a rank belongs to a headword *in a
+   * language*, and the card is what knows which. Keeping the pairing inside the
+   * caller's closure is what lets this module stay a pure ordering module that
+   * knows nothing about how ranks are stored.
    */
-  rankOf: (headword: string) => number | undefined
+  rankOf: (item: Item) => number | undefined
   /**
    * Times a word has been seen on screen, looked up rather than stored.
    *
@@ -45,8 +50,10 @@ export interface QueueInput extends QueueLimits {
    * number frozen at the moment of collection. It is the one signal always
    * available — a frequency list has to be uploaded, but how often you have
    * actually met a word is collected from the first video you watch.
+   *
+   * Takes the card, for the same reason `rankOf` does.
    */
-  seenCount?: (headword: string) => number
+  seenCount?: (item: Item) => number
 }
 
 /**
@@ -106,11 +113,11 @@ function introducedToday(items: Item[], now: number, kind: Item['kind']): number
 function newWords(
   items: Item[],
   limit: number,
-  rankOf: (headword: string) => number | undefined,
-  seenCount: (headword: string) => number,
+  rankOf: (item: Item) => number | undefined,
+  seenCount: (item: Item) => number,
 ): Item[] {
   if (limit <= 0) return []
-  const rank = (item: Item) => rankOf(item.text) ?? Number.MAX_SAFE_INTEGER
+  const rank = (item: Item) => rankOf(item) ?? Number.MAX_SAFE_INTEGER
 
   return (
     items
@@ -118,10 +125,7 @@ function newWords(
       // declared known; `introducedAt` is the belt to that braces, since it is the
       // field the rest of the queue treats as the record of a first review.
       .filter((item) => item.kind === 'word' && item.state === 'new' && !item.introducedAt)
-      .sort(
-        (a, b) =>
-          rank(a) - rank(b) || seenCount(b.text) - seenCount(a.text) || a.createdAt - b.createdAt,
-      )
+      .sort((a, b) => rank(a) - rank(b) || seenCount(b) - seenCount(a) || a.createdAt - b.createdAt)
       .slice(0, limit)
   )
 }
@@ -195,10 +199,10 @@ function practice(
   items: Item[],
   now: number,
   limit: number,
-  rankOf: (headword: string) => number | undefined,
+  rankOf: (item: Item) => number | undefined,
 ): Item[] {
   if (limit <= 0) return []
-  const rank = (item: Item) => rankOf(item.text) ?? Number.MAX_SAFE_INTEGER
+  const rank = (item: Item) => rankOf(item) ?? Number.MAX_SAFE_INTEGER
 
   return items
     .filter((item) => practisable(item, now))

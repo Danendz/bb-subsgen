@@ -40,11 +40,11 @@ const video = { videoId: 'BV1xx', title: 'Test', url: 'https://b.tv/BV1xx' }
 describe('recordExposuresIn', () => {
   test('accumulates counts across flushes', async () => {
     const database = await db()
-    await recordExposuresIn(database, { lines: 2, words: { 我: 3, 学习: 1 } })
-    await recordExposuresIn(database, { lines: 1, words: { 我: 2 } })
+    await recordExposuresIn(database, 'zh', { lines: 2, words: { 我: 3, 学习: 1 } })
+    await recordExposuresIn(database, 'zh', { lines: 1, words: { 我: 2 } })
 
-    expect((await get<Exposure>(database, STORES.exposures, '我'))?.count).toBe(5)
-    expect((await get<Exposure>(database, STORES.exposures, '学习'))?.count).toBe(1)
+    expect((await get<Exposure>(database, STORES.exposures, ['zh', '我']))?.count).toBe(5)
+    expect((await get<Exposure>(database, STORES.exposures, ['zh', '学习']))?.count).toBe(1)
   })
 
   test('the read-modify-write survives a batch big enough to span the event loop', async () => {
@@ -54,19 +54,21 @@ describe('recordExposuresIn', () => {
     // needs enough requests in flight to actually cross a task boundary.
     const database = await db()
     const words = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`词${i}`, i + 1]))
-    await recordExposuresIn(database, { lines: 300, words })
+    await recordExposuresIn(database, 'zh', { lines: 300, words })
 
     const store = database.transaction(STORES.exposures, 'readonly').objectStore(STORES.exposures)
     expect(await request<number>(store.count())).toBe(300)
-    expect((await get<Exposure>(database, STORES.exposures, '词299'))?.count).toBe(300)
+    expect((await get<Exposure>(database, STORES.exposures, ['zh', '词299']))?.count).toBe(300)
   })
 
   test('files per-video counts and the video itself', async () => {
     const database = await db()
-    await recordExposuresIn(database, { video, lines: 4, words: { 我: 2 } })
-    await recordExposuresIn(database, { video, lines: 3, words: { 我: 1 } })
+    await recordExposuresIn(database, 'zh', { video, lines: 4, words: { 我: 2 } })
+    await recordExposuresIn(database, 'zh', { video, lines: 3, words: { 我: 1 } })
 
-    expect((await get<VideoWord>(database, STORES.videoWords, ['BV1xx', '我']))?.count).toBe(3)
+    expect((await get<VideoWord>(database, STORES.videoWords, ['BV1xx', 'zh', '我']))?.count).toBe(
+      3,
+    )
     const stored = await get<Video>(database, STORES.videos, 'BV1xx')
     expect(stored?.lines).toBe(7)
     expect(stored?.firstWatched).toBeLessThanOrEqual(stored!.lastWatched)
@@ -74,23 +76,25 @@ describe('recordExposuresIn', () => {
 
   test('a batch with no video touches no video stores', async () => {
     const database = await db()
-    await recordExposuresIn(database, { lines: 1, words: { 我: 1 } })
+    await recordExposuresIn(database, 'zh', { lines: 1, words: { 我: 1 } })
     const store = database.transaction(STORES.videos, 'readonly').objectStore(STORES.videos)
     expect(await request<number>(store.count())).toBe(0)
   })
 
   test('an empty flush is a no-op rather than an error', async () => {
     const database = await db()
-    await expect(recordExposuresIn(database, { lines: 0, words: {} })).resolves.toBeUndefined()
+    await expect(
+      recordExposuresIn(database, 'zh', { lines: 0, words: {} }),
+    ).resolves.toBeUndefined()
   })
 })
 
 describe('discoverWordIn', () => {
   test('creates a schedulable card the first time', async () => {
     const database = await db()
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
 
-    const item = await get<Item>(database, STORES.items, wordId('学习'))
+    const item = await get<Item>(database, STORES.items, wordId('zh', '学习'))
     expect(item?.kind).toBe('word')
     expect(item?.state).toBe('new')
     expect(item?.contexts).toHaveLength(1)
@@ -98,65 +102,67 @@ describe('discoverWordIn', () => {
 
   test('a second sighting elsewhere adds a context, not a card', async () => {
     const database = await db()
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
-    await discoverWordIn(database, '学习', context('他学习得很好。'))
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
+    await discoverWordIn(database, 'zh', '学习', context('他学习得很好。'))
 
-    const item = await get<Item>(database, STORES.items, wordId('学习'))
+    const item = await get<Item>(database, STORES.items, wordId('zh', '学习'))
     expect(item?.contexts.map((c) => c.text)).toEqual(['我在学习中文。', '他学习得很好。'])
   })
 
   test('meeting the same line twice does not duplicate the context', async () => {
     const database = await db()
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
 
-    expect((await get<Item>(database, STORES.items, wordId('学习')))?.contexts).toHaveLength(1)
+    expect((await get<Item>(database, STORES.items, wordId('zh', '学习')))?.contexts).toHaveLength(
+      1,
+    )
   })
 
   test('never demotes a word you marked known', async () => {
     // Hovering a known word for its definition is not a claim you forgot it.
     const database = await db()
-    await markKnownIn(database, '我', true)
-    await discoverWordIn(database, '我', context('我很好。'))
+    await markKnownIn(database, 'zh', '我', true)
+    await discoverWordIn(database, 'zh', '我', context('我很好。'))
 
-    expect((await get<Item>(database, STORES.items, wordId('我')))?.state).toBe('known')
+    expect((await get<Item>(database, STORES.items, wordId('zh', '我')))?.state).toBe('known')
   })
 
   test('a word met in a line that scrolled past joins the deck like any other', async () => {
     // It used to wait in a pool. Rationing words that tightly meant a deck of
     // dozens could not fill a twenty-card session.
     const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'))
+    await discoverWordIn(database, 'zh', '憔悴', context('他很憔悴。'))
 
-    const item = await get<Item>(database, STORES.items, wordId('憔悴'))
+    const item = await get<Item>(database, STORES.items, wordId('zh', '憔悴'))
     expect(item?.state).toBe('new')
     expect(item?.contexts).toHaveLength(1)
   })
 
   test('meeting a word again never pushes a card back out of the deck', async () => {
     const database = await db()
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
-    await discoverWordIn(database, '学习', context('他学习得很好。'))
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
+    await discoverWordIn(database, 'zh', '学习', context('他学习得很好。'))
 
-    expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('new')
+    expect((await get<Item>(database, STORES.items, wordId('zh', '学习')))?.state).toBe('new')
   })
 
   test('meeting a word again does not disturb one in review', async () => {
     const database = await db()
-    await discoverWordIn(database, '学习')
-    const item = (await get<Item>(database, STORES.items, wordId('学习')))!
+    await discoverWordIn(database, 'zh', '学习')
+    const item = (await get<Item>(database, STORES.items, wordId('zh', '学习')))!
     await applyReviewIn(database, item, 'good', 'recognise')
 
-    await discoverWordIn(database, '学习', context('他学习得很好。'))
-    expect((await get<Item>(database, STORES.items, wordId('学习')))?.state).toBe('review')
+    await discoverWordIn(database, 'zh', '学习', context('他学习得很好。'))
+    expect((await get<Item>(database, STORES.items, wordId('zh', '学习')))?.state).toBe('review')
   })
 
   test('meeting a word twice keeps both contexts', async () => {
     const database = await db()
-    await discoverWordIn(database, '憔悴', context('他很憔悴。'))
-    await discoverWordIn(database, '憔悴', context('她面容憔悴。'))
+    await discoverWordIn(database, 'zh', '憔悴', context('他很憔悴。'))
+    await discoverWordIn(database, 'zh', '憔悴', context('她面容憔悴。'))
 
-    const item = await get<Item>(database, STORES.items, wordId('憔悴'))
+    const item = await get<Item>(database, STORES.items, wordId('zh', '憔悴'))
     expect(item?.state).toBe('new')
     expect(item?.contexts).toHaveLength(2)
   })
@@ -165,28 +171,28 @@ describe('discoverWordIn', () => {
 describe('captureSentenceIn', () => {
   test('lands in the pool rather than the deck', async () => {
     const database = await db()
-    await captureSentenceIn(database, '我在学习中文。', context('我在学习中文。'))
+    await captureSentenceIn(database, 'zh', '我在学习中文。', context('我在学习中文。'))
 
-    const item = await get<Item>(database, STORES.items, sentenceId('我在学习中文。'))
+    const item = await get<Item>(database, STORES.items, sentenceId('zh', '我在学习中文。'))
     expect(item?.kind).toBe('sentence')
     expect(item?.state).toBe('pool')
   })
 
   test('the same line from two videos is one card with two contexts', async () => {
     const database = await db()
-    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), videoId: 'BV1' })
-    await captureSentenceIn(database, '谢谢你。', { ...context('谢谢你。'), videoId: 'BV2' })
+    await captureSentenceIn(database, 'zh', '谢谢你。', { ...context('谢谢你。'), videoId: 'BV1' })
+    await captureSentenceIn(database, 'zh', '谢谢你。', { ...context('谢谢你。'), videoId: 'BV2' })
 
-    const item = await get<Item>(database, STORES.items, sentenceId('谢谢你。'))
+    const item = await get<Item>(database, STORES.items, sentenceId('zh', '谢谢你。'))
     expect(item?.contexts.map((c) => c.videoId)).toEqual(['BV1', 'BV2'])
   })
 
   test('keeps the cloze target it was captured for', async () => {
     const database = await db()
-    await captureSentenceIn(database, '我在学习中文。', context('我在学习中文。'), '学习')
-    expect((await get<Item>(database, STORES.items, sentenceId('我在学习中文。')))?.target).toBe(
-      '学习',
-    )
+    await captureSentenceIn(database, 'zh', '我在学习中文。', context('我在学习中文。'), '学习')
+    expect(
+      (await get<Item>(database, STORES.items, sentenceId('zh', '我在学习中文。')))?.target,
+    ).toBe('学习')
   })
 
   test('collects the words that made the line worth keeping, into the deck', async () => {
@@ -195,11 +201,11 @@ describe('captureSentenceIn', () => {
     // nothing was teaching — so the line waits, and its words do not.
     const database = await db()
     const line = '他面容憔悴。'
-    await captureSentenceIn(database, line, context(line), undefined, ['面容', '憔悴'])
+    await captureSentenceIn(database, 'zh', line, context(line), undefined, ['面容', '憔悴'])
 
-    expect((await get<Item>(database, STORES.items, sentenceId(line)))?.state).toBe('pool')
+    expect((await get<Item>(database, STORES.items, sentenceId('zh', line)))?.state).toBe('pool')
     for (const word of ['面容', '憔悴']) {
-      const item = await get<Item>(database, STORES.items, wordId(word))
+      const item = await get<Item>(database, STORES.items, wordId('zh', word))
       expect(item?.kind).toBe('word')
       expect(item?.state).toBe('new')
       // The line the word was met in travels with it, same as a hover.
@@ -210,38 +216,47 @@ describe('captureSentenceIn', () => {
   test('the words go in with the line, in one transaction', async () => {
     const database = await db()
     const line = '他面容憔悴。'
-    await captureSentenceIn(database, line, context(line), undefined, ['憔悴'])
+    await captureSentenceIn(database, 'zh', line, context(line), undefined, ['憔悴'])
 
     const all = await request<Item[]>(
       database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
     )
-    expect(all.map((i) => i.id).sort()).toEqual([sentenceId(line), wordId('憔悴')].sort())
+    expect(all.map((i) => i.id).sort()).toEqual(
+      [sentenceId('zh', line), wordId('zh', '憔悴')].sort(),
+    )
   })
 
   test('a word already in the deck is not demoted by the line it appears in', async () => {
     const database = await db()
-    await discoverWordIn(database, '憔悴', context('她面容憔悴。'))
-    await captureSentenceIn(database, '他面容憔悴。', context('他面容憔悴。'), undefined, ['憔悴'])
+    await discoverWordIn(database, 'zh', '憔悴', context('她面容憔悴。'))
+    await captureSentenceIn(database, 'zh', '他面容憔悴。', context('他面容憔悴。'), undefined, [
+      '憔悴',
+    ])
 
-    expect((await get<Item>(database, STORES.items, wordId('憔悴')))?.state).toBe('new')
+    expect((await get<Item>(database, STORES.items, wordId('zh', '憔悴')))?.state).toBe('new')
   })
 
   test('a word repeated in the line is one card', async () => {
     const database = await db()
     const line = '我买了我的书。'
-    await captureSentenceIn(database, line, context(line), undefined, ['我', '买', '我', '书'])
+    await captureSentenceIn(database, 'zh', line, context(line), undefined, [
+      '我',
+      '买',
+      '我',
+      '书',
+    ])
 
     const all = await request<Item[]>(
       database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
     )
     expect(all.filter((i) => i.kind === 'word')).toHaveLength(3)
-    expect((await get<Item>(database, STORES.items, wordId('我')))?.contexts).toHaveLength(1)
+    expect((await get<Item>(database, STORES.items, wordId('zh', '我')))?.contexts).toHaveLength(1)
   })
 
   test('a line whose words you all know pools nothing extra', async () => {
     // The struggle-dwell path passes no words, and needs none.
     const database = await db()
-    await captureSentenceIn(database, '你好吗？', context('你好吗？'))
+    await captureSentenceIn(database, 'zh', '你好吗？', context('你好吗？'))
 
     const all = await request<Item[]>(
       database.transaction(STORES.items, 'readonly').objectStore(STORES.items).getAll(),
@@ -253,19 +268,19 @@ describe('captureSentenceIn', () => {
 describe('markKnownIn and knownWordsIn', () => {
   test('a declared word is reported known', async () => {
     const database = await db()
-    await markKnownIn(database, '我们', true)
-    expect(await knownWordsIn(database)).toEqual(['我们'])
+    await markKnownIn(database, 'zh', '我们', true)
+    expect(await knownWordsIn(database)).toEqual({ zh: ['我们'] })
   })
 
   test('un-marking returns the word to the deck as new', async () => {
     // Not to whatever interval it held: "I don't actually know this" is a
     // stronger statement than a stale schedule.
     const database = await db()
-    await markKnownIn(database, '我们', true)
-    await markKnownIn(database, '我们', false)
+    await markKnownIn(database, 'zh', '我们', true)
+    await markKnownIn(database, 'zh', '我们', false)
 
-    expect(await knownWordsIn(database)).toEqual([])
-    const item = await get<Item>(database, STORES.items, wordId('我们'))
+    expect(await knownWordsIn(database)).toEqual({})
+    const item = await get<Item>(database, STORES.items, wordId('zh', '我们'))
     expect(item?.state).toBe('new')
     expect(item?.interval).toBe(0)
   })
@@ -274,23 +289,32 @@ describe('markKnownIn and knownWordsIn', () => {
     // The button is on the card, and the card can open for a word that was
     // discovered in the same breath.
     const database = await db()
-    await markKnownIn(database, '因为', true)
-    expect(await knownWordsIn(database)).toEqual(['因为'])
+    await markKnownIn(database, 'zh', '因为', true)
+    expect(await knownWordsIn(database)).toEqual({ zh: ['因为'] })
+  })
+
+  test('the same word known in one language is not known in the other', async () => {
+    // The whole reason the mirror is grouped: 生 is a Chinese word and a
+    // Japanese word, and declaring one is not a claim about the other.
+    const database = await db()
+    await markKnownIn(database, 'ja', '\u751f', true)
+
+    expect(await knownWordsIn(database)).toEqual({ ja: ['\u751f'] })
   })
 
   test('pooled sentences never appear in the known set', async () => {
     const database = await db()
-    await captureSentenceIn(database, '我在学习中文。', context('我在学习中文。'))
-    await markKnownIn(database, '我', true)
+    await captureSentenceIn(database, 'zh', '我在学习中文。', context('我在学习中文。'))
+    await markKnownIn(database, 'zh', '我', true)
 
-    expect(await knownWordsIn(database)).toEqual(['我'])
+    expect(await knownWordsIn(database)).toEqual({ zh: ['我'] })
   })
 })
 
 describe('applyReviewIn', () => {
   async function seededWord(database: IDBDatabase): Promise<Item> {
-    await discoverWordIn(database, '学习', context('我在学习中文。'))
-    return (await get<Item>(database, STORES.items, wordId('学习')))!
+    await discoverWordIn(database, 'zh', '学习', context('我在学习中文。'))
+    return (await get<Item>(database, STORES.items, wordId('zh', '学习')))!
   }
 
   test('reschedules the card and logs the review together', async () => {
@@ -301,7 +325,7 @@ describe('applyReviewIn', () => {
     const item = await seededWord(database)
     await applyReviewIn(database, item, 'good', 'recognise', 1_000)
 
-    const stored = await get<Item>(database, STORES.items, wordId('学习'))
+    const stored = await get<Item>(database, STORES.items, wordId('zh', '学习'))
     expect(stored?.interval).toBe(1)
     expect(stored?.reps).toBe(1)
 
@@ -310,7 +334,7 @@ describe('applyReviewIn', () => {
     )
     expect(reviews).toHaveLength(1)
     expect(reviews[0]).toMatchObject({
-      itemId: wordId('学习'),
+      itemId: wordId('zh', '学习'),
       grade: 'good',
       style: 'recognise',
       intervalBefore: 0,
@@ -457,13 +481,13 @@ describe('word lists', () => {
 
   test('a frequency upload is readable as a rank map', async () => {
     const database = await db()
-    await replaceWordListIn(database, 'frequency', rows('的', '一', '是'))
+    await replaceWordListIn(database, 'zh', 'frequency', rows('的', '一', '是'))
 
     expect(await rankMapIn(database)).toEqual(
       new Map([
-        ['的', 1],
-        ['一', 2],
-        ['是', 3],
+        ['zh|的', 1],
+        ['zh|一', 2],
+        ['zh|是', 3],
       ]),
     )
   })
@@ -472,36 +496,81 @@ describe('word lists', () => {
     // The two lists share a row, so the clearing has to be per field or one
     // upload would silently wipe the other list.
     const database = await db()
-    await replaceWordListIn(database, 'hsk', [{ headword: '学习', value: 1 }])
-    await replaceWordListIn(database, 'frequency', rows('学习'))
+    await replaceWordListIn(database, 'zh', 'hsk', [{ headword: '学习', value: 1 }])
+    await replaceWordListIn(database, 'zh', 'frequency', rows('学习'))
 
-    const stored = await get<Rank>(database, STORES.ranks, '学习')
-    expect(stored).toEqual({ headword: '学习', hsk: 1, rank: 1 })
+    const stored = await get<Rank>(database, STORES.ranks, ['zh', '学习'])
+    expect(stored).toEqual({ lang: 'zh', headword: '学习', hsk: 1, rank: 1 })
   })
 
   test('re-uploading drops words the new list does not contain', async () => {
     // Otherwise a word from a replaced list keeps a rank that nothing supports.
     const database = await db()
-    await replaceWordListIn(database, 'frequency', rows('的', '憔悴'))
-    await replaceWordListIn(database, 'frequency', rows('的'))
+    await replaceWordListIn(database, 'zh', 'frequency', rows('的', '憔悴'))
+    await replaceWordListIn(database, 'zh', 'frequency', rows('的'))
 
-    expect(await rankMapIn(database)).toEqual(new Map([['的', 1]]))
+    expect(await rankMapIn(database)).toEqual(new Map([['zh|的', 1]]))
   })
 
   test('deleting one list keeps the other', async () => {
     const database = await db()
-    await replaceWordListIn(database, 'hsk', [{ headword: '学习', value: 2 }])
-    await replaceWordListIn(database, 'frequency', rows('学习'))
-    await deleteWordListIn(database, 'frequency')
+    await replaceWordListIn(database, 'zh', 'hsk', [{ headword: '学习', value: 2 }])
+    await replaceWordListIn(database, 'zh', 'frequency', rows('学习'))
+    await deleteWordListIn(database, 'zh', 'frequency')
 
     expect(await rankMapIn(database)).toEqual(new Map())
-    expect(await get<Rank>(database, STORES.ranks, '学习')).toEqual({ headword: '学习', hsk: 2 })
+    expect(await get<Rank>(database, STORES.ranks, ['zh', '学习'])).toEqual({
+      lang: 'zh',
+      headword: '学习',
+      hsk: 2,
+    })
+  })
+
+  test('uploading for one language leaves another language\u2019s ranks alone', async () => {
+    // The reason the clear became a range delete. A `store.clear()` here meant
+    // loading a Japanese frequency list wiped every Chinese HSK level with it.
+    const database = await db()
+    await replaceWordListIn(database, 'zh', 'hsk', [{ headword: '\u751f', value: 1 }])
+    await replaceWordListIn(database, 'ja', 'frequency', rows('\u751f'))
+
+    expect(await get<Rank>(database, STORES.ranks, ['zh', '\u751f'])).toEqual({
+      lang: 'zh',
+      headword: '\u751f',
+      hsk: 1,
+    })
+    expect(await get<Rank>(database, STORES.ranks, ['ja', '\u751f'])).toEqual({
+      lang: 'ja',
+      headword: '\u751f',
+      rank: 1,
+    })
+  })
+
+  test('the same headword ranks separately in each language', async () => {
+    const database = await db()
+    await replaceWordListIn(database, 'zh', 'frequency', [{ headword: '\u751f', value: 300 }])
+    await replaceWordListIn(database, 'ja', 'frequency', [{ headword: '\u751f', value: 12 }])
+
+    expect(await rankMapIn(database)).toEqual(
+      new Map([
+        ['zh|\u751f', 300],
+        ['ja|\u751f', 12],
+      ]),
+    )
+  })
+
+  test('deleting one language\u2019s list leaves the other\u2019s standing', async () => {
+    const database = await db()
+    await replaceWordListIn(database, 'zh', 'frequency', rows('\u7684'))
+    await replaceWordListIn(database, 'ja', 'frequency', rows('\u306e'))
+    await deleteWordListIn(database, 'ja', 'frequency')
+
+    expect(await rankMapIn(database)).toEqual(new Map([['zh|\u7684', 1]]))
   })
 
   test('a row left with neither value is removed, not kept empty', async () => {
     const database = await db()
-    await replaceWordListIn(database, 'frequency', rows('的'))
-    await deleteWordListIn(database, 'frequency')
+    await replaceWordListIn(database, 'zh', 'frequency', rows('的'))
+    await deleteWordListIn(database, 'zh', 'frequency')
 
     const store = database.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks)
     expect(await request<number>(store.count())).toBe(0)
@@ -574,9 +643,9 @@ describe('capturing grammar', () => {
   test('a pattern met in a line becomes a pooled card', async () => {
     const database = await db()
     const line = '时间过得很快。'
-    await captureSentenceIn(database, line, context(line), undefined, [], ['de-complement'])
+    await captureSentenceIn(database, 'zh', line, context(line), undefined, [], ['de-complement'])
 
-    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    const item = await get<Item>(database, STORES.items, grammarId('zh', 'de-complement'))
     expect(item?.kind).toBe('grammar')
     expect(item?.patternId).toBe('de-complement')
     // Pooled like a line, not released like a word: patterns are the slowest
@@ -588,6 +657,7 @@ describe('capturing grammar', () => {
     const database = await db()
     await captureSentenceIn(
       database,
+      'zh',
       '时间过得很快。',
       context('时间过得很快。'),
       undefined,
@@ -595,7 +665,7 @@ describe('capturing grammar', () => {
       ['de-complement'],
     )
 
-    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    const item = await get<Item>(database, STORES.items, grammarId('zh', 'de-complement'))
     expect(item?.text).toBe('V + 得 + how')
   })
 
@@ -605,6 +675,7 @@ describe('capturing grammar', () => {
     const database = await db()
     await captureSentenceIn(
       database,
+      'zh',
       '他跑得很快。',
       context('他跑得很快。'),
       undefined,
@@ -613,6 +684,7 @@ describe('capturing grammar', () => {
     )
     await captureSentenceIn(
       database,
+      'zh',
       '时间过得很快。',
       context('时间过得很快。'),
       undefined,
@@ -620,7 +692,7 @@ describe('capturing grammar', () => {
       ['de-complement'],
     )
 
-    const item = await get<Item>(database, STORES.items, grammarId('de-complement'))
+    const item = await get<Item>(database, STORES.items, grammarId('zh', 'de-complement'))
     expect(item?.contexts.map((c) => c.text)).toEqual(['他跑得很快。', '时间过得很快。'])
   })
 
@@ -628,6 +700,7 @@ describe('capturing grammar', () => {
     const database = await db()
     await captureSentenceIn(
       database,
+      'zh',
       '你好。',
       context('你好。'),
       undefined,
@@ -635,6 +708,8 @@ describe('capturing grammar', () => {
       ['no-such-pattern'],
     )
 
-    expect(await get<Item>(database, STORES.items, grammarId('no-such-pattern'))).toBeUndefined()
+    expect(
+      await get<Item>(database, STORES.items, grammarId('zh', 'no-such-pattern')),
+    ).toBeUndefined()
   })
 })

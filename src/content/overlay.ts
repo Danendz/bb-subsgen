@@ -1,5 +1,5 @@
 import { buildWordElement, CARD_STYLE, WORD_STYLE } from './card'
-import type { Token } from '../lang/segment'
+import type { Token } from '../lang/pack'
 import type { Settings } from '../shared/settings'
 import type { ProgressView } from './progress'
 import type { PlayerGeometry } from './controls'
@@ -53,7 +53,12 @@ const STYLE = `
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   pointer-events: none;
-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* Extended past PingFang SC for systems whose UI font has no Japanese
+     coverage at all. The stack is not what picks the Japanese glyph forms —
+     the lang attribute on each word is; see buildWordElement. */
+  font-family:
+    -apple-system, "PingFang SC", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Microsoft YaHei",
+    sans-serif;
   font-weight: 500;
   line-height: 1;
 }
@@ -329,6 +334,15 @@ function markSource(el: HTMLElement, source: Source | null): void {
 
 export interface CueView {
   tokens: Token[]
+  /**
+   * The language the line is in, as a BCP-47 code.
+   *
+   * Drawn onto every word rather than only onto the card, because the line is
+   * what a learner copies characters off: 直 and 骨 have different standard
+   * forms in Japanese and Simplified Chinese, and the font stack alone picks
+   * whichever face happens to carry the glyph.
+   */
+  lang: string
   translation: string
   /** Which translator produced `translation`; null while it is still empty. */
   translationSource: Source | null
@@ -348,7 +362,7 @@ export interface CueView {
  */
 export function translationWithheld(view: CueView): boolean {
   if (view.quiz) return true
-  const words = view.tokens.filter((token) => token.pinyin !== null)
+  const words = view.tokens.filter((token) => token.reading !== null)
   return words.length > 0 && words.every((token) => view.known.has(token.text))
 }
 
@@ -368,7 +382,10 @@ export function renderCue(shadowRoot: ShadowRoot, view: CueView, settings: Setti
     ...view.tokens.map((token) =>
       buildWordElement(token, {
         ...settings,
-        hidePinyin: view.quiz || view.known.has(token.text),
+        lang: view.lang,
+        // The headword, because that is what the deck matured. Chinese sets no
+        // `dictionary`, so this reads as `token.text` there.
+        hidePinyin: view.quiz || view.known.has(token.dictionary ?? token.text),
       }),
     ),
   )

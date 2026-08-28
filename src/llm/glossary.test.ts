@@ -1,28 +1,33 @@
 import { describe, expect, test } from 'vitest'
-import type { CedictEntry } from '../lang/dict'
+import type { Entry } from '../lang/pack'
+// A fixture has to name a language, and the readings below are pinyin.
+import { readingParts } from '../lang/zh/reading'
 import { glossFor, glossLine, splitByKnown, translationGlossary } from './glossary'
 
-function entry(over: Partial<CedictEntry> = {}): CedictEntry {
+function entry(headword: string, pinyin: string, ...glosses: string[]): Entry {
   return {
-    simplified: '了',
-    traditional: '了',
-    pinyin: 'le5',
-    definitions: ['completed action marker'],
-    ...over,
+    headword,
+    variants: [],
+    reading: readingParts(headword, pinyin),
+    senses: glosses.map((gloss) => ({ gloss, tags: [] })),
+    tags: [],
   }
 }
 
+const le = () => entry('了', 'le5', 'completed action marker')
+
 describe('glossFor', () => {
   test('is the ranked best entry', () => {
-    expect(glossFor('了', [entry()])).toEqual({
+    expect(glossFor('了', [le()])).toEqual({
       word: '了',
-      pinyin: 'le5',
+      // The display form the learner is shown, not CC-CEDICT's `le5`.
+      pinyin: 'le',
       gloss: 'completed action marker',
     })
   })
 
   test('joins a couple of senses, not all of them', () => {
-    const many = entry({ definitions: ['one', 'two', 'three', 'four'] })
+    const many = entry('了', 'le5', 'one', 'two', 'three', 'four')
 
     expect(glossFor('了', [many])!.gloss).toBe('one; two')
   })
@@ -33,15 +38,15 @@ describe('glossFor', () => {
   })
 
   test('is null when the entry carries no definition', () => {
-    expect(glossFor('了', [entry({ definitions: [] })])).toBeNull()
+    expect(glossFor('了', [entry('了', 'le5')])).toBeNull()
   })
 })
 
 describe('splitByKnown', () => {
-  const defs: Record<string, CedictEntry[]> = {
-    我: [entry({ simplified: '我', pinyin: 'wo3', definitions: ['I; me'] })],
-    吃: [entry({ simplified: '吃', pinyin: 'chi1', definitions: ['to eat'] })],
-    了: [entry()],
+  const defs: Record<string, Entry[]> = {
+    我: [entry('我', 'wo3', 'I; me')],
+    吃: [entry('吃', 'chi1', 'to eat')],
+    了: [le()],
   }
 
   test('sorts words either side of what you know', () => {
@@ -77,12 +82,10 @@ describe('splitByKnown', () => {
 })
 
 describe('translationGlossary', () => {
-  const defs: Record<string, CedictEntry[]> = {
-    了: [entry()],
-    北京: [entry({ simplified: '北京', pinyin: 'Bei3jing1', definitions: ['Beijing'] })],
-    莫名其妙: [
-      entry({ simplified: '莫名其妙', pinyin: 'mo4 ming2 qi2 miao4', definitions: ['baffling'] }),
-    ],
+  const defs: Record<string, Entry[]> = {
+    了: [le()],
+    北京: [entry('北京', 'Bei3 jing1', 'Beijing')],
+    莫名其妙: [entry('莫名其妙', 'mo4 ming2 qi2 miao4', 'baffling')],
     张伟: [],
   }
 
@@ -117,8 +120,8 @@ describe('translationGlossary', () => {
 
 describe('glossLine', () => {
   test('reads as a dictionary line', () => {
-    expect(glossLine({ word: '了', pinyin: 'le5', gloss: 'completed action' })).toBe(
-      '了 (le5) — completed action',
+    expect(glossLine({ word: '了', pinyin: 'le', gloss: 'completed action' })).toBe(
+      '了 (le) — completed action',
     )
   })
 })

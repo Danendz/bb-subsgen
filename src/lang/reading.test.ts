@@ -1,65 +1,118 @@
 import { describe, expect, test } from 'vitest'
-import { applyReadingRules } from './reading'
-import type { Token } from './segment'
+import { readingColumns, readingFromText, readingText, toneColor } from './reading'
+import type { ReadingPart } from './pack'
 
-function tokens(...pairs: [string, string | null][]): Token[] {
-  return pairs.map(([text, pinyin]) => ({ text, pinyin }))
-}
+const part = (text: string, tone: number | null = null, base = ''): ReadingPart => ({
+  base,
+  text,
+  tone,
+})
 
-const readings = (result: Token[]) => result.map((t) => t.pinyin)
-
-describe('applyReadingRules', () => {
-  // 得 defaults to the structural particle, which is right after a verb — but
-  // 我得走了 is "I have to go", a different word with a different sound. What
-  // separates them is what comes before: a particle attaches to a verb, and
-  // there is no verb behind 得 here, only the subject.
-  test('reads 得 as dei3 when nothing precedes it for a complement to attach to', () => {
-    const result = applyReadingRules(tokens(['我', 'wo3'], ['得', 'de5'], ['走', 'zou3']))
-    expect(readings(result)).toEqual(['wo3', 'dei3', 'zou3'])
+describe('readingText', () => {
+  test('joins what is drawn, not what a dictionary wrote', () => {
+    expect(readingText([part('xǐ', 3, '喜'), part('huan', 5, '欢')])).toBe('xǐ huan')
   })
 
-  test('leaves 得 as the particle when a verb precedes it', () => {
-    const result = applyReadingRules(tokens(['跑', 'pao3'], ['得', 'de5'], ['快', 'kuai4']))
-    expect(readings(result)).toEqual(['pao3', 'de5', 'kuai4'])
+  // The card's `also read` line runs the syllables together the way a
+  // dictionary prints a word, and the DOM round trip needs them separated.
+  test('takes the separator, because its two callers genuinely disagree', () => {
+    expect(readingText([part('xǐ'), part('huan')], '')).toBe('xǐhuan')
   })
 
-  test('reads 得 as the particle at the head of a complement in the target line', () => {
-    const result = applyReadingRules(
-      tokens(['时间', 'shi2 jian1'], ['过', 'guo4'], ['得', 'de5'], ['很', 'hen3']),
-    )
-    expect(readings(result)).toEqual(['shi2 jian1', 'guo4', 'de5', 'hen3'])
+  test('a word with no reading is empty text, not a stray separator', () => {
+    expect(readingText([])).toBe('')
+  })
+})
+
+describe('readingFromText', () => {
+  test('admits it knows no base and no tone, rather than guessing at either', () => {
+    expect(readingFromText('xǐ huan')).toEqual([
+      { base: '', text: 'xǐ', tone: null },
+      { base: '', text: 'huan', tone: null },
+    ])
   })
 
-  // 了 in V不了 / V得了 is liao3 — "cannot finish", not the aspect marker.
-  test('reads 了 as liao3 in the potential complement', () => {
+  // A word element with no reading carries no attribute, and `?? ''` is what
+  // arrives — one empty part would draw an empty ruby and reserve its height.
+  test('nothing round-trips to no parts', () => {
+    expect(readingFromText('')).toEqual([])
+  })
+})
+
+describe('toneColor', () => {
+  test('maps each tone to its softened palette color', () => {
+    expect(toneColor(1)).toBe('#ff8a8a')
+    expect(toneColor(2)).toBe('#ffc46b')
+    expect(toneColor(3)).toBe('#7ee0a8')
+    expect(toneColor(4)).toBe('#8ab6ff')
+    expect(toneColor(5)).toBe('#c3c8d0')
+  })
+
+  test('falls back to the neutral color for an unknown tone', () => {
+    expect(toneColor(9)).toBe('#c3c8d0')
+  })
+})
+
+describe('readingColumns', () => {
+  test('cuts one column per part when every part says what it sits over', () => {
+    expect(readingColumns('学习', [part('xué', 2, '学'), part('xí', 2, '习')])).toEqual([
+      { base: '学', parts: [part('xué', 2, '学')] },
+      { base: '习', parts: [part('xí', 2, '习')] },
+    ])
+  })
+
+  // CC-CEDICT carries headwords where syllables and characters cannot line up:
+  // the comma in 不入虎穴，焉得虎子 is written and not said, so `readingParts`
+  // sets every base to '' rather than guess which syllable it displaced.
+  test('draws a word its producer could not align as one run, the way it did before', () => {
+    const parts = [part('bù', 4), part('rù', 4), part('hǔ', 3), part('xué', 2)]
+    expect(readingColumns('不入虎穴', parts)).toEqual([{ base: '不入虎穴', parts }])
+  })
+
+  // The case #16 exists for: た belongs over 食 alone, and べる is read as written.
+  test('leaves a kana run bare so its furigana stays over the kanji', () => {
+    expect(readingColumns('食べる', [part('た', null, '食'), part('', null, 'べる')])).toEqual([
+      { base: '食', parts: [part('た', null, '食')] },
+      { base: 'べる', parts: [] },
+    ])
+  })
+
+  // 昨日/きのう has no rule saying きの belongs to 昨, so furigana.ts groups per
+  // run — one run here, and one column is the honest answer, not a failure.
+  test('keeps a run that no rule can subdivide whole', () => {
+    expect(readingColumns('昨日', [part('きのう', null, '昨日')])).toEqual([
+      { base: '昨日', parts: [part('きのう', null, '昨日')] },
+    ])
+  })
+
+  test('draws an all-kana surface with an empty row above it, not a missing one', () => {
+    expect(readingColumns('たべる', [part('', null, 'たべる')])).toEqual([
+      { base: 'たべる', parts: [] },
+    ])
+  })
+
+  test('a word with no reading is still a column, so the line keeps one baseline', () => {
+    expect(readingColumns('ABC', null)).toEqual([{ base: 'ABC', parts: [] }])
+  })
+
+  // A producer bug must cost the reading, never the characters: whatever the
+  // bases say, the columns still spell the line the viewer is reading.
+  test('never drops a character when the bases disagree with the surface', () => {
+    const parts = [part('た', null, '食'), part('', null, 'べ')]
+    expect(readingColumns('食べる', parts)).toEqual([{ base: '食べる', parts }])
+  })
+})
+
+describe('readingText, on a partly-annotated word', () => {
+  // 食べる: furigana over 食 alone, and the べる run read as it is written. The
+  // empty part used to join as a separator, so the reading ranking compares
+  // against arrived with a trailing space and matched nothing.
+  test('drops the runs nothing is drawn over, rather than joining them as gaps', () => {
     expect(
-      readings(applyReadingRules(tokens(['吃', 'chi1'], ['不', 'bu4'], ['了', 'le5']))),
-    ).toEqual(['chi1', 'bu4', 'liao3'])
-    expect(
-      readings(applyReadingRules(tokens(['受', 'shou4'], ['得', 'de5'], ['了', 'le5']))),
-    ).toEqual(['shou4', 'de5', 'liao3'])
-  })
-
-  test('leaves 了 as the aspect marker everywhere else', () => {
-    const result = applyReadingRules(tokens(['吃', 'chi1'], ['饭', 'fan4'], ['了', 'le5']))
-    expect(readings(result)).toEqual(['chi1', 'fan4', 'le5'])
-  })
-
-  // 得 preceding 了 is itself the potential marker, not a complement head —
-  // both rules touch the same span and must not disagree.
-  test('keeps 得了 consistent when both rules could fire', () => {
-    const result = applyReadingRules(tokens(['受', 'shou4'], ['得', 'de5'], ['了', 'le5']))
-    expect(readings(result)).toEqual(['shou4', 'de5', 'liao3'])
-  })
-
-  test('leaves multi-character tokens and punctuation untouched', () => {
-    const result = applyReadingRules(tokens(['觉得', 'jue2 de5'], ['。', null]))
-    expect(readings(result)).toEqual(['jue2 de5', null])
-  })
-
-  test('returns a new array rather than mutating the input', () => {
-    const input = tokens(['我', 'wo3'], ['得', 'de5'], ['走', 'zou3'])
-    applyReadingRules(input)
-    expect(input[1].pinyin).toBe('de5')
+      readingText([
+        { base: '食', text: 'た', tone: null },
+        { base: 'べる', text: '', tone: null },
+      ]),
+    ).toBe('た')
   })
 })

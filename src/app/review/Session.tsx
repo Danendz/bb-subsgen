@@ -7,26 +7,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { applyReview } from '../../background/flashcards-store'
-import { hanWords } from '../../flashcards/capture'
+import { vocabularyIn } from '../../flashcards/capture'
 import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
-import { PATTERNS } from '../../lang/grammar/patterns'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
-import { segment } from '../../lang/segment'
-import { findPatterns, type PatternMatch } from '../../lang/grammar/match'
-import type { Pattern } from '../../lang/grammar/patterns'
-import { parseDefinitions } from '../../lang/definitions'
+import type { Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
 import { bareId, isYoutubeId } from '../../youtube/site'
-import { rankEntries } from '../../lang/entries'
-import type { Lexicon } from '../../lang/dict'
+import type { Lexicon } from '../../lang/pack'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
 import { canSpeak, speak } from '../../shared/speak'
-import { loadSettings } from '../../shared/settings'
+import { loadSettings, resolveStudyLang } from '../../shared/settings'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
@@ -38,6 +33,9 @@ const REWIND_S = 10
 
 /** Wrong tiles mixed into a bank, so a short line cannot be solved by elimination. */
 const DISTRACTORS = 3
+
+/** Senses shown under the card's word. More is a paragraph, not a reminder. */
+const SENSES = 3
 
 /**
  * Where to watch this line again.
@@ -178,13 +176,16 @@ export function Session({
     () => [
       ...new Set([
         ...(current?.kind === 'word' ? [current.text] : []),
-        ...hanWords(segment(line, words)),
+        ...vocabularyIn(words.segment(line)),
       ]),
     ],
     [current?.id, line, words],
   )
 
-  const loadDefs = useCallback(() => lookupDefs(headwords), [headwords.join('|')])
+  const loadDefs = useCallback(async () => {
+    const settings = await loadSettings()
+    return lookupDefs(resolveStudyLang(settings), headwords, settings.useTraditional)
+  }, [headwords.join('|')])
   const { data: defs } = useAsync(loadDefs)
 
   const card = useMemo(() => {
@@ -195,9 +196,9 @@ export function Session({
     // Segmented from the example for a grammar card — `current.text` is the
     // skeleton, which is not a sentence and has no tiles in it.
     const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
-    const tokens = segment(exampleText, words)
+    const tokens = words.segment(exampleText)
     const target =
-      current.kind === 'sentence' ? chooseTarget(hanWords(tokens), known, current.target) : null
+      current.kind === 'sentence' ? chooseTarget(vocabularyIn(tokens), known, current.target) : null
 
     const exercise = exerciseFor(current, mode, {
       canSpeak: canSpeak(),
@@ -224,7 +225,8 @@ export function Session({
     // its context, not in `text`, so there is nothing here to match against.
     // Spans are dropped here: the reveal names the structures, it does not
     // underline them, so one entry per distinct pattern is what it wants.
-    const patterns = current.kind === 'sentence' ? distinctPatterns(findPatterns(tokens)) : []
+    const patterns =
+      current.kind === 'sentence' ? distinctPatterns(words.pack.findPatterns(tokens)) : []
 
     return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
   }, [current?.id, current?.reps, words, known, distractorPool, mode])
@@ -240,10 +242,12 @@ export function Session({
   }, [current?.id, checked, card?.exercise.response])
 
   const entries = defs?.[current?.text ?? '']
-  const [primary] = rankEntries(entries ?? [], current?.text ?? '')
-  const gloss = primary
-    ? parseDefinitions(primary.definitions).definitions.slice(0, 3).join('; ')
-    : ''
+  const [primary] = words.pack.rank(entries ?? [], current?.text ?? '')
+  const gloss =
+    primary?.senses
+      .slice(0, SENSES)
+      .map((sense) => sense.gloss)
+      .join('; ') ?? ''
 
   const answered =
     card?.exercise.response === 'tiles'
@@ -264,9 +268,11 @@ export function Session({
     }
     if (card.exercise.response === 'text') {
       const attempt = typed.trim()
+      // Either spelling counts: a deck collected in one script should not mark
+      // the same word wrong for being typed in the other.
       return (
         attempt === current.text ||
-        Boolean(primary && (attempt === primary.simplified || attempt === primary.traditional))
+        Boolean(primary && (attempt === primary.headword || primary.variants.includes(attempt)))
       )
     }
     return false
@@ -455,9 +461,9 @@ export function Session({
   const { exercise, context, translation, target, bank, patterns, exampleText } = card
   // The card's own pattern, as opposed to `patterns`, which is everything the
   // example line happens to contain.
-  const ownPattern = PATTERNS.find((p) => p.id === current.patternId)
+  const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
   const spokenText = current.kind === 'grammar' ? exampleText : current.text
-  const pinyin = primary?.pinyin ?? ''
+  const reading = primary?.reading ?? []
 
   return (
     <>
@@ -606,7 +612,7 @@ export function Session({
                 )}
               </p>
             )}
-            {pinyin && <Pinyin pinyin={pinyin} />}
+            {reading.length > 0 && <Pinyin parts={reading} />}
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
             {current.kind === 'word'

@@ -28,7 +28,8 @@ import { extractJson } from '../llm/reply'
 import { newRequestId } from '../llm/types'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import type { TranslationLang } from '../shared/settings'
-import { lookupDefs } from './defs-store'
+import { lookupDefs } from '../dict/store'
+import { packFor } from '../lang/packs'
 import { evict, readTrack, writeLines } from './llm-cache'
 
 /** A cue as the pass needs it: what to translate, and how to key what comes back. */
@@ -42,7 +43,16 @@ export interface PassCue {
 export interface PassRequest {
   tabId: number
   videoId: string
+  /** Where the lines are going. */
   lang: TranslationLang
+  /**
+   * Where they came from — the language being studied, for the glossary.
+   *
+   * Resolved by the caller rather than read here, so this module never reaches
+   * for `chrome.storage` in the middle of a batch. It is not part of what makes
+   * a pass a duplicate: `lang` and the model are.
+   */
+  studyLang: string
   model: string
   baseUrl: string
   video?: VideoPreamble
@@ -195,7 +205,17 @@ async function translateBatch(
   // The words are already segmented; all this needs is what the dictionary
   // knows about the longer ones.
   const words = batch.flatMap((line) => request.cues[line.id]?.words ?? [])
-  const defs = words.length ? await lookupDefs([...new Set(words)]) : {}
+  const rows = words.length ? await lookupDefs(request.studyLang, [...new Set(words)]) : {}
+  // Simplified: the glossary is prompt text for a model, not something on
+  // screen, and the cues it describes were segmented against the simplified
+  // lexicon (see `useTraditional` in src/youtube/captions.ts).
+  const pack = packFor(request.studyLang)
+  const defs = Object.fromEntries(
+    Object.entries(rows).map(([word, found]) => [
+      word,
+      pack ? pack.entriesFrom(found, word, { traditional: false }) : [],
+    ]),
+  )
   const glossary = translationGlossary(words, defs)
 
   const prompt = {

@@ -16,17 +16,17 @@ import { fetchSubtitles } from '../../bilibili/subtitles'
 import type { Cue } from '../../media/cue'
 import { createChat } from '../../chat/store'
 import type { ChatContext } from '../../chat/types'
-import { hanWords } from '../../flashcards/capture'
-import { KNOWN_SET_KEY } from '../../flashcards/known'
-import { loadWords } from '../../lang/dict'
-import { segment } from '../../lang/segment'
+import { vocabularyIn } from '../../flashcards/capture'
+import { KNOWN_SET_KEY, knownWordsFor } from '../../flashcards/known'
+import { packFor } from '../../lang/packs'
+import { dictDb, getLexiconIn } from '../../dict/store'
 import { lineWindow } from '../../llm/context'
 import { splitByKnown } from '../../llm/glossary'
 import { log } from '../../llm/log'
 import { explainQuestion } from '../../llm/prompts'
 import { newRequestId } from '../../llm/types'
 import { lookupDefs } from '../../shared/dict-client'
-import { loadSettings } from '../../shared/settings'
+import { loadSettings, resolveStudyLang } from '../../shared/settings'
 
 /**
  * Tracks already fetched this page load.
@@ -36,6 +36,19 @@ import { loadSettings } from '../../shared/settings'
  * unreachable once should be tried again on the next card.
  */
 const tracks = new Map<string, Promise<Cue[]>>()
+
+/**
+ * Extension-origin caller, so it reads the store directly rather than asking
+ * the worker — see src/dict/store.ts. No dictionary installed loads the empty
+ * lexicon: an explanation with nothing to gloss is not a reason to fail, and
+ * neither is a language with no pack.
+ */
+async function loadWords(lang: string) {
+  const pack = packFor(lang)
+  if (!pack) return null
+  const text = await getLexiconIn(await dictDb(), lang)
+  return pack.load(text ?? '')
+}
 
 export function trackFor(videoId: string): Promise<Cue[]> {
   const existing = tracks.get(videoId)
@@ -64,9 +77,10 @@ export function trackFor(videoId: string): Promise<Cue[]> {
   return fetching
 }
 
-async function knownSet(): Promise<Set<string>> {
+/** The words already known *in this language* — see `knownMirror`. */
+async function knownSet(lang: string): Promise<Set<string>> {
   const stored = await chrome.storage.local.get(KNOWN_SET_KEY)
-  return new Set((stored[KNOWN_SET_KEY] as string[] | undefined) ?? [])
+  return knownWordsFor(stored[KNOWN_SET_KEY], lang)
 }
 
 export interface ExplainRequest {
@@ -125,9 +139,11 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
   }
 
   try {
-    const [lexicon, known] = await Promise.all([loadWords(), knownSet()])
-    const words = hanWords(segment(req.line, lexicon))
-    const defs = await lookupDefs(words)
+    const settings = await loadSettings()
+    const lang = resolveStudyLang(settings)
+    const [lexicon, known] = await Promise.all([loadWords(lang), knownSet(lang)])
+    const words = lexicon ? vocabularyIn(lexicon.segment(req.line)) : []
+    const defs = await lookupDefs(lang, words, settings.useTraditional)
     const { known: mastered, fresh } = splitByKnown(words, known, defs)
 
     context.knownWords = mastered

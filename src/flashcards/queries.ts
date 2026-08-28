@@ -12,8 +12,19 @@ function all<T>(db: IDBDatabase, store: string): Promise<T[]> {
   return request<T[]>(db.transaction(store, 'readonly').objectStore(store).getAll())
 }
 
-export function listItems(db: IDBDatabase): Promise<Item[]> {
-  return all<Item>(db, STORES.items)
+/**
+ * The deck in one language.
+ *
+ * Filtered in memory rather than through a key range or a `by-lang` index:
+ * `getAll` already reads these stores whole, so a range buys nothing, and an
+ * index would mean another versionchange transaction on the one database that
+ * cannot be regenerated. The language is required for the reason the messages
+ * that write a headword require one — a default is a silent mis-file the
+ * moment a second pack ships, and every caller already has a resolved
+ * language to hand.
+ */
+export async function listItems(db: IDBDatabase, lang: string): Promise<Item[]> {
+  return (await all<Item>(db, STORES.items)).filter((item) => item.lang === lang)
 }
 
 export function listVideos(db: IDBDatabase): Promise<Video[]> {
@@ -24,8 +35,8 @@ export function listExposures(db: IDBDatabase): Promise<Exposure[]> {
   return all<Exposure>(db, STORES.exposures)
 }
 
-export function listRanks(db: IDBDatabase): Promise<Rank[]> {
-  return all<Rank>(db, STORES.ranks)
+export async function listRanks(db: IDBDatabase, lang: string): Promise<Rank[]> {
+  return (await all<Rank>(db, STORES.ranks)).filter((rank) => rank.lang === lang)
 }
 
 export function getItem(db: IDBDatabase, id: string): Promise<Item | undefined> {
@@ -34,13 +45,24 @@ export function getItem(db: IDBDatabase, id: string): Promise<Item | undefined> 
   )
 }
 
-/** Every word counted in one video, via the by-video index. */
-export function videoWords(db: IDBDatabase, videoId: string): Promise<VideoWord[]> {
+/**
+ * One language's words counted in one video, via the by-video index.
+ *
+ * A video has no language of its own — it is a place you watched, and a
+ * genuinely bilingual one has words in both. What carries a language is the
+ * rows, so the answer is derived from them.
+ */
+export async function videoWords(
+  db: IDBDatabase,
+  videoId: string,
+  lang: string,
+): Promise<VideoWord[]> {
   const index = db
     .transaction(STORES.videoWords, 'readonly')
     .objectStore(STORES.videoWords)
     .index('by-video')
-  return request<VideoWord[]>(index.getAll(IDBKeyRange.only(videoId)))
+  const rows = await request<VideoWord[]>(index.getAll(IDBKeyRange.only(videoId)))
+  return rows.filter((row) => row.lang === lang)
 }
 
 /** The words the overlay stops annotating — the same rule the mirror publishes. */
@@ -59,6 +81,13 @@ export function knownSetOf(items: Item[]): Set<string> {
  *
  * Walks the `by-at` index backwards and stops at the first missing day, so it
  * costs the length of the streak rather than the length of the history.
+ *
+ * Whole-deck, unlike the reads above, and deliberately. A review row carries
+ * only an `itemId`, so narrowing it by language means either parsing that id —
+ * which `Item.lang` exists to make unnecessary — or joining the whole log
+ * against `items`. And a streak answers "did you study today", not "did you
+ * study Chinese today": a learner who reviewed Japanese this morning has not
+ * broken it.
  */
 export function studyStreak(db: IDBDatabase, now = Date.now()): Promise<number> {
   const index = db

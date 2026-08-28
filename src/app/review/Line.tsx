@@ -5,9 +5,7 @@
 // gives every word a reading you can turn on and a meaning you can ask for,
 // without ever volunteering the meaning to a question that is asking for it.
 
-import { parseDefinitions } from '../../lang/definitions'
-import { rankEntries } from '../../lang/entries'
-import type { CedictEntry, Lexicon } from '../../lang/dict'
+import type { Entry, LanguagePack, Lexicon } from '../../lang/pack'
 import { Pinyin } from '../pinyin'
 import { lineTokens, type LineToken } from './tokens'
 
@@ -20,7 +18,7 @@ export interface LineProps {
   words: Lexicon
   known: Set<string>
   /** Looked up by the card, keyed by headword. Absent while it is still loading. */
-  defs?: Record<string, CedictEntry[]> | null
+  defs?: Record<string, Entry[]> | null
   readings?: boolean
   mark?: string
   blank?: string
@@ -32,7 +30,13 @@ export function Line({ text, words, known, defs, readings = false, mark, blank }
   return (
     <span class="line-words">
       {tokens.map((token, i) => (
-        <Word key={i} token={token} entries={defs?.[token.text]} reserve={readings} />
+        <Word
+          key={i}
+          token={token}
+          pack={words.pack}
+          entries={defs?.[token.text]}
+          reserve={readings}
+        />
       ))}
     </span>
   )
@@ -48,11 +52,14 @@ export function Line({ text, words, known, defs, readings = false, mark, blank }
  */
 function Word({
   token,
+  pack,
   entries,
   reserve,
 }: {
   token: LineToken
-  entries?: CedictEntry[]
+  /** Taken from the line's own lexicon: what ranks the entries below. */
+  pack: LanguagePack
+  entries?: Entry[]
   /** Whether the line keeps a row for readings, so its characters share a baseline. */
   reserve: boolean
 }) {
@@ -68,22 +75,24 @@ function Word({
 
   if (!token.han) return <span class="line-word punct">{token.text}</span>
 
-  const [primary] = rankEntries(entries ?? [], token.text)
-  const gloss = primary
-    ? parseDefinitions(primary.definitions).definitions.slice(0, SENSES).join('; ')
-    : ''
+  const [primary] = pack.rank(entries ?? [], token.text)
+  const gloss =
+    primary?.senses
+      .slice(0, SENSES)
+      .map((sense) => sense.gloss)
+      .join('; ') ?? ''
   // The card's own reading is the fallback: a word the dictionary has no entry
   // for can still have been segmented, and half an answer beats none.
-  const reading = primary?.pinyin ?? token.pinyin ?? ''
-  const askable = Boolean(reading || gloss)
+  const reading = primary?.reading ?? token.reading ?? []
+  const askable = Boolean(reading.length || gloss)
 
   return (
     <span class={`line-word ${askable ? 'askable' : ''}`} tabIndex={askable ? 0 : undefined}>
       {reserve && (
         // Withheld rather than absent, so a line of mixed known and unknown
         // words still sits on one baseline. The same reason the overlay does it.
-        <span class={`ruby ${token.reading ? '' : 'withheld'}`}>
-          <Pinyin pinyin={token.pinyin ?? ''} />
+        <span class={`ruby ${token.showReading ? '' : 'withheld'}`}>
+          <Pinyin parts={token.reading ?? []} />
         </span>
       )}
       <span class={`zh ${token.marked ? 'marked' : ''} ${token.structural ? 'structural' : ''}`}>
@@ -93,7 +102,7 @@ function Word({
         <span class="word-tip" role="tooltip">
           <span class="tip-head">
             <span class="tip-word">{token.text}</span>
-            <Pinyin pinyin={reading} />
+            <Pinyin parts={reading} />
           </span>
           {gloss && <span class="tip-gloss">{gloss}</span>}
         </span>

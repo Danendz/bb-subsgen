@@ -3,12 +3,15 @@ import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listItems, listVideos, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction, type Coverage } from '../flashcards/capture'
 import { lookupDefs } from '../shared/dict-client'
-import { parseDefinitions } from '../lang/definitions'
-import { rankEntries } from '../lang/entries'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
+import { packFor } from '../lang/packs'
 import { Pinyin } from './pinyin'
-import type { VideoWord } from '../flashcards/types'
+import type { Video, VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { canSpeak, speak } from '../shared/speak'
+
+/** Senses per word in the list. The row is one line tall; a third would clip. */
+const SENSES = 2
 
 /**
  * How followable a video is, from running-word coverage.
@@ -43,13 +46,23 @@ function CoverageBar({ coverage }: { coverage: Coverage }) {
 function VideoList() {
   const load = useCallback(async () => {
     const db = await flashcardsDb()
-    const [items, videos] = await Promise.all([listItems(db), listVideos(db)])
+    const lang = resolveStudyLang(await loadSettings())
+    const [items, videos] = await Promise.all([listItems(db, lang), listVideos(db)])
     const known = knownSetOf(items)
     const coverage = new Map<string, Coverage>()
+    // A video is a place you watched, not a language, so which videos belong to
+    // this list is derived from the words captured from them — a genuinely
+    // bilingual one appears under both, scored correctly in each. Listing a
+    // video with nothing captured in this language would render it as "0% of
+    // what is said — you know 0 of 0 distinct words here."
+    const shown: Video[] = []
     for (const video of videos) {
-      coverage.set(video.videoId, coverageOf(await videoWords(db, video.videoId), known))
+      const words = await videoWords(db, video.videoId, lang)
+      if (!words.length) continue
+      coverage.set(video.videoId, coverageOf(words, known))
+      shown.push(video)
     }
-    return { videos, coverage }
+    return { videos: shown, coverage }
   }, [])
   const { data, loading } = useAsync(load)
 
@@ -95,24 +108,30 @@ function VideoDetail({ videoId }: { videoId: string }) {
 
   const load = useCallback(async () => {
     const db = await flashcardsDb()
+    const lang = resolveStudyLang(await loadSettings())
     const [items, videos, words] = await Promise.all([
-      listItems(db),
+      listItems(db, lang),
       listVideos(db),
-      videoWords(db, videoId),
+      videoWords(db, videoId, lang),
     ])
     return {
       video: videos.find((v) => v.videoId === videoId) ?? null,
       words: [...words].sort((a, b) => b.count - a.count),
       known: knownSetOf(items),
+      pack: packFor(lang),
     }
   }, [videoId])
   const { data, loading } = useAsync(load)
 
   const page: VideoWord[] = data?.words.slice(0, limit) ?? []
-  const loadDefs = useCallback(
-    () => lookupDefs(page.map((w) => w.headword)),
-    [page.map((w) => w.headword).join(' ')],
-  )
+  const loadDefs = useCallback(async () => {
+    const settings = await loadSettings()
+    return lookupDefs(
+      resolveStudyLang(settings),
+      page.map((w) => w.headword),
+      settings.useTraditional,
+    )
+  }, [page.map((w) => w.headword).join(' ')])
   const { data: defs } = useAsync(loadDefs)
 
   if (loading) return <p class="muted">Loading…</p>
@@ -140,15 +159,16 @@ function VideoDetail({ videoId }: { videoId: string }) {
       <div class="panel">
         {page.map((word) => {
           const entries = defs?.[word.headword]
-          const [primary] = rankEntries(entries ?? [], word.headword)
+          const [primary] = data.pack?.rank(entries ?? [], word.headword) ?? []
           return (
             <div class="row" key={word.headword}>
               <span class="hanzi">{word.headword}</span>
-              <Pinyin pinyin={primary?.pinyin ?? ''} />
+              <Pinyin parts={primary?.reading ?? []} />
               <span class="grow gloss">
-                {primary
-                  ? parseDefinitions(primary.definitions).definitions.slice(0, 2).join('; ')
-                  : ''}
+                {primary?.senses
+                  .slice(0, SENSES)
+                  .map((sense) => sense.gloss)
+                  .join('; ') ?? ''}
               </span>
               <span class="muted small">{word.count}×</span>
               {canSpeak() && (

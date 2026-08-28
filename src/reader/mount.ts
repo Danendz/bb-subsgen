@@ -54,6 +54,26 @@ const STYLE = `
   font-style: italic;
 }
 
+/**
+ * Shown in place of a word card when no dictionary is installed for the
+ * language — silence would read as a bug here, since holding the modifier
+ * down is the user asking a question.
+ */
+.dict-notice {
+  position: absolute;
+  box-sizing: border-box;
+  max-width: min(320px, 90vw);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(20, 22, 28, 0.94);
+  color: #eef0f4;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+}
+
 ${WORD_STYLE}
 ${CARD_STYLE}
 `

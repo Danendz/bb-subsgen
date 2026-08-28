@@ -1,7 +1,6 @@
 import { adoptStyles } from './overlay'
-import { buildCard, cardHeadwords, characterBreakdown } from './card'
-import { patternsForWord } from '../lang/grammar/match'
-import type { Token } from '../lang/segment'
+import { buildCard, characterBreakdown } from './card'
+import type { LanguagePack, Token } from '../lang/pack'
 import { discoverWord, markKnown } from '../shared/flashcards-client'
 import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
@@ -59,10 +58,10 @@ function inHoverRegion(node: EventTarget | null): boolean {
 
 export interface HoverDeps {
   shadowRoot: ShadowRoot
+  /** The language on screen: what ranks the entries and finds the patterns. */
+  pack: LanguagePack
   video: HTMLVideoElement
   lookup: DefsLookup
-  /** Read at popup-build time so live settings changes take effect. */
-  isTraditional: () => boolean
   showToneColors: () => boolean
   /** The line currently on screen, snapshotted onto whatever gets discovered. */
   currentContext: () => Context | null
@@ -105,9 +104,9 @@ export interface HoverDeps {
 
 export function attachHover({
   shadowRoot,
+  pack,
   video,
   lookup,
-  isTraditional,
   showToneColors,
   currentContext,
   currentTokens,
@@ -138,34 +137,42 @@ export function attachHover({
     popup = null
   }
 
-  const openPopup = async (wordEl: HTMLElement, headword: string) => {
+  const openPopup = async (wordEl: HTMLElement, surface: string) => {
+    // What the card is about, which on an inflected word is not what the
+    // overlay drew: 食べました is rendered over the subtitle and looked up,
+    // discovered and marked known as 食べる. `surface` still finds the pattern,
+    // because that is what the segmented line holds.
+    const headword = wordEl.dataset.dictionary || surface
+
     // Asks for the characters alongside the word, in one batched round trip, so
     // this card carries the same per-character breakdown the reader's does — it
     // was asking for the headword alone and silently rendering a poorer card.
-    const useTraditional = isTraditional()
-    const found = await lookup(cardHeadwords(headword))
+    const found = await lookup(pack.cardHeadwords(headword))
     closePopup()
     adoptStyles(shadowRoot)
 
     // The popup opening is the interaction that counts as discovery: it follows
     // a deliberate dwell, not a pointer crossing the line on its way elsewhere.
-    discoverWord(headword, currentContext() ?? undefined)
+    discoverWord(pack.code, headword, currentContext() ?? undefined)
     onLookup(headword)
     openedAt = Date.now()
 
     popup = buildCard(
       {
         headword,
-        displayedPinyin: wordEl.dataset.pinyin ?? '',
+        // The reading drawn over a conjugated word is the surface's, so it is
+        // not the ranking signal `pack.rank` documents — see the same call in
+        // reader/reader.ts.
+        displayedReading: wordEl.dataset.dictionary ? '' : (wordEl.dataset.reading ?? ''),
         entries: found[headword] ?? [],
-        breakdown: characterBreakdown(headword, found, useTraditional),
-        patterns: patternsForWord(currentTokens(), headword),
+        breakdown: characterBreakdown(headword, found, pack),
+        patterns: pack.patternsForWord(currentTokens(), surface),
         known: known().has(headword),
       },
       {
-        useTraditional,
+        pack,
         toneColors: showToneColors(),
-        onMarkKnown: (next) => markKnown(headword, next),
+        onMarkKnown: (next) => markKnown(pack.code, headword, next),
         ...(openExplain && canExplain?.() !== false
           ? { onExplain: () => void explain(headword) }
           : {}),

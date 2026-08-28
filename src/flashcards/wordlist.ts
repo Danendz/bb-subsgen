@@ -8,7 +8,7 @@
 // Pure, so every format guess below is testable against the shapes real files
 // actually arrive in rather than the shapes their documentation describes.
 
-import { isHan } from '../lang/segment'
+import type { LanguagePack } from '../lang/pack'
 
 export type ListKind = 'frequency' | 'hsk'
 
@@ -46,10 +46,6 @@ const SAMPLE_WORDS = 5
 
 /** HSK has 6 levels in 2.0 and 7-9 bands in 3.0; nothing legitimate falls outside this. */
 const MAX_HSK_LEVEL = 9
-
-function hasHan(text: string): boolean {
-  return Array.from(text).some(isHan)
-}
 
 /** Strips a UTF-8 BOM, which would otherwise ride along inside the first headword. */
 function stripBom(text: string): string {
@@ -112,8 +108,11 @@ function finish(
   kind: ListKind,
   entries: Array<{ headword: string; value: number }>,
   detected: Detected,
+  pack: LanguagePack,
 ): ParseResult {
-  const deduped = dedupe(entries.filter((entry) => entry.headword && hasHan(entry.headword)))
+  const deduped = dedupe(
+    entries.filter((entry) => entry.headword && pack.containsScript(entry.headword)),
+  )
   if (!deduped.length) return { ok: false, error: 'no-chinese' }
 
   const rows = kind === 'frequency' ? byPosition(deduped) : deduped
@@ -137,7 +136,7 @@ function keyFor(row: Record<string, unknown>, preferred: string[]): string | nul
   return null
 }
 
-function parseJson(kind: ListKind, text: string): ParseResult | null {
+function parseJson(kind: ListKind, text: string, pack: LanguagePack): ParseResult | null {
   let value: unknown
   try {
     value = JSON.parse(text)
@@ -158,6 +157,7 @@ function parseJson(kind: ListKind, text: string): ParseResult | null {
       kind,
       strings.map((headword) => ({ headword: headword.trim(), value: 0 })),
       { format: 'json', headerSkipped: false },
+      pack,
     )
   }
 
@@ -165,7 +165,7 @@ function parseJson(kind: ListKind, text: string): ParseResult | null {
   const wordKey =
     keyFor(first, WORD_KEYS) ??
     Object.keys(first).find(
-      (key) => typeof first[key] === 'string' && hasHan(first[key] as string),
+      (key) => typeof first[key] === 'string' && pack.containsScript(first[key] as string),
     ) ??
     null
   if (!wordKey) return { ok: false, error: 'no-chinese' }
@@ -188,7 +188,7 @@ function parseJson(kind: ListKind, text: string): ParseResult | null {
   }
 
   if (kind === 'hsk' && !entries.length) return { ok: false, error: 'no-levels' }
-  return finish(kind, entries, { format: 'json', headerSkipped: false })
+  return finish(kind, entries, { format: 'json', headerSkipped: false }, pack)
 }
 
 // --- Delimited and plain lines ----------------------------------------------
@@ -210,12 +210,12 @@ function sniffDelimiter(lines: string[]): string | undefined {
  * character, and a leading index column is common in exports. Ties go to the
  * leftmost, which is where the word sits in every real file seen so far.
  */
-function findWordColumn(rows: string[][]): number | null {
+function findWordColumn(rows: string[][], pack: LanguagePack): number | null {
   const width = Math.max(...rows.map((row) => row.length))
   let best: { column: number; hits: number } | null = null
 
   for (let column = 0; column < width; column++) {
-    const hits = rows.filter((row) => row[column] && hasHan(row[column])).length
+    const hits = rows.filter((row) => row[column] && pack.containsScript(row[column])).length
     if (hits > 0 && (!best || hits > best.hits)) best = { column, hits }
   }
   return best?.column ?? null
@@ -235,7 +235,7 @@ function findLevelColumn(rows: string[][], wordColumn: number): number | null {
   return null
 }
 
-function parseDelimited(kind: ListKind, text: string): ParseResult {
+function parseDelimited(kind: ListKind, text: string, pack: LanguagePack): ParseResult {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -248,11 +248,11 @@ function parseDelimited(kind: ListKind, text: string): ParseResult {
   const rows = lines.map(split)
   const sample = rows.slice(0, SAMPLE_ROWS)
 
-  const wordColumn = findWordColumn(sample)
+  const wordColumn = findWordColumn(sample, pack)
   if (wordColumn === null) return { ok: false, error: 'no-chinese' }
 
   // A first row whose word column holds no Chinese is a header, not a word.
-  const headerSkipped = !hasHan(rows[0][wordColumn] ?? '')
+  const headerSkipped = !pack.containsScript(rows[0][wordColumn] ?? '')
   const body = headerSkipped ? rows.slice(1) : rows
 
   const detected: Detected = {
@@ -267,6 +267,7 @@ function parseDelimited(kind: ListKind, text: string): ParseResult {
       kind,
       body.map((row) => ({ headword: row[wordColumn] ?? '', value: 0 })),
       detected,
+      pack,
     )
   }
 
@@ -280,7 +281,7 @@ function parseDelimited(kind: ListKind, text: string): ParseResult {
     entries.push({ headword: row[wordColumn] ?? '', value: level })
   }
 
-  return finish(kind, entries, { ...detected, valueColumn: levelColumn })
+  return finish(kind, entries, { ...detected, valueColumn: levelColumn }, pack)
 }
 
 /**
@@ -290,12 +291,12 @@ function parseDelimited(kind: ListKind, text: string): ParseResult {
  * committing it — see the confirmation step in the Data screen. A mis-read
  * column is obvious in five sample words and costs one click to reject.
  */
-export function parseWordList(kind: ListKind, raw: string): ParseResult {
+export function parseWordList(kind: ListKind, raw: string, pack: LanguagePack): ParseResult {
   const text = stripBom(raw)
   if (!text.trim()) return { ok: false, error: 'empty' }
   if (looksBinary(text)) return { ok: false, error: 'binary' }
 
-  return parseJson(kind, text.trim()) ?? parseDelimited(kind, text)
+  return parseJson(kind, text.trim(), pack) ?? parseDelimited(kind, text, pack)
 }
 
 /** What to tell the user, in terms of the thing they should actually go and do. */

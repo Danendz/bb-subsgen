@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
 import { renderCue, setNotice, setTranslation, translationWithheld, type CueView } from './overlay'
-import type { Token } from '../lang/segment'
+import type { Token } from '../lang/pack'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
 
-const zh = (text: string): Token => ({ text, pinyin: 'x1' })
-const other = (text: string): Token => ({ text, pinyin: null })
+const zh = (text: string): Token => ({
+  text,
+  reading: [{ base: text, text: 'x', tone: 1 }],
+  kind: 'content',
+})
+const other = (text: string): Token => ({ text, reading: null, kind: 'other' })
 
 function view(partial: Partial<CueView> & Pick<CueView, 'tokens'>): CueView {
   return {
+    lang: 'zh',
     translation: 'I am studying Chinese.',
     translationSource: 'nmt',
     known: new Set(),

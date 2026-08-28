@@ -1,94 +1,40 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import {
-  buildCard,
-  buildWordElement,
-  cardHeadwords,
-  characterBreakdown,
-  setCardTranslation,
-} from './card'
-import type { CedictEntry } from '../lang/dict'
-import { PATTERNS } from '../lang/grammar/patterns'
+import { buildCard, buildWordElement, characterBreakdown, setCardTranslation } from './card'
+import type { Entry } from '../lang/pack'
+import { japanesePack } from '../lang/ja/pack'
+import { chinesePack } from '../lang/zh/pack'
+import { readingParts as parts } from '../lang/zh/reading'
+import { PATTERNS } from '../lang/zh/grammar/patterns'
 
-const entry = (over: Partial<CedictEntry> = {}): CedictEntry => ({
-  simplified: '学习',
-  traditional: '學習',
-  pinyin: 'xue2 xi2',
-  definitions: ['to learn', 'to study'],
-  ...over,
-})
+/**
+ * Built through the pack rather than written out as an `Entry` literal, so
+ * these cases still exercise the conversion the card now depends on — a
+ * definition that is nothing but `CL:` notation has to arrive here with no
+ * senses on it for the breakdown to skip it.
+ */
+const entry = (headword: string, pinyin: string, ...definitions: string[]): Entry =>
+  chinesePack.entriesFrom(
+    [{ simplified: headword, traditional: headword, pinyin, definitions }],
+    headword,
+    { traditional: false },
+  )[0]
 
-const xue = entry({
-  simplified: '学',
-  traditional: '學',
-  pinyin: 'xue2',
-  definitions: ['to learn', 'school'],
-})
-const xi = entry({
-  simplified: '习',
-  traditional: '習',
-  pinyin: 'xi2',
-  definitions: ['to practice'],
-})
-
-describe('characterBreakdown', () => {
-  test('returns one row per character with its own reading and gloss', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [xi] })).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
-      { char: '习', pinyin: 'xi2', gloss: 'to practice' },
-    ])
-  })
-
-  test('breaks down nothing for a single character', () => {
-    // The breakdown of 我 is 我 — noise, not information.
-    expect(characterBreakdown('学', { 学: [xue] })).toEqual([])
-  })
-
-  test('skips characters the dictionary has no entry for', () => {
-    expect(characterBreakdown('学习', { 学: [xue], 习: [] })).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
-    ])
-  })
-
-  test('ignores non-Han characters in the headword', () => {
-    // Punctuation and latin never get a row, and never count toward the
-    // two-character minimum either.
-    expect(characterBreakdown('学!', { 学: [xue] })).toEqual([])
-  })
-
-  test('drops entries whose definitions are all classifier notation', () => {
-    const clOnly = entry({ simplified: '习', pinyin: 'xi2', definitions: ['CL:個|个[ge4]'] })
-    expect(characterBreakdown('学习', { 学: [xue], 习: [clOnly] })).toEqual([
-      { char: '学', pinyin: 'xue2', gloss: 'to learn; school' },
-    ])
-  })
-})
-
-describe('cardHeadwords', () => {
-  test('asks for the word and each of its characters in one batch', () => {
-    expect(cardHeadwords('学习')).toEqual(['学习', '学', '习'])
-  })
-
-  test('asks only for itself when there is nothing to break down', () => {
-    expect(cardHeadwords('学')).toEqual(['学'])
-  })
-
-  test('ignores non-Han characters when deciding', () => {
-    expect(cardHeadwords('学!')).toEqual(['学!'])
-  })
-})
+const xuexi = () => entry('学习', 'xue2 xi2', 'to learn', 'to study')
+const xue = entry('学', 'xue2', 'to learn', 'school')
+const xi = entry('习', 'xi2', 'to practice')
 
 describe('buildCard', () => {
-  const opts = { useTraditional: false }
+  const opts = { pack: chinesePack }
 
   test('renders the headword and its reading', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-word')?.textContent).toBe('学习')
     expect(card.querySelector('.popup-pinyin')?.textContent).toBe('xuéxí')
   })
 
   test('omits the breakdown section when there are no rows', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-chars')).toBeNull()
   })
 
@@ -96,8 +42,8 @@ describe('buildCard', () => {
     const card = buildCard(
       {
         headword: '学习',
-        entries: [entry()],
-        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }),
+        entries: [xuexi()],
+        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
     )
@@ -109,8 +55,8 @@ describe('buildCard', () => {
     const card = buildCard(
       {
         headword: '学习',
-        entries: [entry()],
-        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }),
+        entries: [xuexi()],
+        breakdown: characterBreakdown('学习', { 学: [xue], 习: [xi] }, chinesePack),
       },
       opts,
     )
@@ -118,7 +64,7 @@ describe('buildCard', () => {
   })
 
   test('keeps an empty sentence slot so a late translation can be patched in', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     const sentence = card.querySelector('.popup-sentence')
     expect(sentence).not.toBeNull()
     expect(sentence?.textContent).toBe('')
@@ -129,7 +75,7 @@ describe('buildCard', () => {
 
   test('still renders pinyin and the sentence slot when no definition exists', () => {
     // A word the dictionary misses is a degraded card, never a broken one.
-    const card = buildCard({ headword: '沒有', displayedPinyin: 'mei2 you3', entries: [] }, opts)
+    const card = buildCard({ headword: '沒有', displayedReading: 'méi yǒu', entries: [] }, opts)
     expect(card.querySelector('.popup-empty')?.textContent).toBe('No definition found')
     expect(card.querySelector('.popup-pinyin')?.textContent).toBe('méiyǒu')
     expect(card.querySelector('.popup-sentence')).not.toBeNull()
@@ -137,14 +83,14 @@ describe('buildCard', () => {
 })
 
 describe('the structure section', () => {
-  const opts = { useTraditional: false }
+  const opts = { pack: chinesePack }
   const complement = PATTERNS.find((p) => p.id === 'de-complement')!
 
   test('names the pattern, shows its shape, and explains what it does', () => {
     const card = buildCard(
       {
         headword: '得',
-        entries: [entry({ simplified: '得', definitions: ['structural particle'] })],
+        entries: [entry('得', 'de5', 'structural particle')],
         patterns: [complement],
       },
       opts,
@@ -157,7 +103,7 @@ describe('the structure section', () => {
   })
 
   test('renders nothing at all when the word is not part of a pattern', () => {
-    const card = buildCard({ headword: '学习', entries: [entry()] }, opts)
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
     expect(card.querySelector('.popup-structure')).toBeNull()
   })
 
@@ -166,7 +112,7 @@ describe('the structure section', () => {
     const card = buildCard(
       {
         headword: '啊',
-        entries: [entry({ simplified: '啊', definitions: ['particle'] })],
+        entries: [entry('啊', 'a5', 'particle')],
         patterns: [complement, final],
       },
       opts,
@@ -180,17 +126,147 @@ describe('dimming function words', () => {
   const style = { showPinyin: true, showToneColors: true }
 
   test('marks a structural particle so it can be told from vocabulary', () => {
-    const el = buildWordElement({ text: '得', pinyin: 'de5' }, style)
+    const el = buildWordElement(
+      { text: '得', reading: parts('得', 'de5'), kind: 'function' },
+      style,
+    )
     expect(el.classList.contains('function')).toBe(true)
   })
 
   test('leaves ordinary vocabulary unmarked', () => {
-    const el = buildWordElement({ text: '时间', pinyin: 'shi2 jian1' }, style)
+    const el = buildWordElement(
+      { text: '时间', reading: parts('时间', 'shi2 jian1'), kind: 'content' },
+      style,
+    )
     expect(el.classList.contains('function')).toBe(false)
   })
 
   test('does not mark punctuation, which is not a word at all', () => {
-    const el = buildWordElement({ text: '。', pinyin: null }, style)
+    const el = buildWordElement({ text: '。', reading: null, kind: 'other' }, style)
     expect(el.classList.contains('function')).toBe(false)
+  })
+})
+
+describe('positioning a reading over its characters', () => {
+  const style = { showPinyin: true, showToneColors: true }
+
+  test('splits a word its reading aligns to into one column per character', () => {
+    const el = buildWordElement(
+      { text: '学习', reading: parts('学习', 'xue2 xi2'), kind: 'content' },
+      style,
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => n.textContent)).toEqual(['学', '习'])
+    expect([...el.querySelectorAll('.pinyin')].map((n) => n.textContent)).toEqual(['xué', 'xí'])
+  })
+
+  // 不入虎穴，焉得虎子 is nine code points and eight syllables — the comma is
+  // written and not said. Unalignable falls back to the flat run drawn before #22.
+  test('draws a word it cannot align as one run, keeping every character', () => {
+    const el = buildWordElement(
+      {
+        text: '不入虎穴，焉得虎子',
+        reading: parts('不入虎穴，焉得虎子', 'bu4 ru4 hu3 xue2 yan1 de2 hu3 zi3'),
+        kind: 'content',
+      },
+      style,
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => n.textContent)).toEqual([
+      '不入虎穴，焉得虎子',
+    ])
+    expect(el.querySelectorAll('.pinyin')).toHaveLength(1)
+  })
+
+  // Nothing renders row 1 here, so the characters must not be auto-placed into it.
+  test('keeps characters on the lower row when no reading is drawn above them', () => {
+    const el = buildWordElement(
+      { text: '学习', reading: parts('学习', 'xue2 xi2'), kind: 'content' },
+      { showPinyin: false, showToneColors: false },
+    )
+    expect([...el.querySelectorAll('.hanzi')].map((n) => (n as HTMLElement).style.gridRow)).toEqual(
+      ['2', '2'],
+    )
+  })
+})
+
+describe('the part-of-speech chips', () => {
+  const opts = { pack: japanesePack }
+  const taberu = () =>
+    japanesePack.entriesFrom(
+      [
+        {
+          kanji: [{ text: '食べる', common: true, tags: [] }],
+          kana: [{ text: 'たべる', common: true, tags: [], restrictedTo: [], nokanji: false }],
+          senses: [
+            { pos: ['v1', 'vt'], misc: [], field: [], info: [], gloss: ['to eat'] },
+            { pos: ['n'], misc: ['uk'], field: [], info: [], gloss: ['food'] },
+          ],
+        },
+      ],
+      '食べる',
+      { traditional: false },
+    )
+
+  test('draws a chip row per sense, because a part of speech is per sense', () => {
+    const card = buildCard({ headword: '食べる', entries: taberu() }, opts)
+    const rows = card.querySelectorAll('.popup-sense-tags')
+    expect(rows.length).toBe(2)
+    expect([...rows[0].querySelectorAll('.popup-sense-tag')].map((el) => el.textContent)).toEqual([
+      'ichidan verb',
+      'transitive',
+    ])
+    expect(rows[1].textContent).toContain('usually kana')
+  })
+
+  test('draws no row at all for a language whose senses carry no codes', () => {
+    // CC-CEDICT has no part of speech. An empty chip row would cost the card a
+    // line of height on every Chinese word for nothing.
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, { pack: chinesePack })
+    expect(card.querySelector('.popup-sense-tags')).toBeNull()
+  })
+})
+
+describe('reading a word as another language', () => {
+  const opts = { pack: chinesePack }
+
+  test('renders no control when the caller offers nowhere to switch to', () => {
+    // Every user with one pack installed. The absence is the setting being
+    // empty, not a round trip that came back with nothing.
+    const card = buildCard({ headword: '学习', entries: [xuexi()] }, opts)
+    expect(card.querySelector('.popup-lang')).toBeNull()
+    const empty = buildCard(
+      { headword: '学习', entries: [xuexi()] },
+      { ...opts, onLanguage: { options: [], pick: () => {} } },
+    )
+    expect(empty.querySelector('.popup-lang')).toBeNull()
+  })
+
+  test('hands back the code that was picked, and writes nothing itself', () => {
+    const picked: string[] = []
+    const card = buildCard(
+      { headword: '生', entries: [] },
+      {
+        ...opts,
+        onLanguage: { options: [{ code: 'ja', name: 'Japanese' }], pick: (c) => picked.push(c) },
+      },
+    )
+    card.querySelector<HTMLButtonElement>('.popup-lang-button')?.click()
+    expect(picked).toEqual(['ja'])
+  })
+})
+
+describe('which glyph forms the text is drawn with', () => {
+  // 直, 骨, 今 and 学 have different standard forms in Japanese and in
+  // Simplified Chinese. A font stack cannot separate them — the first face
+  // carrying the glyph wins whatever the text is — so the card says which
+  // language it is in and lets the shaper choose.
+  test('marks the card and its words with the language they are in', () => {
+    expect(buildCard({ headword: '生', entries: [] }, { pack: japanesePack }).lang).toBe('ja')
+    expect(buildCard({ headword: '生', entries: [] }, { pack: chinesePack }).lang).toBe('zh')
+
+    const word = buildWordElement(
+      { text: '生', reading: null, kind: 'content' },
+      { showPinyin: false, showToneColors: false, lang: 'ja' },
+    )
+    expect(word.lang).toBe('ja')
   })
 })

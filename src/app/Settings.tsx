@@ -24,6 +24,7 @@ import {
 import { hostLabel, originFromInput, sortedSites } from '../settings/sites'
 import { useSettings } from '../settings/useSettings'
 import { disableReaderFor, enableReaderFor } from '../shared/reader-sites'
+import type { ReaderOrigin } from '../shared/settings'
 import { navigate } from './hooks'
 
 /**
@@ -33,7 +34,7 @@ import { navigate } from './hooks'
  * storage themselves, and the settings hook is listening, so the list follows
  * from the grant rather than from a guess about whether the grant succeeded.
  */
-function ReaderSites({ origins }: { origins: string[] }) {
+function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,7 +45,7 @@ function ReaderSites({ origins }: { origins: string[] }) {
       setError('That does not look like a site address. Try zhihu.com.')
       return
     }
-    if (origins.includes(origin)) {
+    if (origins.some((entry) => entry.origin === origin)) {
       setError(`${hostLabel(origin)} is already on.`)
       return
     }
@@ -72,10 +73,10 @@ function ReaderSites({ origins }: { origins: string[] }) {
 
   return (
     <>
-      {sortedSites(origins).map((origin) => (
-        <div class="row" key={origin}>
-          <span class="grow">{hostLabel(origin)}</span>
-          <button disabled={busy} onClick={() => void remove(origin)}>
+      {sortedSites(origins).map((entry) => (
+        <div class="row" key={entry.origin}>
+          <span class="grow">{hostLabel(entry.origin)}</span>
+          <button disabled={busy} onClick={() => void remove(entry.origin)}>
             Remove
           </button>
         </div>
@@ -132,6 +133,13 @@ export function Settings() {
       <LanguageSection settings={settings} update={update} />
       <LocalModelSection settings={settings} update={update} />
       <SpeechSection settings={settings} update={update} />
+
+      <Section title="Dictionaries">
+        <div class="toolbar">
+          <button onClick={() => navigate('/setup')}>Manage dictionaries</button>
+        </div>
+        <Hint>Add a language you study, or check an installed one for an update.</Hint>
+      </Section>
 
       <Section title="Page reader">
         <ReaderSites origins={settings.readerOrigins} />

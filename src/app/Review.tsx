@@ -9,24 +9,54 @@ import { useCallback, useMemo, useState } from 'preact/hooks'
 import { flashcardsDb } from '../flashcards/db'
 import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards/queries'
 import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
-import { hanWords, unknownIn } from '../flashcards/capture'
-import { rankMap } from '../background/flashcards-store'
-import { segment } from '../lang/segment'
-import { loadWords } from '../lang/dict'
-import { loadSettings, saveSettings } from '../shared/settings'
+import { vocabularyIn, unknownIn } from '../flashcards/capture'
+import { rankKey, rankMap } from '../background/flashcards-store'
+import { packFor } from '../lang/packs'
+import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
+import { installedSources } from '../dict/sources'
+import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
+import { useSettings } from '../settings/useSettings'
 import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 
+/**
+ * Extension-origin caller, so it reads the store directly rather than asking
+ * the worker for it — see src/dict/store.ts. No dictionary installed loads the
+ * empty lexicon: a deck with nothing to segment against is not a reason to fail
+ * the whole screen. A language with no pack has nothing to load it with, and is
+ * the one case that has to be null.
+ */
+async function loadWords(lang: string) {
+  const pack = packFor(lang)
+  if (!pack) return null
+  const text = await getLexiconIn(await dictDb(), lang)
+  return pack.load(text ?? '')
+}
+
 export function Review() {
+  // Through the hook rather than `loadSettings`/`saveSettings`: the panel used
+  // to lay a local `override` over a loaded snapshot to answer immediately, and
+  // that is `useSettings`' pending ref written a second time.
+  const { settings, loaded, update } = useSettings()
+
+  // The one setting the load depends on. Everything else in the setup only
+  // shapes a queue built from data already in hand, but this decides which
+  // lexicon `loadWords` reads, so changing it has to re-run the read.
+  const lang = loaded ? resolveStudyLang(settings) : ''
+
   const load = useCallback(async () => {
+    // Nothing to read the deck against until the settings land: reading it on
+    // the defaults would load one lexicon and then immediately load another.
+    if (!lang) return null
+    const dict = await dictDb()
     const db = await flashcardsDb()
-    const [items, words, settings, ranks, streak, exposures] = await Promise.all([
-      listItems(db),
-      loadWords(),
-      loadSettings(),
+    const [items, words, installed, ranks, streak, exposures] = await Promise.all([
+      listItems(db, lang),
+      loadWords(lang),
+      getAllMeta(dict),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -34,45 +64,67 @@ export function Review() {
     return {
       items,
       words,
-      settings,
+      lang,
+      installedLangs: new Set(Object.keys(installed)),
       ranks,
       streak,
       known: knownSetOf(items),
       // What orders the word pool. Passively collected words have no other
       // claim on your attention than how often you have actually met them.
-      seen: new Map(exposures.map((e) => [e.headword, e.count])),
+      seen: new Map(exposures.map((e) => [rankKey(e.lang, e.headword), e.count])),
     }
-  }, [])
+  }, [lang])
   const { data, loading, reload } = useAsync(load)
 
   const [session, setSession] = useState<QueueSession | null>(null)
   const [editing, setEditing] = useState(false)
-  const [override, setOverride] = useState<Partial<SessionSetup>>({})
 
   const unknownCount = useCallback(
     (item: Item) =>
-      data ? unknownIn(hanWords(segment(item.text, data.words)), data.known).length : 0,
+      data?.words ? unknownIn(vocabularyIn(data.words.segment(item.text)), data.known).length : 0,
     [data],
   )
 
-  const rankOf = useCallback((headword: string) => data?.ranks.get(headword), [data])
+  // Both maps are keyed by headword *within* a language, and the card is what
+  // knows which — see `rankMapIn`. The pairing stays here, where the maps are,
+  // so `queue.ts` remains a pure ordering module.
+  const rankOf = useCallback((item: Item) => data?.ranks.get(rankKey(item.lang, item.text)), [data])
 
-  const seenCount = useCallback((headword: string) => data?.seen.get(headword) ?? 0, [data])
+  const seenCount = useCallback(
+    (item: Item) => data?.seen.get(rankKey(item.lang, item.text)) ?? 0,
+    [data],
+  )
 
-  // The saved setup, with anything changed this visit laid over the top. Kept
-  // local as well as saved so the panel responds immediately rather than after
-  // a round trip to chrome.storage.
+  /**
+   * Which languages the picker can offer: enabled, and actually installed.
+   *
+   * Out of `load` rather than in it, because it is the only thing there that
+   * reads a setting the load does not otherwise depend on — putting
+   * `enabledLanguages` in the dependency list would re-read the whole deck on
+   * every storage echo.
+   */
+  const languages = useMemo(
+    () => (data ? installedSources(settings.enabledLanguages, data.installedLangs) : []),
+    [data, settings.enabledLanguages],
+  )
+
+  // The saved setup. No local copy laid over the top: `update` applies the
+  // change to the hook's state before the write goes out, so the panel already
+  // answers immediately.
   const setup: SessionSetup | null = useMemo(
     () =>
       data
         ? {
-            studyMode: data.settings.studyMode,
-            studyInclude: data.settings.studyInclude,
-            studySessionSize: data.settings.studySessionSize,
-            ...override,
+            // The resolved language, not the raw setting: with one dictionary
+            // installed nothing has ever written `studyLang`, and the control
+            // has to show that language as the one in use.
+            studyLang: data.lang,
+            studyMode: settings.studyMode,
+            studyInclude: settings.studyInclude,
+            studySessionSize: settings.studySessionSize,
           }
         : null,
-    [data, override],
+    [data, settings.studyMode, settings.studyInclude, settings.studySessionSize],
   )
 
   const counts = useMemo(
@@ -81,31 +133,30 @@ export function Review() {
         ? queueCounts({
             items: data.items,
             now: Date.now(),
-            newSentencesPerDay: data.settings.newSentencesPerDay,
+            newSentencesPerDay: settings.newSentencesPerDay,
             include: setup.studyInclude,
             unknownCount,
             rankOf,
             seenCount,
           })
         : null,
-    [data, setup, unknownCount, rankOf, seenCount],
+    [data, setup, settings.newSentencesPerDay, unknownCount, rankOf, seenCount],
   )
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
 
   if (loading || !data || !counts || !setup) return <p class="muted">Loading…</p>
-
-  const change = (patch: Partial<SessionSetup>) => {
-    setOverride((current) => ({ ...current, ...patch }))
-    void saveSettings(patch)
-  }
+  // Only reachable if the study language outlived its pack — `packs.test.ts`
+  // holds the registries together, so this says which language rather than
+  // pretending the screen is still loading.
+  if (!data.words) return <p class="muted">No language pack for {data.lang}.</p>
 
   const start = () => {
     setSession(
       buildSession({
         items: data.items,
         now: Date.now(),
-        newSentencesPerDay: data.settings.newSentencesPerDay,
+        newSentencesPerDay: settings.newSentencesPerDay,
         include: setup.studyInclude,
         limit: setup.studySessionSize,
         unknownCount,
@@ -190,7 +241,9 @@ export function Review() {
           </button>
         </div>
 
-        {editing && <Setup setup={setup} canSpeak={canSpeak()} onChange={change} />}
+        {editing && (
+          <Setup setup={setup} canSpeak={canSpeak()} languages={languages} onChange={update} />
+        )}
       </div>
 
       {studying > 0 ? (

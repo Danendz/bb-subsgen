@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { hoverOutcome, sameWord, type CardIdentity } from './lifecycle'
-import type { Match } from './lookup'
+import { dismisses, hoverOutcome, modifierMatches, sameWord, type CardIdentity } from './lifecycle'
+import type { Match } from '../lang/pack'
 
 const match = (text: string, start: number): Match => ({
   text,
-  pinyin: '',
+  reading: [],
   start,
   end: start + text.length,
 })
@@ -69,5 +69,61 @@ describe('sameWord', () => {
     expect(sameWord(null, page('学习', 0))).toBe(false)
     expect(sameWord(page('学习', 0), null)).toBe(false)
     expect(sameWord(null, null)).toBe(false)
+  })
+})
+
+describe('modifierMatches', () => {
+  test('answers only for the modifier that is configured', () => {
+    expect(modifierMatches('shift', { shift: true, alt: false, ctrl: false })).toBe(true)
+    expect(modifierMatches('alt', { shift: true, alt: false, ctrl: false })).toBe(false)
+  })
+
+  test('a chord counts, so Shift+Alt still reads a page configured for Shift', () => {
+    // The reader asks whether its key is down, not whether it is the only one.
+    expect(modifierMatches('shift', { shift: true, alt: true, ctrl: false })).toBe(true)
+  })
+})
+
+describe('dismisses', () => {
+  test('releasing the modifier takes only the card the modifier opened', () => {
+    // One hovered from the selection card never needed the key held, so
+    // letting go of it must not take that away.
+    expect(dismisses('release', page('学习', 0))).toBe(true)
+    expect(dismisses('release', inCard('学习', 0))).toBe(false)
+  })
+
+  test('a scroll leaves the selection card’s word card alone', () => {
+    // A page card is tied to a range that scrolls out from under it. The
+    // selection card is a panel about text you already chose, and a stray
+    // trackpad nudge must not throw it away.
+    expect(dismisses('scroll', page('学习', 0))).toBe(true)
+    expect(dismisses('scroll', inCard('学习', 0))).toBe(false)
+  })
+
+  test('starting a drag clears the page card before it can flash over the selection', () => {
+    expect(dismisses('drag', page('学习', 0))).toBe(true)
+    expect(dismisses('drag', inCard('学习', 0))).toBe(false)
+  })
+
+  test('closing the selection card takes its word card and nothing else', () => {
+    // The one row that runs the other way: a card anchored to a panel that has
+    // gone has nothing left to sit beside, while a page card is unaffected.
+    expect(dismisses('selection-card-closed', inCard('学习', 0))).toBe(true)
+    expect(dismisses('selection-card-closed', page('学习', 0))).toBe(false)
+  })
+
+  test('Escape means everything, whichever card is showing', () => {
+    expect(dismisses('escape', page('学习', 0))).toBe(true)
+    expect(dismisses('escape', inCard('学习', 0))).toBe(true)
+  })
+
+  test('teardown means everything, which is why detach closes unconditionally', () => {
+    expect(dismisses('teardown', page('学习', 0))).toBe(true)
+    expect(dismisses('teardown', inCard('学习', 0))).toBe(true)
+  })
+
+  test('never dismisses a card that is not there', () => {
+    expect(dismisses('escape', null)).toBe(false)
+    expect(dismisses('teardown', null)).toBe(false)
   })
 })

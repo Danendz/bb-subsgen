@@ -11,13 +11,14 @@
 // inside the get's success handler rather than after an await. Awaiting mid
 // transaction lets it auto-commit, and the write silently never lands.
 
-import { flashcardsDb, STORES } from '../flashcards/db'
+import { flashcardsDb, readAllRows, STORES } from '../flashcards/db'
 import { done, request, upsert } from '../shared/idb'
-import { isKnown, KNOWN_SET_KEY } from '../flashcards/known'
+import { isKnown, KNOWN_SET_KEY, type KnownMirror } from '../flashcards/known'
 import { reschedules, schedule } from '../flashcards/scheduler'
 import { emptyBackup, type Backup } from '../flashcards/backup'
 import type { ListKind } from '../flashcards/wordlist'
-import { PATTERNS, type Pattern } from '../lang/grammar/patterns'
+import type { Pattern } from '../lang/pack'
+import { packFor } from '../lang/packs'
 import {
   grammarId,
   sentenceId,
@@ -61,21 +62,22 @@ function initialState(kind: Item['kind']): Item['state'] {
  * an unrecognised id is ignored, which is also what makes removing a pattern
  * from the table safe for decks that already hold it.
  */
-function knownPatterns(ids: string[]): Pattern[] {
-  const wanted = new Set(ids)
-  return PATTERNS.filter((pattern) => wanted.has(pattern.id))
+function knownPatterns(lang: string, ids: string[]): Pattern[] {
+  const pack = packFor(lang)
+  return [...new Set(ids)].flatMap((id) => pack?.patternById(id) ?? [])
 }
 
-function newGrammarItem(pattern: Pattern, now: number): Item {
+function newGrammarItem(pattern: Pattern, lang: string, now: number): Item {
   return {
-    ...newItem(grammarId(pattern.id), 'grammar', pattern.skeleton, now),
+    ...newItem(grammarId(lang, pattern.id), lang, 'grammar', pattern.skeleton, now),
     patternId: pattern.id,
   }
 }
 
-function newItem(id: string, kind: Item['kind'], text: string, now: number): Item {
+function newItem(id: string, lang: string, kind: Item['kind'], text: string, now: number): Item {
   return {
     id,
+    lang,
     kind,
     text,
     state: initialState(kind),
@@ -109,7 +111,11 @@ function withContext(item: Item, context: Context | undefined): Item {
  * word instances, and a transaction per word would be the single heaviest thing
  * the extension does.
  */
-export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): Promise<void> {
+export async function recordExposuresIn(
+  db: IDBDatabase,
+  lang: string,
+  batch: ExposureBatch,
+): Promise<void> {
   const entries = Object.entries(batch.words)
   if (!entries.length && !batch.video) return
 
@@ -121,10 +127,10 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
 
   const exposures = tx.objectStore(STORES.exposures)
   for (const [headword, count] of entries) {
-    upsert<Exposure>(exposures, headword, (existing) =>
+    upsert<Exposure>(exposures, [lang, headword], (existing) =>
       existing
         ? { ...existing, count: existing.count + count, lastSeen: now }
-        : { headword, count, firstSeen: now, lastSeen: now },
+        : { lang, headword, count, firstSeen: now, lastSeen: now },
     )
   }
 
@@ -133,8 +139,10 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
 
     const videoWords = tx.objectStore(STORES.videoWords)
     for (const [headword, count] of entries) {
-      upsert<VideoWord>(videoWords, [videoId, headword], (existing) =>
-        existing ? { ...existing, count: existing.count + count } : { videoId, headword, count },
+      upsert<VideoWord>(videoWords, [videoId, lang, headword], (existing) =>
+        existing
+          ? { ...existing, count: existing.count + count }
+          : { videoId, lang, headword, count },
       )
     }
 
@@ -163,24 +171,27 @@ export async function recordExposuresIn(db: IDBDatabase, batch: ExposureBatch): 
  */
 function discoveredWord(
   existing: Item | undefined,
+  lang: string,
   headword: string,
   now: number,
   context: Context | undefined,
 ): Item {
-  if (!existing) return withContext(newItem(wordId(headword), 'word', headword, now), context)
+  if (!existing)
+    return withContext(newItem(wordId(lang, headword), lang, 'word', headword, now), context)
   return withContext(existing, context)
 }
 
 export async function discoverWordIn(
   db: IDBDatabase,
+  lang: string,
   headword: string,
   context?: Context,
 ): Promise<void> {
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
-  upsert<Item>(tx.objectStore(STORES.items), wordId(headword), (existing) =>
-    discoveredWord(existing, headword, now, context),
+  upsert<Item>(tx.objectStore(STORES.items), wordId(lang, headword), (existing) =>
+    discoveredWord(existing, lang, headword, now, context),
   )
   await done(tx)
 }
@@ -199,25 +210,31 @@ export async function discoverWordIn(
  */
 export async function captureSentenceIn(
   db: IDBDatabase,
+  lang: string,
   text: string,
   context: Context,
   target?: string,
   words: string[] = [],
   patterns: string[] = [],
 ): Promise<void> {
-  const id = sentenceId(text)
+  const id = sentenceId(lang, text)
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
   const store = tx.objectStore(STORES.items)
 
   upsert<Item>(store, id, (existing) =>
-    withContext(existing ?? { ...newItem(id, 'sentence', text.trim(), now), target }, context),
+    withContext(
+      existing ?? { ...newItem(id, lang, 'sentence', text.trim(), now), target },
+      context,
+    ),
   )
   // Deduped: a line repeating a word is one card, and two `upsert`s on the same
   // key in one transaction both read before either writes.
   for (const word of new Set(words)) {
-    upsert<Item>(store, wordId(word), (existing) => discoveredWord(existing, word, now, context))
+    upsert<Item>(store, wordId(lang, word), (existing) =>
+      discoveredWord(existing, lang, word, now, context),
+    )
   }
   // Same transaction as the line and its words. A pattern is only ever met *in*
   // a line, so splitting them would let a line land without the structure it
@@ -226,9 +243,9 @@ export async function captureSentenceIn(
   // Resolved to patterns before the loop rather than inside it: `upsert` always
   // writes what its updater returns, so an id with nothing behind it has to be
   // dropped before it can become a card with no skeleton.
-  for (const pattern of knownPatterns(patterns)) {
-    upsert<Item>(store, grammarId(pattern.id), (existing) =>
-      withContext(existing ?? newGrammarItem(pattern, now), context),
+  for (const pattern of knownPatterns(lang, patterns)) {
+    upsert<Item>(store, grammarId(lang, pattern.id), (existing) =>
+      withContext(existing ?? newGrammarItem(pattern, lang, now), context),
     )
   }
 
@@ -245,25 +262,38 @@ export async function captureSentenceIn(
  */
 export async function markKnownIn(
   db: IDBDatabase,
+  lang: string,
   headword: string,
   known: boolean,
 ): Promise<void> {
-  const id = wordId(headword)
+  const id = wordId(lang, headword)
   const now = Date.now()
 
   const tx = db.transaction(STORES.items, 'readwrite')
   upsert<Item>(tx.objectStore(STORES.items), id, (existing) => {
-    const base = existing ?? newItem(id, 'word', headword, now)
+    const base = existing ?? newItem(id, lang, 'word', headword, now)
     return known ? { ...base, state: 'known' } : { ...base, state: 'new', interval: 0, due: now }
   })
   await done(tx)
 }
 
-/** Every word the overlay should stop annotating. */
-export async function knownWordsIn(db: IDBDatabase): Promise<string[]> {
+/**
+ * Every word the overlay should stop annotating, grouped by language.
+ *
+ * Grouped rather than flattened because the overlay asks the question about one
+ * language at a time. A single set would mean declaring Japanese 生 known also
+ * stopped Chinese 生 being annotated — the whole reason #12 exists.
+ */
+export async function knownWordsIn(db: IDBDatabase): Promise<KnownMirror> {
   const store = db.transaction(STORES.items, 'readonly').objectStore(STORES.items)
   const all = await request<Item[]>(store.getAll())
-  return all.filter((item) => item.kind === 'word' && isKnown(item)).map((item) => item.text)
+
+  const byLang: KnownMirror = {}
+  for (const item of all) {
+    if (item.kind !== 'word' || !isKnown(item)) continue
+    ;(byLang[item.lang] ??= []).push(item.text)
+  }
+  return byLang
 }
 
 /**
@@ -325,36 +355,15 @@ export async function recordSignalIn(db: IDBDatabase, signal: Signal): Promise<v
   await done(tx)
 }
 
-/** Everything worth carrying to another browser. See flashcards/backup.ts. */
+/**
+ * Everything worth carrying to another browser. See flashcards/backup.ts.
+ *
+ * The read itself is `readAllRows` in db.ts, shared with the pre-upgrade
+ * snapshot: the two have to produce the same file, since re-importing a snapshot
+ * is the recovery story for a migration that went wrong.
+ */
 export async function exportBackupIn(db: IDBDatabase): Promise<Backup> {
-  const read = <T>(store: string) =>
-    request<T[]>(db.transaction(store, 'readonly').objectStore(store).getAll())
-
-  const [items, reviews, exposures, videoWordRows, videos] = await Promise.all([
-    read<Item>(STORES.items),
-    read<Review>(STORES.reviews),
-    read<Exposure>(STORES.exposures),
-    read<VideoWord>(STORES.videoWords),
-    read<Video>(STORES.videos),
-  ])
-
-  return {
-    ...emptyBackup(),
-    items,
-    // `seq` is an autoIncrement key from *this* database and means nothing in
-    // another one; carrying it would collide on import.
-    reviews: reviews.map(({ itemId, at, grade, style, intervalBefore, intervalAfter }) => ({
-      itemId,
-      at,
-      grade,
-      style,
-      intervalBefore,
-      intervalAfter,
-    })),
-    exposures,
-    videoWords: videoWordRows,
-    videos,
-  }
+  return { ...emptyBackup(), ...(await readAllRows(db)) }
 }
 
 /**
@@ -383,58 +392,87 @@ export async function restoreIn(db: IDBDatabase, backup: Backup): Promise<void> 
 /** The `Rank` field each kind of list owns. Neither may disturb the other. */
 const FIELD: Record<ListKind, 'rank' | 'hsk'> = { frequency: 'rank', hsk: 'hsk' }
 
+/** Every `ranks` row for one language. See `defsKeyRangeFor` in dict/store.ts. */
+function ranksKeyRangeFor(lang: string): IDBKeyRange {
+  // An empty array sorts above every string in IDB key order, so this is the
+  // whole of `[lang, …]` and nothing of `[otherLang, …]`.
+  return IDBKeyRange.bound([lang], [lang, []])
+}
+
 /**
- * Replaces one kind of list, leaving the other kind's values alone.
+ * Replaces one kind of list for one language, leaving everything else alone.
  *
- * Both live on the same `ranks` row, so a frequency upload has to clear the old
- * `rank` across every row before writing the new one — otherwise words dropped
- * from the new list would keep a stale rank forever. Rows left holding neither
- * value are removed rather than kept as empty shells.
+ * Both kinds live on the same `ranks` row, so a frequency upload has to clear
+ * the old `rank` across every row before writing the new one — otherwise words
+ * dropped from the new list would keep a stale rank forever. Rows left holding
+ * neither value are removed rather than kept as empty shells.
+ *
+ * Scoped by a key range rather than `store.clear()`, which is what it used to
+ * be: with the store keyed `[lang, headword]`, clearing it would mean uploading
+ * a Japanese frequency list wiped every Chinese HSK level in the same breath.
  */
 export async function replaceWordListIn(
   db: IDBDatabase,
+  lang: string,
   kind: ListKind,
   rows: Array<{ headword: string; value: number }>,
 ): Promise<void> {
   const field = FIELD[kind]
   const other = kind === 'frequency' ? 'hsk' : 'rank'
+  const range = ranksKeyRangeFor(lang)
 
   const existing = await request<Rank[]>(
-    db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks).getAll(),
+    db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks).getAll(range),
   )
   const kept = new Map<string, Rank>()
   for (const row of existing) {
     // Only what the other list contributed survives this upload.
     if (row[other] !== undefined)
-      kept.set(row.headword, { headword: row.headword, [other]: row[other] })
+      kept.set(row.headword, { lang, headword: row.headword, [other]: row[other] })
   }
   for (const { headword, value } of rows) {
-    const row = kept.get(headword) ?? { headword }
+    const row = kept.get(headword) ?? { lang, headword }
     kept.set(headword, { ...row, [field]: value })
   }
 
   const tx = db.transaction(STORES.ranks, 'readwrite')
   const store = tx.objectStore(STORES.ranks)
-  store.clear()
+  store.delete(range)
   for (const row of kept.values()) store.put(row)
   await done(tx)
 }
 
 /** Drops one kind of list, keeping whatever the other contributed. */
-export async function deleteWordListIn(db: IDBDatabase, kind: ListKind): Promise<void> {
-  await replaceWordListIn(db, kind, [])
+export async function deleteWordListIn(
+  db: IDBDatabase,
+  lang: string,
+  kind: ListKind,
+): Promise<void> {
+  await replaceWordListIn(db, lang, kind, [])
 }
 
-/** headword → frequency rank, for ordering the review queue. */
+/**
+ * `lang|headword` → frequency rank, for ordering the review queue.
+ *
+ * Keyed by the pair rather than the headword alone because that is what a rank
+ * is a fact about: a Japanese frequency list and an HSK list both have opinions
+ * about 生, and they are not the same opinion. `Review.tsx` builds the key from
+ * the card it is ordering, which carries its own `lang`.
+ */
 export async function rankMapIn(db: IDBDatabase): Promise<Map<string, number>> {
   const rows = await request<Rank[]>(
     db.transaction(STORES.ranks, 'readonly').objectStore(STORES.ranks).getAll(),
   )
   const ranks = new Map<string, number>()
   for (const row of rows) {
-    if (row.rank !== undefined) ranks.set(row.headword, row.rank)
+    if (row.rank !== undefined) ranks.set(rankKey(row.lang, row.headword), row.rank)
   }
   return ranks
+}
+
+/** How `rankMapIn` and `listExposures` are looked up — a headword within a language. */
+export function rankKey(lang: string, headword: string): string {
+  return `${lang}|${headword}`
 }
 
 export interface WordListMeta {
@@ -445,46 +483,73 @@ export interface WordListMeta {
 
 const WORD_LIST_META_KEY = 'bbSubsgenWordLists'
 
+type StoredWordListMeta = Record<string, Partial<Record<ListKind, WordListMeta>>>
+
 /**
- * What is loaded, mirrored into extension storage.
+ * What is loaded for one language, mirrored into extension storage.
  *
  * Kept beside the data rather than derived from it: "how many rows and from
  * which file" is not recoverable by counting a store two lists share.
+ *
+ * Per language since #12, or the Data tab reports a Chinese HSK upload while you
+ * are studying Japanese. A stored value that is not a record of records is the
+ * pre-#12 shape and belongs to Chinese, the only language there was.
  */
-export async function wordListMeta(): Promise<Partial<Record<ListKind, WordListMeta>>> {
-  const stored = await chrome.storage.local.get(WORD_LIST_META_KEY)
-  return (stored[WORD_LIST_META_KEY] as Partial<Record<ListKind, WordListMeta>>) ?? {}
+export async function wordListMeta(lang: string): Promise<Partial<Record<ListKind, WordListMeta>>> {
+  return (await allWordListMeta())[lang] ?? {}
 }
 
-export async function setWordListMeta(kind: ListKind, meta: WordListMeta | null): Promise<void> {
-  const all = await wordListMeta()
-  if (meta) all[kind] = meta
-  else delete all[kind]
-  await chrome.storage.local.set({ [WORD_LIST_META_KEY]: all })
+async function allWordListMeta(): Promise<StoredWordListMeta> {
+  const stored = (await chrome.storage.local.get(WORD_LIST_META_KEY))[WORD_LIST_META_KEY]
+  if (typeof stored !== 'object' || stored === null) return {}
+  const entries = Object.values(stored as Record<string, unknown>)
+  // A `WordListMeta` has a `name`; a per-language bucket holds objects that
+  // don't. That is the only difference the two shapes have at this level.
+  const legacy = entries.some((value) => typeof (value as WordListMeta)?.name === 'string')
+  return legacy
+    ? { zh: stored as Partial<Record<ListKind, WordListMeta>> }
+    : (stored as StoredWordListMeta)
+}
+
+export async function setWordListMeta(
+  lang: string,
+  kind: ListKind,
+  meta: WordListMeta | null,
+): Promise<void> {
+  const all = await allWordListMeta()
+  const forLang = { ...(all[lang] ?? {}) }
+  if (meta) forLang[kind] = meta
+  else delete forLang[kind]
+  await chrome.storage.local.set({ [WORD_LIST_META_KEY]: { ...all, [lang]: forLang } })
 }
 
 // --- Wrappers over the memoized database ------------------------------------
 
-export async function recordExposures(batch: ExposureBatch): Promise<void> {
-  return recordExposuresIn(await flashcardsDb(), batch)
+export async function recordExposures(lang: string, batch: ExposureBatch): Promise<void> {
+  return recordExposuresIn(await flashcardsDb(), lang, batch)
 }
 
-export async function discoverWord(headword: string, context?: Context): Promise<void> {
-  return discoverWordIn(await flashcardsDb(), headword, context)
+export async function discoverWord(
+  lang: string,
+  headword: string,
+  context?: Context,
+): Promise<void> {
+  return discoverWordIn(await flashcardsDb(), lang, headword, context)
 }
 
 export async function captureSentence(
+  lang: string,
   text: string,
   context: Context,
   target?: string,
   words?: string[],
   patterns?: string[],
 ): Promise<void> {
-  return captureSentenceIn(await flashcardsDb(), text, context, target, words, patterns)
+  return captureSentenceIn(await flashcardsDb(), lang, text, context, target, words, patterns)
 }
 
-export async function markKnown(headword: string, known: boolean): Promise<void> {
-  await markKnownIn(await flashcardsDb(), headword, known)
+export async function markKnown(lang: string, headword: string, known: boolean): Promise<void> {
+  await markKnownIn(await flashcardsDb(), lang, headword, known)
   await refreshKnownMirror()
 }
 
@@ -534,17 +599,18 @@ export async function refreshKnownMirror(): Promise<void> {
 }
 
 export async function replaceWordList(
+  lang: string,
   kind: ListKind,
   rows: Array<{ headword: string; value: number }>,
   meta: WordListMeta,
 ): Promise<void> {
-  await replaceWordListIn(await flashcardsDb(), kind, rows)
-  await setWordListMeta(kind, meta)
+  await replaceWordListIn(await flashcardsDb(), lang, kind, rows)
+  await setWordListMeta(lang, kind, meta)
 }
 
-export async function deleteWordList(kind: ListKind): Promise<void> {
-  await deleteWordListIn(await flashcardsDb(), kind)
-  await setWordListMeta(kind, null)
+export async function deleteWordList(lang: string, kind: ListKind): Promise<void> {
+  await deleteWordListIn(await flashcardsDb(), lang, kind)
+  await setWordListMeta(lang, kind, null)
 }
 
 export async function rankMap(): Promise<Map<string, number>> {

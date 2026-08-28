@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { openFlashcardsDb, STORES } from './db'
 import { done, request } from '../shared/idb'
-import type { Item } from './types'
+import { namespaceLegacyId, type Item } from './types'
 
 /**
  * Builds an old database by hand, so the upgrades are exercised for real.
@@ -14,15 +14,41 @@ import type { Item } from './types'
 function openOld(name: string, version = 1): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(name, version)
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result
-      db.createObjectStore(STORES.items, { keyPath: 'id' })
-      const videoWords = db.createObjectStore(STORES.videoWords, {
-        keyPath: ['bvid', 'headword'],
-      })
-      videoWords.createIndex('by-video', 'bvid')
-      db.createObjectStore(STORES.videos, { keyPath: 'bvid' })
-      db.createObjectStore(STORES.signals, { keyPath: 'seq', autoIncrement: true })
+      if (event.oldVersion < 1) {
+        db.createObjectStore(STORES.items, { keyPath: 'id' })
+        const videoWords = db.createObjectStore(STORES.videoWords, {
+          keyPath: ['bvid', 'headword'],
+        })
+        videoWords.createIndex('by-video', 'bvid')
+        db.createObjectStore(STORES.videos, { keyPath: 'bvid' })
+        db.createObjectStore(STORES.signals, { keyPath: 'seq', autoIncrement: true })
+        // The v4 transform touches these three as well, and a fixture opened at
+        // v3 has to have them for the same reason it has the others: the
+        // migration reads every store it rewrites.
+        const reviews = db.createObjectStore(STORES.reviews, {
+          keyPath: 'seq',
+          autoIncrement: true,
+        })
+        reviews.createIndex('by-item', 'itemId')
+        reviews.createIndex('by-at', 'at')
+        db.createObjectStore(STORES.exposures, { keyPath: 'headword' })
+        const ranks = db.createObjectStore(STORES.ranks, { keyPath: 'headword' })
+        ranks.createIndex('by-rank', 'rank')
+      }
+      // A fixture seeded at v3 is describing a database the v3 migration has
+      // already run on, so the two stores that migration rekeys are created in
+      // their post-v3 shape rather than migrated into it.
+      if (event.oldVersion < 3 && version >= 3) {
+        db.deleteObjectStore(STORES.videoWords)
+        const videoWords = db.createObjectStore(STORES.videoWords, {
+          keyPath: ['videoId', 'headword'],
+        })
+        videoWords.createIndex('by-video', 'videoId')
+        db.deleteObjectStore(STORES.videos)
+        db.createObjectStore(STORES.videos, { keyPath: 'videoId' })
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -31,6 +57,9 @@ function openOld(name: string, version = 1): Promise<IDBDatabase> {
 
 function item(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text' | 'state'>): Item {
   return {
+    // Every fixture below is a row written before schema 4, so none of them
+    // carries one — the field is filled in by the migration under test.
+    lang: undefined as unknown as string,
     interval: 0,
     ease: 2.5,
     due: 0,
@@ -44,6 +73,9 @@ function item(partial: Partial<Item> & Pick<Item, 'id' | 'kind' | 'text' | 'stat
 
 interface Seed {
   items?: Item[]
+  reviews?: Array<Record<string, unknown>>
+  exposures?: Array<Record<string, unknown>>
+  ranks?: Array<Record<string, unknown>>
   videoWords?: Array<Record<string, unknown>>
   videos?: Array<Record<string, unknown>>
   signals?: Array<Record<string, unknown>>
@@ -65,8 +97,16 @@ async function seed(name: string, rows: Seed, version = 1): Promise<void> {
   db.close()
 }
 
+/**
+ * Reads a card by the id it has *now*.
+ *
+ * Opening the fixture runs every migration it is behind, so a row seeded as
+ * `w:憔悴` comes back out of the v4 transform as `w:zh:憔悴`. Tests below name
+ * the old id, which is what they are about, and this is where it is lifted.
+ */
 function read(db: IDBDatabase, id: string): Promise<Item | undefined> {
-  return request(db.transaction(STORES.items).objectStore(STORES.items).get(id))
+  const store = db.transaction(STORES.items).objectStore(STORES.items)
+  return request(store.get(namespaceLegacyId('zh', id)))
 }
 
 function readAll<T>(db: IDBDatabase, store: string): Promise<T[]> {
@@ -109,7 +149,12 @@ describe('the v2 upgrade', () => {
     await seed(name, { items: [original] })
 
     const db = await openFlashcardsDb(name)
-    expect(await read(db, 'w:憔悴')).toEqual({ ...original, state: 'new' })
+    expect(await read(db, 'w:憔悴')).toEqual({
+      ...original,
+      state: 'new',
+      lang: 'zh',
+      id: 'w:zh:憔悴',
+    })
   })
 
   test('leaves words that were already in the deck exactly where they were', async () => {
@@ -144,7 +189,7 @@ describe('the v3 upgrade', () => {
 
     const db = await openFlashcardsDb(name)
     expect(await readAll(db, STORES.videoWords)).toEqual([
-      { videoId: 'BV1xx411c7mD', headword: '憔悴', count: 4 },
+      { videoId: 'BV1xx411c7mD', lang: 'zh', headword: '憔悴', count: 4 },
     ])
   })
 
@@ -246,7 +291,11 @@ describe('the v3 upgrade', () => {
     await seed(name, { items: [original] }, 2)
 
     const db = await openFlashcardsDb(name)
-    expect(await read(db, 's:他很憔悴。')).toEqual(original)
+    expect(await read(db, 's:他很憔悴。')).toEqual({
+      ...original,
+      lang: 'zh',
+      id: 's:zh:他很憔悴。',
+    })
   })
 
   test('renames the field on dwell samples', async () => {
@@ -295,10 +344,139 @@ describe('the v3 upgrade', () => {
     await seed(name, { items: [original] }, 2)
 
     const db = await openFlashcardsDb(name)
-    expect(await read(db, 'w:学习')).toEqual(original)
+    expect(await read(db, 'w:学习')).toEqual({ ...original, lang: 'zh', id: 'w:zh:学习' })
+  })
+})
+
+describe('the v4 upgrade', () => {
+  const seedV3 = (name: string, rows: Seed) => seed(name, rows, 3)
+
+  test('gives every card an id that says which language it is in', async () => {
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, {
+      items: [
+        item({ id: 'w:生', kind: 'word', text: '生', state: 'new' }),
+        item({ id: 's:他很憔悴。', kind: 'sentence', text: '他很憔悴。', state: 'pool' }),
+        item({
+          id: 'g:de-complement',
+          kind: 'grammar',
+          text: 'V + 得 + how',
+          state: 'pool',
+          patternId: 'de-complement',
+        }),
+      ],
+    })
+
+    const db = await openFlashcardsDb(name)
+    const ids = (await readAll<Item>(db, STORES.items)).map((row) => row.id).sort()
+    expect(ids).toEqual(['g:zh:de-complement', 's:zh:他很憔悴。', 'w:zh:生'].sort())
   })
 
-  test('upgrades all the way from v1, running both migrations in order', async () => {
+  test('says the language on the card too, not only in the key', async () => {
+    // Query paths read the field; nothing anywhere parses an id.
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, { items: [item({ id: 'w:生', kind: 'word', text: '生', state: 'new' })] })
+
+    const db = await openFlashcardsDb(name)
+    expect((await read(db, 'w:生'))?.lang).toBe('zh')
+  })
+
+  test('reviews still resolve to their card, so no history is orphaned', async () => {
+    // The thing this migration must not break. `replay` finds a card's reviews
+    // by `itemId`, so a log left pointing at `w:学习` after the card became
+    // `w:zh:学习` is a card whose entire schedule has silently gone.
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, {
+      items: [item({ id: 'w:学习', kind: 'word', text: '学习', state: 'review', interval: 21 })],
+      reviews: [
+        { itemId: 'w:学习', at: 1700000000000, grade: 'good', style: 'recognise' },
+        { itemId: 'w:学习', at: 1700086400000, grade: 'again', style: 'type' },
+      ],
+    })
+
+    const db = await openFlashcardsDb(name)
+    const card = (await read(db, 'w:学习'))!
+    const reviews = await readAll<{ itemId: string; at: number }>(db, STORES.reviews)
+    expect(reviews).toHaveLength(2)
+    expect(reviews.every((row) => row.itemId === card.id)).toBe(true)
+  })
+
+  test('the review log keeps its own keys, so nothing is reordered or duplicated', async () => {
+    // `seq` is an autoIncrement key and `by-at` is what the streak walks. A
+    // repoint is a value edit; moving the rows would be a different migration.
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, {
+      reviews: [
+        { itemId: 'w:学习', at: 3, grade: 'good', style: 'recognise' },
+        { itemId: 'w:我', at: 1, grade: 'good', style: 'recognise' },
+      ],
+    })
+
+    const db = await openFlashcardsDb(name)
+    const rows = await readAll<{ seq: number; at: number }>(db, STORES.reviews)
+    expect(rows.map((row) => row.seq)).toEqual([1, 2])
+    expect(rows.map((row) => row.at)).toEqual([3, 1])
+  })
+
+  test('exposure counts survive the move to a composite key', async () => {
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, {
+      exposures: [{ headword: '生', count: 42, firstSeen: 1, lastSeen: 2 }],
+    })
+
+    const db = await openFlashcardsDb(name)
+    expect(await readAll(db, STORES.exposures)).toEqual([
+      { lang: 'zh', headword: '生', count: 42, firstSeen: 1, lastSeen: 2 },
+    ])
+  })
+
+  test('the by-video index still answers after videoWords is recreated', async () => {
+    // Recreating a store drops its indexes with it, and `videoWords()` queries
+    // nothing else — so losing this one makes every per-video lookup empty.
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, {
+      videoWords: [
+        { videoId: 'BV1xx411c7mD', headword: '憔悴', count: 4 },
+        { videoId: 'BV1xx411c7mD', headword: '学习', count: 2 },
+        { videoId: 'BV2yy411c7mD', headword: '学习', count: 9 },
+      ],
+    })
+
+    const db = await openFlashcardsDb(name)
+    const index = db.transaction(STORES.videoWords).objectStore(STORES.videoWords).index('by-video')
+    const rows = await request<Array<{ headword: string; lang: string }>>(
+      index.getAll(IDBKeyRange.only('BV1xx411c7mD')),
+    )
+    expect(rows.map((row) => row.headword).sort()).toEqual(['学习', '憔悴'])
+    expect(rows.every((row) => row.lang === 'zh')).toBe(true)
+  })
+
+  test('a hand-imported word list keeps both its rank and its HSK level', async () => {
+    // The two lists share a row and neither may disturb the other — which is
+    // still true across a rekey, or an upgrade silently costs you one of them.
+    const name = `migrate-${Math.random()}`
+    await seedV3(name, { ranks: [{ headword: '学习', rank: 412, hsk: 2 }] })
+
+    const db = await openFlashcardsDb(name)
+    expect(await readAll(db, STORES.ranks)).toEqual([
+      { lang: 'zh', headword: '学习', rank: 412, hsk: 2 },
+    ])
+  })
+
+  test('a sentence at the length cap survives whole, segment and all', async () => {
+    // Ids gained a segment, and `MAX_SENTENCE_LENGTH` caps the text at 220. A
+    // key is not truncated by anything, and this says so rather than assuming it.
+    const name = `migrate-${Math.random()}`
+    const line = '好'.repeat(220)
+    await seedV3(name, {
+      items: [item({ id: `s:${line}`, kind: 'sentence', text: line, state: 'pool' })],
+    })
+
+    const db = await openFlashcardsDb(name)
+    expect((await read(db, `s:${line}`))?.text).toBe(line)
+  })
+
+  test('upgrades all the way from v1, running every migration in order', async () => {
     const name = `migrate-${Math.random()}`
     await seed(name, {
       items: [item({ id: 'w:憔悴', kind: 'word', text: '憔悴', state: 'pool' })],
@@ -306,26 +484,39 @@ describe('the v3 upgrade', () => {
     })
 
     const db = await openFlashcardsDb(name)
-    expect((await read(db, 'w:憔悴'))?.state).toBe('new')
+    const card = (await read(db, 'w:憔悴'))!
+    expect(card.state).toBe('new')
+    expect(card.id).toBe('w:zh:憔悴')
     expect(await readAll(db, STORES.videoWords)).toEqual([
-      { videoId: 'BV1xx411c7mD', headword: '憔悴', count: 4 },
+      { videoId: 'BV1xx411c7mD', lang: 'zh', headword: '憔悴', count: 4 },
     ])
   })
 
-  test('a fresh database opens at v3 with every store in place', async () => {
+  test('a fresh database keys the three headword stores by language', async () => {
+    const db = await openFlashcardsDb(`fresh-${Math.random()}`)
+    const tx = db.transaction([STORES.exposures, STORES.videoWords, STORES.ranks])
+    expect(tx.objectStore(STORES.exposures).keyPath).toEqual(['lang', 'headword'])
+    expect(tx.objectStore(STORES.videoWords).keyPath).toEqual(['videoId', 'lang', 'headword'])
+    expect(tx.objectStore(STORES.ranks).keyPath).toEqual(['lang', 'headword'])
+    expect(tx.objectStore(STORES.ranks).index('by-rank').keyPath).toBe('rank')
+  })
+})
+
+describe('a fresh database', () => {
+  test('a fresh database opens at the current version with every store in place', async () => {
     // The upgrade branches on oldVersion, so the create path has to keep working
     // for anyone installing the extension for the first time.
     const db = await openFlashcardsDb(`fresh-${Math.random()}`)
     for (const store of Object.values(STORES)) {
       expect(db.objectStoreNames.contains(store)).toBe(true)
     }
-    expect(db.version).toBe(3)
+    expect(db.version).toBe(4)
   })
 
   test('a fresh database keys on videoId, not bvid', async () => {
     const db = await openFlashcardsDb(`fresh-${Math.random()}`)
     const tx = db.transaction([STORES.videoWords, STORES.videos])
-    expect(tx.objectStore(STORES.videoWords).keyPath).toEqual(['videoId', 'headword'])
+    expect(tx.objectStore(STORES.videoWords).keyPath).toEqual(['videoId', 'lang', 'headword'])
     expect(tx.objectStore(STORES.videos).keyPath).toBe('videoId')
     expect(tx.objectStore(STORES.videoWords).index('by-video').keyPath).toBe('videoId')
   })

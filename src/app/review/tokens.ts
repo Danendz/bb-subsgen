@@ -5,27 +5,25 @@
 // one is blanked, which one is the card's own. The component below it only turns
 // these flags into spans.
 
-import { isHan, segment } from '../../lang/segment'
-import type { Lexicon } from '../../lang/dict'
-import { isFunctionWord } from '../../lang/grammar/function-words'
+import type { Lexicon, ReadingPart } from '../../lang/pack'
 
 export interface LineToken {
   text: string
-  /** Numeric CC-CEDICT pinyin, absent for punctuation and unmatched characters. */
-  pinyin: string | null
-  /** Chinese the dictionary can be asked about — the rest is inert. */
+  /** The reading, absent for punctuation and unmatched characters. */
+  reading: ReadingPart[] | null
+  /** Text the dictionary can be asked about — the rest is inert. */
   han: boolean
   /** The card's own word, picked out of its example. */
   marked: boolean
   /** Replaced by a gap: the word the card is asking for. */
   blanked: boolean
   /** Show the reading above this word. */
-  reading: boolean
+  showReading: boolean
   /**
    * A word doing grammatical work rather than carrying meaning.
    *
    * Rendered dimmer, the same as on the video overlay, so a line reads as
-   * vocabulary against structure in both places. See `isFunctionWord`.
+   * vocabulary against structure in both places. See `Token.kind`.
    */
   structural: boolean
 }
@@ -65,19 +63,19 @@ export function lineTokens(
   // harder one than the card was scheduled as.
   let blanked = false
 
-  return segment(text, lexicon).map((token) => {
-    const han = token.text.length > 0 && isHan(token.text[0])
+  return lexicon.segment(text).map((token) => {
+    const han = token.kind !== 'other'
     const gap = han && !blanked && token.text === blank
     if (gap) blanked = true
 
     return {
       text: token.text,
-      pinyin: token.pinyin,
+      reading: token.reading,
       han,
       marked: han && !gap && token.text === mark,
       blanked: gap,
-      reading: Boolean(readings) && han && !gap && !known.has(token.text),
-      structural: han && isFunctionWord(token.text),
+      showReading: Boolean(readings) && han && !gap && !known.has(token.text),
+      structural: token.kind === 'function',
     }
   })
 }

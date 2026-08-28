@@ -11,13 +11,24 @@
 // one thing the user is asked about — once, globally.
 
 import { reschedules, schedule } from './scheduler'
+import { namespaceLegacyId } from './types'
 import type { Exposure, Item, Review, Video, VideoWord } from './types'
 
 /**
  * 1 — the original format.
  * 2 — `bvid` became `videoId`, because bangumi episodes have no BV id.
+ * 3 — ids, cards and headword rows carry the language they are in, matching
+ *     schema 4 of the database. See `toVersion3`.
  */
-export const BACKUP_VERSION = 2
+export const BACKUP_VERSION = 3
+
+/**
+ * The language every file below version 3 is in.
+ *
+ * Sound rather than a guess: version 3 is the format multi-language produced, so
+ * anything older necessarily predates a second pack existing.
+ */
+const LEGACY_LANG = 'zh'
 
 export interface Backup {
   version: number
@@ -68,20 +79,62 @@ export function isBackup(value: unknown): value is Backup {
  * which would file every per-video word under the same missing id and merge
  * unrelated videos into one — silently, since nothing here throws.
  *
- * Idempotent: a file already at the current version is returned untouched.
+ * Idempotent: a file already at the current version is returned untouched, by
+ * identity — callers rely on that to skip the merge dance for a fresh export.
+ *
+ * The steps compose rather than branching once, so a version 1 file goes through
+ * both and lands where a version 2 file does.
  */
 export function upgrade(backup: Backup): Backup {
-  if (backup.version >= 2) return backup
+  if (backup.version >= BACKUP_VERSION) return backup
+  return toVersion3(backup.version >= 2 ? backup : toVersion2(backup))
+}
 
+function toVersion2(backup: Backup): Backup {
   return {
     ...backup,
-    version: BACKUP_VERSION,
+    version: 2,
     items: (backup.items ?? []).map((item) => ({
       ...item,
       contexts: (item.contexts ?? []).map(renameVideoId),
     })),
     videoWords: (backup.videoWords ?? []).map(renameVideoId),
     videos: (backup.videos ?? []).map(renameVideoId),
+  }
+}
+
+/**
+ * Gives every id, card and headword row the language it was always in.
+ *
+ * Not optional polish. The pre-upgrade snapshot written by snapshot.ts *is* a
+ * version 2 file, and the whole recovery story is "re-import it through the
+ * button that already exists". Without this lift, that import would write
+ * bare-id cards alongside the migrated ones and silently double the deck —
+ * `mergeItem` keys on `id`, so two ids for one word are two words.
+ *
+ * `namespaceLegacyId` is shared with the database migration for exactly that
+ * reason: the two derivations must produce the same string, or a re-imported
+ * review points at a card that is not there.
+ *
+ * `videos` and `reviews`' other fields are untouched — a video is not
+ * language-scoped, and a review is repointed, not rewritten.
+ */
+function toVersion3(backup: Backup): Backup {
+  const lang = LEGACY_LANG
+  return {
+    ...backup,
+    version: 3,
+    items: (backup.items ?? []).map((item) => ({
+      ...item,
+      lang,
+      id: namespaceLegacyId(lang, item.id),
+    })),
+    reviews: (backup.reviews ?? []).map((review) => ({
+      ...review,
+      itemId: namespaceLegacyId(lang, review.itemId),
+    })),
+    exposures: (backup.exposures ?? []).map((exposure) => ({ ...exposure, lang })),
+    videoWords: (backup.videoWords ?? []).map((word) => ({ ...word, lang })),
   }
 }
 
@@ -241,14 +294,20 @@ function mergeItem(local: Item, incoming: Item, prefer: 'local' | 'incoming'): I
   }
 }
 
+/** A headword is only itself within a language — see `Item.lang`. */
+function exposureKey(entry: Pick<Exposure, 'lang' | 'headword'>): string {
+  return `${entry.lang}|${entry.headword}`
+}
+
 function mergeExposures(local: Exposure[], incoming: Exposure[]): Exposure[] {
-  const byWord = new Map(local.map((e) => [e.headword, e]))
+  const byWord = new Map(local.map((e) => [exposureKey(e), e]))
   for (const entry of incoming) {
-    const mine = byWord.get(entry.headword)
+    const mine = byWord.get(exposureKey(entry))
     byWord.set(
-      entry.headword,
+      exposureKey(entry),
       mine
         ? {
+            lang: entry.lang,
             headword: entry.headword,
             // Summed: you really did see it that many times, across both.
             count: mine.count + entry.count,
@@ -262,9 +321,9 @@ function mergeExposures(local: Exposure[], incoming: Exposure[]): Exposure[] {
 }
 
 function mergeVideoWords(local: VideoWord[], incoming: VideoWord[]): VideoWord[] {
-  const byKey = new Map(local.map((w) => [`${w.videoId}|${w.headword}`, w]))
+  const byKey = new Map(local.map((w) => [`${w.videoId}|${w.lang}|${w.headword}`, w]))
   for (const entry of incoming) {
-    const key = `${entry.videoId}|${entry.headword}`
+    const key = `${entry.videoId}|${entry.lang}|${entry.headword}`
     const mine = byKey.get(key)
     byKey.set(key, mine ? { ...entry, count: mine.count + entry.count } : entry)
   }

@@ -1,3 +1,34 @@
+// The overlay orchestrator: everything that has to happen in the page's own
+// world for a subtitle to end up annotated.
+//
+// It owns no decisions worth testing. Which of the two translations a line shows
+// is `lanes.ts` over `tier.ts`; what a settings change does to a running pass is
+// `settings-effect.ts`; what a transcription chunk changes is `asr-outcome.ts`;
+// when a dwell counts as struggling is `flashcards/capture.ts`. What is left
+// here is wiring, and three nested scopes that are load-bearing in a way no
+// individual line shows:
+//
+//   page    — `main()`. The site adapter, the study language and its pack, the
+//             lexicon, the translator pool and the lanes. One per document,
+//             never rebuilt, because none of them is about a particular video.
+//   video   — `loadCurrentVideo()`. The cue array, the transcription run, the
+//             translation passes, the notice and the progress state. Torn down
+//             and rebuilt on every video change.
+//   overlay — the `mount` callback. The shadow root, the hover card, the
+//             playback watcher, the geometry. Rebuilt every time the player
+//             swaps its `<video>` element, which on bangumi it does during DASH
+//             and DRM setup.
+//
+// The middle scope is the whole point. A pass has to outlive a remount: it runs
+// for minutes, the overlay under it may be replaced several times while it does,
+// and a chunk or a batch landing in the gap must not be lost. That is why the
+// passes and their subscriptions sit in the video scope and the mount only
+// publishes hooks that paint them. Getting it wrong is not a visual glitch —
+// it previously left both passes dead for the rest of the video.
+//
+// So: before moving a `let` in here, ask which of the three scopes it belongs
+// to. That question is what this file is arranged to answer.
+
 import { mount } from './mount'
 import {
   renderCue,
@@ -11,20 +42,18 @@ import {
 } from './overlay'
 import { watchPlayback } from './sync'
 import { attachHover } from './hover'
-import { withUserActivation } from './activation'
-import { runTranslationPass } from './translations'
 import { watchControls, forwardHoverToPlayer, type PlayerGeometry } from './controls'
 import { siteFor } from '../media/sites'
 import { watchVideoChange, type Site, type Video } from '../media/site'
 import { approve, isApproved, isRefused, refuseForNow } from '../media/approvals'
 import { isWaiting, progressView, type ProgressState, type Span } from './progress'
-import { fetchAudioBytes } from '../bilibili/audio'
+import { fetchAudioBytes } from '../media/audio-bytes'
 import { isAudioNeeded, OFFSCREEN_TARGET, type AudioSupply } from '../offscreen/protocol'
 import { sliceAudio } from '../offscreen/audio-transfer'
 import { looksLikeTranscript, type Cue } from '../media/cue'
-import { segment, type Token } from '../lang/segment'
-import { findPatterns } from '../lang/grammar/match'
-import { loadWords, dropLegacyPageDefsDb } from '../lang/dict'
+import type { Token } from '../lang/pack'
+import { dropLegacyPageDefsDb } from '../shared/legacy-db'
+import { loadLexicon } from '../shared/dict-client'
 import { lookupDefs } from '../shared/dict-client'
 import {
   captureSentence,
@@ -32,18 +61,19 @@ import {
   recordSignal,
   watchKnownSet,
 } from '../shared/flashcards-client'
-import { hanWords, isCapturableText, shouldCaptureLine, unknownIn } from '../flashcards/capture'
-import type { Context } from '../flashcards/types'
 import {
-  createTranslator,
-  isTranslatorSupported,
-  translatorAvailability,
-  type TranslatorLike,
-} from '../lang/translate'
+  vocabularyIn,
+  isCapturableText,
+  shouldCaptureLine,
+  struggledOn,
+  unknownIn,
+} from '../flashcards/capture'
+import { packFor } from '../lang/packs'
+import type { Context } from '../flashcards/types'
 import {
   loadSettings,
   onSettingsChanged,
-  TRANSLATION_LANGS,
+  resolveStudyLang,
   type TranslationLang,
 } from '../shared/settings'
 import {
@@ -58,8 +88,12 @@ import {
 } from '../shared/messages'
 import { alignCues } from '../llm/timing'
 import { openExplainDrawer } from './explain-drawer'
-import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
+import { bufferedAhead, BUFFER_CUES, type Shown } from './tier'
+import { createLanes } from './lanes'
 import { planTranscription } from './transcribe-plan'
+import { settingsEffect } from './settings-effect'
+import { asrOutcome } from './asr-outcome'
+import { createTranslatorPool, labelFor } from './translator-pool'
 
 console.log('[bb-subsgen] content script loaded', location.href)
 
@@ -103,95 +137,6 @@ async function loadCuesForCurrentVideo(site: Site): Promise<LoadedVideo | null> 
   return { cues: await video.fetchCues(), video }
 }
 
-function labelFor(lang: TranslationLang): string {
-  return TRANSLATION_LANGS.find((l) => l.code === lang)?.label ?? lang
-}
-
-/**
- * One translator per language, for the life of the page.
- *
- * Memoised because the pass is restarted every time a transcript grows — it
- * translates a snapshot, so new lines need a new run — and creating a translator
- * is the expensive half: it waits on a user gesture and, the first time, on a
- * language pack download. The promise rather than the translator is stored, so
- * two restarts arriving together share one creation instead of racing.
- *
- * Deliberately not cleared between videos. A translator is per language; the
- * video it was first wanted for has nothing to do with it.
- */
-const translators = new Map<TranslationLang, Promise<TranslatorLike>>()
-
-function translatorFor(
-  lang: TranslationLang,
-  onDownload: (fraction: number) => void,
-): Promise<TranslatorLike> {
-  const existing = translators.get(lang)
-  if (existing) return existing
-
-  // Needs a user gesture on the page; resolves on the first click or keypress.
-  // No abort signal: waiting for a gesture belongs to the page, not to whichever
-  // pass happened to ask first, and cancelling it on every restart would mean a
-  // transcript that keeps growing keeps throwing away the wait.
-  const created = withUserActivation(() => createTranslator(lang, onDownload))
-  translators.set(lang, created)
-  // A failure must not be remembered as the answer — the usual cause is a page
-  // that has not been clicked yet, and the next attempt may well succeed.
-  created.catch(() => translators.delete(lang))
-  return created
-}
-
-interface TranslateTrackDeps {
-  lang: TranslationLang
-  texts: string[]
-  currentIndex: () => number
-  /** Fires only when a language pack actually has to be fetched. */
-  onDownload: (fraction: number) => void
-  /** The translator exists; from here on the pass is the thing to report. */
-  onReady: () => void
-  onResult: (index: number, translated: string) => void
-  signal: AbortSignal
-}
-
-/**
- * Acquires a translator and runs the whole track through it in the background.
- *
- * Silently does nothing where the API doesn't exist (non-Chrome, Chrome < 138,
- * mobile) — an absent translated line is the correct fallback, never a broken one.
- */
-async function translateTrack({
-  lang,
-  texts,
-  currentIndex,
-  onDownload,
-  onReady,
-  onResult,
-  signal,
-}: TranslateTrackDeps): Promise<void> {
-  if (!isTranslatorSupported()) {
-    console.log(
-      '[bb-subsgen] Translator API not exposed here — skipping translation.',
-      'Needs desktop Chrome 138+.',
-    )
-    return
-  }
-  if (!translators.has(lang)) {
-    console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
-  }
-
-  let translator: TranslatorLike
-  try {
-    translator = await translatorFor(lang, onDownload)
-  } catch (e) {
-    if (!signal.aborted) console.warn('[bb-subsgen] could not create translator', e)
-    return
-  }
-  if (signal.aborted) return
-  onReady()
-
-  console.log('[bb-subsgen] translating', texts.length, 'cues to', lang)
-  await runTranslationPass({ texts, translator, currentIndex, onResult, signal })
-}
-
 async function main() {
   // Definitions now come from the service worker, so nothing here opens a
   // database — clear the one older versions left under bilibili.com's origin.
@@ -206,23 +151,48 @@ async function main() {
     return
   }
 
+  const initialSettings = await loadSettings()
+  let settings = initialSettings
+
   /**
-   * The dictionary, fetched the first time a video actually needs it.
+   * The language being annotated, fixed for as long as this script is loaded.
+   *
+   * Read once from the initial settings rather than from the live `settings`,
+   * because the lexicon below is memoized: following a mid-page change would
+   * leave the segmenter on one language and the definitions on another. A
+   * settings change takes effect on the next page, which is where the reload
+   * that reloads the lexicon happens anyway.
+   */
+  const lang = resolveStudyLang(initialSettings)
+
+  // Resolved beside the language rather than at the points that ask it
+  // questions. Without a pack there is no segmenter, no script test and nothing
+  // the overlay could put over a subtitle — an unknown language code is not a
+  // degraded overlay, it is no overlay.
+  const pack = packFor(lang)
+  if (!pack) {
+    console.warn('[bb-subsgen] no language pack for', lang, '— doing nothing')
+    return
+  }
+
+  // One per language and never rebuilt between videos; see the pool's header.
+  const translators = createTranslatorPool()
+
+  /**
+   * The dictionary, asked for the first time a video actually needs it.
    *
    * Deferred rather than loaded up front because this content script now runs on
    * every page of a site, not only on the video pages: YouTube navigates from its
    * homepage into `/watch` without a document load, and Chrome does not re-inject
-   * a content script for that — so the script has to already be there. Loading
-   * 4.5MB of lexicon on a page that turns out to be a search results list would
-   * be the price of that, and it is avoidable.
+   * a content script for that — so the script has to already be there. Asking the
+   * worker for 4.5MB of lexicon on a page that turns out to be a search results
+   * list would be the price of that, and it is avoidable.
    *
-   * Memoised on the promise so two videos in quick succession share one fetch.
+   * Memoised on the promise so two videos in quick succession share one request.
+   * Null means no dictionary is installed for `lang`.
    */
-  let lexicon: Promise<Awaited<ReturnType<typeof loadWords>>> | null = null
-  const loadLexicon = () => (lexicon ??= loadWords())
-
-  const initialSettings = await loadSettings()
-  let settings = initialSettings
+  let lexicon: Promise<Awaited<ReturnType<typeof loadLexicon>>> | null = null
+  const getLexicon = () => (lexicon ??= loadLexicon(lang))
   let stopMount: (() => void) | null = null
   /**
    * Subscriptions that belong to the video rather than to the overlay.
@@ -236,33 +206,14 @@ async function main() {
   let startTranslation: (() => void) | null = null
   let startLlmTranslation: (() => void) | null = null
   let translationAbort: AbortController | null = null
-  /**
-   * Per target language, each inner map keyed by the cue's **start**.
-   *
-   * Not by its index in the array, which is where these all began. A transcript
-   * arrives in pieces and playhead-first, so a chunk landing early in the track
-   * shifts every index after it — and an index-keyed translation would then be
-   * painted under a different line than the one it was written for. Start is the
-   * identity `llm-cache` and `Context` already use, for the same reason.
-   *
-   * Keeping a map per language means switching back to one already translated
-   * renders instantly instead of re-running the pass.
-   */
-  const translations = new Map<TranslationLang, Map<number, string>>()
-  /**
-   * The local model's translations, alongside Chrome's rather than instead.
-   *
-   * Same keying, filled by the worker as each batch lands. Which of the two a
-   * line actually shows is `tier.ts`'s decision, not this map's.
-   */
-  const llmTranslations = new Map<TranslationLang, Map<number, string>>()
-  /** Languages whose model output is now buffered far enough ahead to prefer. */
-  const latched = new Set<TranslationLang>()
+  // Both translations of every line, per target language, plus the buffer gate.
+  // One for the page and cleared per video; the mount closes over it.
+  const lanes = createLanes()
   let status: Status = 'loading'
   // Mirrored from the worker; drives what the overlay stops annotating and
   // which lines are still worth capturing.
   let known = new Set<string>()
-  watchKnownSet((next) => {
+  watchKnownSet(lang, (next) => {
     known = next
   })
 
@@ -271,21 +222,6 @@ async function main() {
   // to the stored setting: it is this visit that is a test, not every visit.
   const quizForThisVisit = new URLSearchParams(location.search).get('bbq') === '1'
   const quizMode = () => settings.quizMode || quizForThisVisit
-
-  const laneFor = <V>(
-    lanes: Map<TranslationLang, Map<number, V>>,
-    lang: TranslationLang,
-  ): Map<number, V> => {
-    let cache = lanes.get(lang)
-    if (!cache) {
-      cache = new Map()
-      lanes.set(lang, cache)
-    }
-    return cache
-  }
-
-  const cacheFor = (lang: TranslationLang) => laneFor(translations, lang)
-  const llmCacheFor = (lang: TranslationLang) => laneFor(llmTranslations, lang)
 
   /**
    * Fire-and-forget to the worker.
@@ -451,9 +387,7 @@ async function main() {
     stopAsr = null
     stopLlmResults?.()
     stopLlmResults = null
-    translations.clear()
-    llmTranslations.clear()
-    latched.clear()
+    lanes.clear()
     status = 'loading'
     if (!settings.enabled) return
 
@@ -469,7 +403,12 @@ async function main() {
     const resolved = loaded.video
     const { videoId, duration } = resolved
     // Only now, once there is a video that will actually use it.
-    const words = await loadLexicon()
+    const words = await getLexicon()
+    if (!words) {
+      status = 'no-dictionary'
+      console.log('[bb-subsgen] no dictionary installed for', lang)
+      return
+    }
     const videoInfo = { title: resolved.title, description: resolved.description }
 
     /**
@@ -523,13 +462,10 @@ async function main() {
 
     // ── Video scope ────────────────────────────────────────────────────────
     //
-    // `mount` re-runs its callback whenever Bilibili replaces the `<video>`
-    // element, which on bangumi it does during DASH and DRM setup. Everything
-    // inside it is therefore per-overlay and may happen several times. A
-    // transcription and a translation pass are per-video and must happen once,
-    // so they live out here and the mount only publishes the hooks that paint
-    // them. Getting this wrong is what previously left both passes dead for the
-    // rest of a video whenever the player swapped its element.
+    // Everything from here to the end of this function happens once per video.
+    // Everything inside the `mount` callback below happens once per overlay,
+    // which is several times per video. See this file's header for why that
+    // boundary is where it is; what follows it is the state it protects.
 
     /**
      * What the notice is currently saying, and whether it has been closed.
@@ -545,14 +481,7 @@ async function main() {
      */
     let notice: { text: string; action: string; onAction: () => void } | null = null
     let dismissed = false
-    /**
-     * The last coverage a run reported, kept for the next one to start from.
-     *
-     * A retry re-fetches and re-decodes before it can say anything, and without
-     * this the bar would blanket a video that already has forty-five minutes of
-     * subtitles for the half-minute that takes. What the failed run last sent is
-     * exactly right: it is the complement of the stretches still missing.
-     */
+    /** The last coverage a run reported, carried into the next; see `asrOutcome`. */
     let covered: Span[] = []
 
     /**
@@ -646,50 +575,43 @@ async function main() {
     const translatable = () => cues.filter((cue) => cue.text.trim()).length
 
     /**
-     * The translation a line shows, recomputed rather than remembered.
+     * The translation a line shows, asked afresh on every paint.
      *
-     * Nothing is pinned here. A line used to keep whatever it first displayed,
-     * so that a batch landing mid-read could not rewrite it — but the pin
-     * outlived the line, and every line watched before the gate opened stayed on
-     * the on-device translation for the rest of the session, seek back to it or
-     * not. Recomputing means a line shows the best translation that exists at the
-     * moment it is painted, including the moment the gate opens under it.
+     * Nothing is pinned here — see tier.ts for the freeze-on-display rule that
+     * used to be, and what it cost. Asking again means a line shows the best
+     * translation that exists at the moment it is painted, including the moment
+     * the gate opens under it.
      *
-     * It cannot flicker: the two caches only ever grow and `latch` never closes,
-     * so a line moves nothing → on-device → model and never back.
+     * It cannot flicker: the lanes only ever grow and the gate never closes, so
+     * a line moves nothing → on-device → model and never back.
      */
     const translationFor = (index: number): Shown => {
       const start = index < 0 ? undefined : cues[index]?.start
       if (start === undefined) return { text: '', source: null }
-      const lang = settings.translationLang
-
-      return preferred({
-        nmt: cacheFor(lang).get(start),
-        llm: llmCacheFor(lang).get(start),
-        latched: latched.has(lang),
-      })
+      return lanes.shown(settings.translationLang, start)
     }
 
     /**
-     * Opens the gate once the model is far enough ahead to stay ahead, and says
-     * whether this was the call that opened it.
+     * Counts how much the model has ready ahead of the playhead and offers it to
+     * the gate, returning `lanes.latchOn`'s answer unchanged.
      *
-     * The caller needs that answer: opening the gate changes which tier wins for
-     * the line already on screen, whose model translation may have arrived
-     * batches ago and been passed over.
+     * The counting is here rather than in `lanes.ts` because it walks this cue
+     * array, which is renumbered underneath both of them every time a chunk
+     * lands. Handing over a number keeps that hazard in the one scope that
+     * already understands it.
      */
     const updateLatch = (lang: TranslationLang): boolean => {
-      if (latched.has(lang)) return false
-      const llm = llmCacheFor(lang)
+      // The gate never closes, so once it is open there is nothing to count and
+      // nothing the diagnostic below could say that would still be true.
+      if (lanes.isLatched(lang)) return false
       const from = Math.max(currentIndex(), 0)
       const buffered = bufferedAhead(
         from,
         cues.length,
-        (index) => llm.has(cues[index].start),
+        (index) => lanes.hasLlm(lang, cues[index].start),
         (index) => Boolean(cues[index].text.trim()),
       )
-      const opened = latch(false, buffered)
-      if (opened) latched.add(lang)
+      const opened = lanes.latchOn(lang, buffered)
 
       // Diagnostic, on the page console rather than the model log, which the
       // worker owns. This is the one place that can answer "the model has
@@ -698,7 +620,7 @@ async function main() {
       // whole answer, and it is invisible from anywhere else.
       console.debug(
         `[bb-subsgen] llm buffer: ${buffered}/${BUFFER_CUES} contiguous cues ahead of ${from}` +
-          `, ${llm.size} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
+          `, ${lanes.countLlm(lang)} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
       )
       return opened
     }
@@ -713,7 +635,11 @@ async function main() {
       let engagedMs = 0
       let captured = false
 
-      const buffer = createExposureBuffer({ videoId, title: document.title, url: location.href })
+      const buffer = createExposureBuffer(lang, {
+        videoId,
+        title: document.title,
+        url: location.href,
+      })
 
       /**
        * Where a word or line was met, frozen for the card.
@@ -730,10 +656,7 @@ async function main() {
         const { start, text } = cues[index]
         return {
           text,
-          translation: forCard({
-            nmt: cacheFor(settings.translationLang).get(start),
-            llm: llmCacheFor(settings.translationLang).get(start),
-          }),
+          translation: lanes.card(settings.translationLang, start),
           videoId,
           start,
           url: location.href,
@@ -748,9 +671,13 @@ async function main() {
 
       const stopHover = attachHover({
         shadowRoot,
+        pack,
         video,
-        lookup: lookupDefs,
-        isTraditional: () => settings.useTraditional,
+        // Partially applied: the hover card is one language for the life of the
+        // page, so it never has to be told which one. See `DefsLookup`.
+        // Read inside the closure rather than captured, so flipping the script
+        // setting reaches the next hover without a reload.
+        lookup: (headwords) => lookupDefs(lang, headwords, settings.useTraditional),
         showToneColors: () => settings.showToneColors,
         currentTokens: () => currentTokens,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
@@ -778,16 +705,14 @@ async function main() {
           if (translationWithheld(cueView())) captureCurrentLine()
         },
 
-        // Otherwise the evidence is weaker and cumulative: dwelling long enough
-        // on one line suggests something was off. The threshold is a guess, so
-        // every sample is logged raw and it can be moved to wherever the real
-        // "I'm stuck" pauses turn out to sit.
+        // Otherwise the evidence is weaker and accumulates over the line; see
+        // `struggledOn`. Every sample is logged raw whether or not it captured,
+        // which is what the threshold can later be moved on.
         onLookupEnd: (ms) => {
           if (lastIndex < 0) return
           engagedMs += ms
           const withheld = translationWithheld(cueView())
-          const overThreshold = engagedMs >= settings.struggleThresholdMs
-          if (overThreshold) captureCurrentLine()
+          if (struggledOn(engagedMs, settings.struggleThresholdMs)) captureCurrentLine()
           recordSignal({
             at: Date.now(),
             videoId,
@@ -806,7 +731,7 @@ async function main() {
        * reaches the stretch you are watching there is no line there to translate.
        */
       const renderProgress = () => {
-        const cache = cacheFor(settings.translationLang)
+        const shownLang = settings.translationLang
         const state: ProgressState = transcribeState
           ? { phase: 'transcribe', ...transcribeState }
           : progress
@@ -816,7 +741,9 @@ async function main() {
             // `?.` because this runs on a frame callback while the cue list is
             // being replaced under it; a stale index must not throw here, of all
             // places, and the next frame corrects it.
-            waiting: isWaiting(lastIndex, (index) => cache.has(cues[index]?.start ?? -1)),
+            waiting: isWaiting(lastIndex, (index) =>
+              lanes.hasNmt(shownLang, cues[index]?.start ?? -1),
+            ),
             playhead: video.currentTime,
           }),
         )
@@ -856,6 +783,7 @@ async function main() {
         const { text, source } = translationFor(lastIndex)
         return {
           tokens: currentTokens,
+          lang: pack.code,
           translation: text,
           translationSource: source,
           known,
@@ -869,7 +797,7 @@ async function main() {
           clearCue(shadowRoot)
           return
         }
-        currentTokens = segment(cues[lastIndex].text, words)
+        currentTokens = words.segment(cues[lastIndex].text)
         renderCue(shadowRoot, cueView(), settings)
       }
 
@@ -879,7 +807,7 @@ async function main() {
        * Derived from the tokens already segmented for rendering, so finding them
        * costs nothing beyond the match itself.
        */
-      const patternsInLine = () => findPatterns(currentTokens).map((match) => match.pattern.id)
+      const patternsInLine = () => pack.findPatterns(currentTokens).map((match) => match.pattern.id)
 
       /**
        * Counts a line as seen, and keeps it if it still has something to teach.
@@ -900,12 +828,13 @@ async function main() {
         captured = false
         if (lastIndex < 0) return
 
-        const seen = hanWords(currentTokens)
+        const seen = vocabularyIn(currentTokens)
         buffer.line(seen)
 
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text) || !shouldCaptureLine(seen, known)) return
+        if (!isCapturableText(text, pack) || !shouldCaptureLine(seen, known)) return
         captureSentence(
+          lang,
           text,
           contextFor(lastIndex),
           undefined,
@@ -931,8 +860,8 @@ async function main() {
       const captureCurrentLine = () => {
         if (captured || lastIndex < 0) return
         const { text } = cues[lastIndex]
-        if (!isCapturableText(text)) return
-        captureSentence(text, contextFor(lastIndex), undefined, [], patternsInLine())
+        if (!isCapturableText(text, pack)) return
+        captureSentence(lang, text, contextFor(lastIndex), undefined, [], patternsInLine())
         captured = true
       }
 
@@ -1032,7 +961,6 @@ async function main() {
       // Captured, not re-read: a result arriving after the user switches
       // language belongs to the language the pass was started for.
       const lang = settings.translationLang
-      const cache = cacheFor(lang)
       // Captured alongside the texts, for the same reason. `onResult` reports a
       // position in the array it was handed, and by the time it does, the live
       // array may have had a chunk spliced into it.
@@ -1040,32 +968,32 @@ async function main() {
       const controller = new AbortController()
       translationAbort = controller
 
-      progress = { phase: 'pass', done: cache.size, total: translatable() }
+      progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
       repaintProgress?.()
 
-      void translateTrack({
+      void translators.translateTrack({
         lang,
         // Blanking already-translated cues makes the pass skip them, so toggling
         // the setting off and back on — or a chunk landing — doesn't redo
         // finished work.
-        texts: cues.map((cue) => (cache.has(cue.start) ? '' : cue.text)),
+        texts: cues.map((cue) => (lanes.hasNmt(lang, cue.start) ? '' : cue.text)),
         currentIndex: () => currentIndex(),
         onDownload: (fraction) => {
           progress = { phase: 'download', label: labelFor(lang), fraction }
           repaintProgress?.()
         },
         onReady: () => {
-          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
           repaintProgress?.()
         },
         onResult: (index, translated) => {
-          cache.set(starts[index], translated)
+          lanes.nmt(lang, starts[index], translated)
           if (lang !== settings.translationLang) return // superseded mid-flight
           // Through the tier rather than straight to the overlay: this line may
           // already be showing the model's translation, and `preferred` is what
           // stops the on-device one arriving late from displacing it.
           paintTranslation?.(starts[index])
-          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
           repaintProgress?.()
         },
         signal: controller.signal,
@@ -1102,7 +1030,7 @@ async function main() {
         cues: cues.map((cue) => ({
           start: cue.start,
           text: cue.text,
-          words: cue.text.trim() ? hanWords(segment(cue.text, words)) : [],
+          words: cue.text.trim() ? vocabularyIn(words.segment(cue.text)) : [],
         })),
       })
     }
@@ -1111,15 +1039,14 @@ async function main() {
     // that lands between the old overlay going and the new one arriving.
     stopLlmResults = onLlmTranslations((msg) => {
       if (msg.videoId !== videoId) return // a previous video's pass, still landing
-      const cache = llmCacheFor(msg.lang)
-      for (const line of msg.lines) cache.set(line.start, line.text)
+      lanes.llm(msg.lang, msg.lines)
 
       // Logged before the language check below, so a pass still finishing for a
       // language you have just switched away from is visibly still running
       // rather than appearing to have stalled.
       const total = translatable()
       console.log(
-        `[bb-subsgen] model translated ${cache.size}/${total} lines to ${msg.lang}` +
+        `[bb-subsgen] model translated ${lanes.countLlm(msg.lang)}/${total} lines to ${msg.lang}` +
           ` (+${msg.lines.length} this batch)`,
       )
 
@@ -1170,22 +1097,20 @@ async function main() {
       cues.length = 0
       cues.push(...alignCues(msg.cues))
 
-      if (msg.complete) {
-        // Whether it worked or not, the worker no longer needs holding open.
-        releaseAsrPort()
-        transcribeState = null
-        if (msg.error) {
-          console.warn('[bb-subsgen] transcription:', msg.error)
-          // A new failure is worth showing even if the last one was dismissed.
-          notice = retryNotice(msg.error)
-          dismissed = false
-        }
-        console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
-      } else {
-        covered = msg.covered ?? covered
-        transcribeState = { done: msg.done, total: msg.total, covered }
-        console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
+      const outcome = asrOutcome(msg, covered)
+      covered = outcome.covered
+      transcribeState = outcome.transcribeState
+      // Whether it worked or not, the worker no longer needs holding open.
+      if (outcome.releasePort) releaseAsrPort()
+      if (outcome.notice) {
+        console.warn('[bb-subsgen] transcription:', outcome.notice)
+        notice = retryNotice(outcome.notice)
+        // Undismissed here rather than in `asrOutcome`, which does not know
+        // whether the last notice was ever closed.
+        dismissed = false
       }
+      if (msg.complete) console.log('[bb-subsgen] transcribed', cues.length, 'lines for', videoId)
+      else console.log(`[bb-subsgen] transcribed chunk ${msg.done}/${msg.total}`)
 
       refreshCues?.()
 
@@ -1193,11 +1118,7 @@ async function main() {
       // the speech server, so it costs nothing the transcription is waiting on,
       // and it is what makes a line readable the moment it appears.
       startTranslation?.()
-      // The model pass waits for the whole track. There is one GPU behind all of
-      // this and the speech server is on it until the last chunk lands; a pass
-      // racing it would finish later than the two run in order. It also gets
-      // batch seams that are actually adjacent, which a growing track does not.
-      if (msg.complete) startLlmTranslation?.()
+      if (outcome.startLlm) startLlmTranslation?.()
       repaintProgress?.()
     })
 
@@ -1264,40 +1185,35 @@ async function main() {
 
   watchVideoChange(site.parseVideoId, loadCurrentVideo)
   onSettingsChanged((next) => {
-    const enabledChanged = next.enabled !== settings.enabled
-    const translationToggled = next.showTranslation !== settings.showTranslation
-    const langChanged = next.translationLang !== settings.translationLang
-    const llmToggled =
-      next.llmEnabled !== settings.llmEnabled ||
-      next.llmTranslationEnabled !== settings.llmTranslationEnabled ||
-      next.llmTranslationModel !== settings.llmTranslationModel ||
-      // Pointing at a different server is as much a change of translator as
-      // picking a different model, and leaving it out meant correcting a typo'd
-      // URL took a page reload to have any effect.
-      next.llmBaseUrl !== settings.llmBaseUrl
+    const effect = settingsEffect(settings, next)
     settings = next
-    if (enabledChanged) {
-      loadCurrentVideo()
-      return
-    }
-    if (langChanged) {
-      // The caches survive, so switching back to a finished language is instant.
-      stopTranslation()
-      startTranslation?.()
-      startLlmTranslation?.()
-    } else if (translationToggled) {
-      if (next.showTranslation) {
+
+    switch (effect) {
+      case 'reload':
+        // Returns rather than breaks: this rebuilds the overlay that the
+        // repaint below would otherwise be painting into.
+        loadCurrentVideo()
+        return
+      case 'restart-passes':
+        stopTranslation()
         startTranslation?.()
         startLlmTranslation?.()
-      } else stopTranslation()
-    } else if (llmToggled) {
-      // Turned on mid-video: the worker already has everything it needs to
-      // start, and everything cached from a previous viewing comes back at once.
-      if (next.llmEnabled && next.llmTranslationEnabled) startLlmTranslation?.()
-      else {
-        releasePassPort()
-        tellWorker({ type: 'bb-subsgen:llm-cancel' })
-      }
+        break
+      case 'start-passes':
+        startTranslation?.()
+        startLlmTranslation?.()
+        break
+      case 'stop-passes':
+        stopTranslation()
+        break
+      case 'start-llm':
+        startLlmTranslation?.()
+        break
+      case 'stop-llm':
+        stopLlm()
+        break
+      case 'repaint':
+        break
     }
     rerenderCurrentCue?.()
   })

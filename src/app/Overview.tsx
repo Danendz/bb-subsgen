@@ -1,6 +1,7 @@
 import { useCallback } from 'preact/hooks'
 import { flashcardsDb } from '../flashcards/db'
 import { deckCounts, hskProgress, knownSetOf, listItems, listRanks } from '../flashcards/queries'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { useAsync } from './hooks'
 
 function pct(part: number, whole: number): number {
@@ -19,7 +20,8 @@ function Stat({ n, label }: { n: number; label: string }) {
 export function Overview() {
   const load = useCallback(async () => {
     const db = await flashcardsDb()
-    const [items, ranks] = await Promise.all([listItems(db), listRanks(db)])
+    const lang = resolveStudyLang(await loadSettings())
+    const [items, ranks] = await Promise.all([listItems(db, lang), listRanks(db, lang)])
     return { items, ranks }
   }, [])
   const { data, loading } = useAsync(load)

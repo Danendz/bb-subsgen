@@ -2,18 +2,47 @@
 // are the rules most likely to need tuning, and tuning them by argument rather
 // than by measurement is how a capture system ends up burying you.
 
-import { isHan, type Token } from '../lang/segment'
+import type { Token } from '../lang/pack'
+import type { LanguagePack, Lexicon } from '../lang/pack'
 
-/** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in reader/sentence.ts. */
+/** Longest line worth keeping as a card, matching MAX_SENTENCE_LENGTH in lang/zh/sentence.ts. */
 export const MAX_LINE_LENGTH = 220
 
-/** The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary. */
-export function hanWords(tokens: Token[]): string[] {
-  return tokens.map((t) => t.text).filter((text) => text.length > 0 && isHan(text[0]))
+/**
+ * The dictionary words in a rendered line. Punctuation and Latin runs are not vocabulary.
+ *
+ * The headword, not the surface: 食べました is one exposure to 食べる, and a deck
+ * that filed the surface would hold a separate card per conjugation and never
+ * mature any of them. Chinese sets no `dictionary`, so this reads as `t.text`
+ * there.
+ */
+export function vocabularyIn(tokens: Token[]): string[] {
+  return tokens
+    .filter((t) => t.kind !== 'other' && t.text.length > 0)
+    .map((t) => t.dictionary ?? t.text)
 }
 
 export function unknownIn(words: string[], known: ReadonlySet<string>): string[] {
   return words.filter((word) => !known.has(word))
+}
+
+/**
+ * Whether the time spent on one line's cards has become evidence you were stuck.
+ *
+ * The other way into the deck is vocabulary — `shouldCaptureLine` above — and it
+ * finds lines with a word you have not met. This finds the ones whose difficulty
+ * was never vocabulary: every word known, and you still stopped.
+ *
+ * Cumulative across separate lookups on the same line rather than per lookup.
+ * One long dwell and four short ones on the same sentence are the same evidence,
+ * and only the sum distinguishes reading slowly from being stuck.
+ *
+ * The threshold is a setting because it is a guess. Every dwell is logged raw by
+ * `recordSignal` precisely so it can be moved to wherever the real "I'm stuck"
+ * pauses turn out to sit, rather than argued about.
+ */
+export function struggledOn(engagedMs: number, thresholdMs: number): boolean {
+  return engagedMs >= thresholdMs
 }
 
 /**
@@ -31,11 +60,11 @@ export function shouldCaptureLine(words: string[], known: ReadonlySet<string>): 
   return unknownIn(words, known).length > 0
 }
 
-/** Whether a line is short enough, and Chinese enough, to be a card at all. */
-export function isCapturableText(text: string): boolean {
+/** Whether a line is short enough, and enough of the studied script, to be a card at all. */
+export function isCapturableText(text: string, pack: LanguagePack): boolean {
   const trimmed = text.trim()
   if (!trimmed || trimmed.length > MAX_LINE_LENGTH) return false
-  return Array.from(trimmed).some(isHan)
+  return pack.containsScript(trimmed)
 }
 
 export type SelectionTarget =
@@ -46,13 +75,17 @@ export type SelectionTarget =
  *
  * Exactly one dictionary headword is a word; anything else is a sentence. That
  * resolves the awkward middle — 选择 is a word, 我在学习 is not — without asking
- * the user to classify their own selection, and it uses the same word set that
- * already drives segmentation.
+ * the user to classify their own selection, and it uses the same dictionary
+ * that already drives segmentation.
+ *
+ * Takes the lexicon rather than a word set and a pack: it needs both "is this
+ * one headword" and "is this text in the script", and the lexicon carries its
+ * own pack precisely so callers do not thread two values here.
  */
-export function selectionTarget(selected: string, words: Map<string, string>): SelectionTarget {
+export function selectionTarget(selected: string, lexicon: Lexicon): SelectionTarget {
   const text = selected.trim()
-  if (!isCapturableText(text)) return null
-  if (words.has(text)) return { kind: 'word', text }
+  if (!isCapturableText(text, lexicon.pack)) return null
+  if (lexicon.has(text)) return { kind: 'word', text }
   return { kind: 'sentence', text }
 }
 

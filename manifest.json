@@ -2,15 +2,17 @@
   "manifest_version": 3,
   "name": "bb-subsgen",
   "version": "0.0.1",
-  "description": "Hover pinyin + CC-CEDICT glosses over Chinese text, on Bilibili subtitles and any site you opt into.",
-  "permissions": ["storage", "scripting", "offscreen"],
+  "description": "Hover readings and dictionary glosses over Chinese and Japanese text, on Bilibili subtitles and any site you opt into.",
+  "permissions": ["storage", "scripting", "offscreen", "unlimitedStorage"],
   "host_permissions": [
     "https://*.bilibili.com/*",
     "https://*.hdslb.com/*",
     "https://*.bilivideo.com/*",
     "https://*.bilivideo.cn/*",
     "https://*.akamaized.net/*",
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://www.mdbg.net/*",
+    "https://www.edrdg.org/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
@@ -37,10 +39,6 @@
     "default_popup": "src/popup/index.html"
   },
   "web_accessible_resources": [
-    {
-      "resources": ["dict/words.bin"],
-      "matches": ["<all_urls>"]
-    },
     {
       "resources": ["src/app/index.html", "assets/*"],
       "matches": ["https://*.bilibili.com/*", "https://www.youtube.com/*"]

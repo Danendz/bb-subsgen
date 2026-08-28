@@ -17,8 +17,11 @@ import {
   type WordListMeta,
 } from '../background/flashcards-store'
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
+import { packFor } from '../lang/packs'
+import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { WordListHelp } from './WordListHelp'
 import { LlmLog } from './LlmLog'
+import { listSnapshots, type Snapshot } from '../flashcards/snapshot'
 import { cacheSize, clearCache } from '../background/llm-cache'
 import { clearTranscripts, transcriptSize } from '../background/transcript-cache'
 
@@ -26,16 +29,57 @@ function stamp(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function download() {
-  const backup = await exportBackup()
-  const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-
+function save(json: string, fileName: string) {
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
   const a = document.createElement('a')
   a.href = url
-  a.download = `bb-subsgen-${stamp()}.json`
+  a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
+}
+
+async function download() {
+  save(JSON.stringify(await exportBackup()), `bb-subsgen-${stamp()}.json`)
+}
+
+/**
+ * The copies taken before a schema migration ran. See flashcards/snapshot.ts.
+ *
+ * A panel rather than a hidden safety net, because the recovery story is "hand
+ * the file to the Import button below" — which is only a story if the file can
+ * be got at. Empty for anyone who installed after the migration, and it renders
+ * nothing at all rather than an explanation of a thing that never happened.
+ */
+function DeckSnapshots() {
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([])
+  useEffect(() => void listSnapshots().then(setSnapshots, () => setSnapshots([])), [])
+
+  if (!snapshots.length) return null
+
+  return (
+    <div class="panel">
+      <strong>Deck snapshots</strong>
+      <div class="muted small" style={{ marginBottom: 6 }}>
+        Taken automatically just before a database upgrade rewrote the deck. Download one and hand
+        it to Import below if an upgrade lost something.
+      </div>
+      {snapshots.map((snapshot) => (
+        <div class="row" key={snapshot.fromVersion}>
+          <div class="grow small">
+            Before schema {snapshot.fromVersion + 1}, taken{' '}
+            {new Date(snapshot.at).toISOString().slice(0, 10)}
+          </div>
+          <button
+            onClick={() =>
+              save(snapshot.json, `bb-subsgen-before-v${snapshot.fromVersion + 1}.json`)
+            }
+          >
+            Download
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const LISTS: Array<{ kind: ListKind; label: string; blurb: string }> = [
@@ -77,13 +121,29 @@ function WordLists() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const refresh = () => void wordListMeta().then(setMeta)
+  // A list is uploaded *for* the language you study, and both the data and the
+  // "which file, how many rows" note are keyed by it — otherwise this panel
+  // reports a Chinese HSK upload while you are studying Japanese.
+  const refresh = () =>
+    void loadSettings()
+      .then((settings) => wordListMeta(resolveStudyLang(settings)))
+      .then(setMeta)
   useEffect(refresh, [])
+
+  /** The pack for the language being studied, which the parse and the write both need. */
+  const studyPack = async () => packFor(resolveStudyLang(await loadSettings()))
 
   const onFile = async (kind: ListKind, file: File) => {
     setError('')
     setPending(null)
-    const result = parseWordList(kind, await file.text())
+    // A word list is a list of words in the language you study, so the column
+    // sniffing has to know which script it is looking for.
+    const pack = await studyPack()
+    if (!pack) {
+      setError('No dictionary installed yet — set one up from the extension popup first.')
+      return
+    }
+    const result = parseWordList(kind, await file.text(), pack)
     if (!result.ok) {
       setError(errorMessage(result.error))
       return
@@ -95,7 +155,9 @@ function WordLists() {
     if (!pending) return
     setBusy(true)
     try {
-      await replaceWordList(pending.kind, pending.list.rows, {
+      const pack = await studyPack()
+      if (!pack) return
+      await replaceWordList(pack.code, pending.kind, pending.list.rows, {
         name: pending.fileName,
         count: pending.list.rows.length,
         uploadedAt: Date.now(),
@@ -108,7 +170,9 @@ function WordLists() {
   }
 
   const remove = async (kind: ListKind) => {
-    await deleteWordList(kind)
+    const pack = await studyPack()
+    if (!pack) return
+    await deleteWordList(pack.code, kind)
     refresh()
   }
 
@@ -360,6 +424,8 @@ export function Data() {
           <button onClick={() => void download()}>Download</button>
         </div>
       </div>
+
+      <DeckSnapshots />
 
       <div class="panel">
         <div class="row">

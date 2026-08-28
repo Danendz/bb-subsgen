@@ -1,35 +1,28 @@
 import { describe, expect, test } from 'vitest'
 import { lineTokens } from './tokens'
+import { chinesePack } from '../../lang/zh/pack'
 
 /** Enough of a word list to segment the lines below the way the app would. */
-const WORDS = {
-  words: new Map([
-    ['南昌', 'nan2 chang1'],
-    ['真的', 'zhen1 de5'],
-    ['太', 'tai4'],
-    ['恐怖', 'kong3 bu4'],
-    ['了', 'le5'],
-    ['好', 'hao3'],
-    ['好好', 'hao3 hao3'],
-    ['学习', 'xue2 xi2'],
-  ]),
-  phrases: new Set<string>(),
-}
+const WORDS = chinesePack.load(
+  [
+    '南昌\tnan2 chang1',
+    '真的\tzhen1 de5',
+    '太\ttai4',
+    '恐怖\tkong3 bu4',
+    '了\tle5',
+    '好\thao3',
+    '好好\thao3 hao3',
+    '学习\txue2 xi2',
+  ].join('\n'),
+)
 
 const LINE = '南昌真的太恐怖了。'
 
-const WORDS_WITH_PARTICLE = {
-  words: new Map([
-    ['我', 'wo3'],
-    ['的', 'de5'],
-    ['书', 'shu1'],
-  ]),
-  phrases: new Set<string>(),
-}
+const WORDS_WITH_PARTICLE = chinesePack.load('我\two3\n的\tde5\n书\tshu1')
 
 const texts = (tokens: ReturnType<typeof lineTokens>) => tokens.map((t) => t.text)
 const reading = (tokens: ReturnType<typeof lineTokens>) =>
-  tokens.filter((t) => t.reading).map((t) => t.text)
+  tokens.filter((t) => t.showReading).map((t) => t.text)
 
 describe('lineTokens', () => {
   test('splits the line into the words the deck knows about', () => {
@@ -57,12 +50,15 @@ describe('lineTokens', () => {
 
     test('never land on punctuation', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true })
-      expect(tokens.find((t) => t.text === '。')?.reading).toBe(false)
+      expect(tokens.find((t) => t.text === '。')?.showReading).toBe(false)
     })
 
-    test('carry the pinyin the segmenter already found', () => {
+    test('carry the reading the segmenter already found', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true })
-      expect(tokens.find((t) => t.text === '恐怖')?.pinyin).toBe('kong3 bu4')
+      expect(tokens.find((t) => t.text === '恐怖')?.reading).toEqual([
+        { base: '恐', text: 'kǒng', tone: 3 },
+        { base: '怖', text: 'bù', tone: 4 },
+      ])
     })
   })
 
@@ -101,7 +97,7 @@ describe('lineTokens', () => {
 
     test('never carries a reading, which would be the answer', () => {
       const tokens = lineTokens(LINE, WORDS, { known: new Set(), readings: true, blank: '恐怖' })
-      expect(tokens.find((t) => t.blanked)?.reading).toBe(false)
+      expect(tokens.find((t) => t.blanked)?.showReading).toBe(false)
     })
 
     test('is not also marked, so a gap cannot be highlighted', () => {

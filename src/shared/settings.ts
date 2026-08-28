@@ -32,8 +32,34 @@ export const READER_MODIFIERS: ReadonlyArray<{ code: ReaderModifier; label: stri
   { code: 'ctrl', label: 'Ctrl' },
 ]
 
+/**
+ * A site the page reader is switched on for.
+ *
+ * `lang` is absent until something declares one, and an absent code means
+ * "resolve it per page" rather than "Chinese" — a site opted into before the
+ * code existed has made no decision about its language, and recording one on
+ * its behalf would be a guess that outlives the moment a second pack makes it
+ * wrong.
+ */
+export interface ReaderOrigin {
+  origin: string
+  /** Absent = resolve per page. Written only by an explicit override. */
+  lang?: string
+}
+
 export interface Settings {
   enabled: boolean
+  /**
+   * Languages the setup wizard has been told you study, e.g. `['zh']`.
+   *
+   * Empty by default even for an existing profile: the packaged dictionary is
+   * gone (see #20), so an install that upgraded from a version that shipped one
+   * has nothing installed either, and belongs in the wizard exactly like a
+   * fresh profile does. The badge and the popup read this list against
+   * src/dict/store.ts's per-language `meta` to decide whether anything is
+   * actually ready to use.
+   */
+  enabledLanguages: string[]
   showPinyin: boolean
   showToneColors: boolean
   fontSize: number // px, hanzi row
@@ -48,14 +74,19 @@ export interface Settings {
   translationLayout: TranslationLayout
   translationLang: TranslationLang
   /**
-   * Origins the page reader runs on, e.g. `https://zhihu.com`.
+   * Sites the page reader runs on, each with the language it is read in.
    *
    * Chrome's granted host permissions are the real gate — the reader can't be
    * injected without one — but this is what the popup renders and what the
    * content script checks, so revoking permission and switching the toggle off
    * stay in step.
+   *
+   * A plain `string[]` until #11. Both read paths run it through `normalise`,
+   * because a stored list written before the change is still a list of strings
+   * and the shallow merge with `DEFAULT_SETTINGS` would hand it through typed
+   * as the new shape.
    */
-  readerOrigins: string[]
+  readerOrigins: ReaderOrigin[]
   readerModifier: ReaderModifier
   readerSentenceTranslation: boolean
   /**
@@ -74,6 +105,18 @@ export interface Settings {
    * `studySessionSize` is what limits how many are actually met.
    */
   newSentencesPerDay: number
+  /**
+   * The language you are working in right now, e.g. `'zh'`.
+   *
+   * One setting rather than one per surface: it means "the language I am
+   * studying today", so switching it in the Dictionary tab moves Review with it
+   * instead of leaving two controls to disagree about which lexicon is loaded.
+   *
+   * Empty until something sets it — read it through `resolveStudyLang`, never
+   * directly, or a profile that has never touched the control reads no lexicon
+   * at all.
+   */
+  studyLang: string
   /** How the study session asks its questions. */
   studyMode: StudyMode
   /** Which cards it draws from. */
@@ -180,6 +223,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
+  // Empty: nothing is installed until the wizard says so. See the doc comment
+  // on the field above.
+  enabledLanguages: [],
   showPinyin: true,
   showToneColors: true,
   fontSize: 32,
@@ -203,6 +249,9 @@ export const DEFAULT_SETTINGS: Settings = {
   readerSentenceTranslation: true,
   quizMode: false,
   newSentencesPerDay: 5,
+  // Empty: resolved rather than stored, so a fresh profile follows whatever the
+  // wizard was told rather than a guess made before it was asked.
+  studyLang: '',
   // Mixed by default: meeting a word from a different angle each sitting is
   // better practice than any single mode, and it is the behaviour that existed
   // before the modes were choosable, so nobody's sessions change unasked.
@@ -228,6 +277,19 @@ export const DEFAULT_SETTINGS: Settings = {
   asrBaseUrl: '',
   asrModel: '',
   ytdlpBaseUrl: '',
+}
+
+/**
+ * Which language a lookup should be answered in.
+ *
+ * `studyLang` is `''` until the control has been touched, and the language
+ * controls stay hidden while only one dictionary is installed — so most
+ * profiles never set it, and every caller has to fall back the same way or they
+ * fall back differently. The final `'zh'` is for the window between installing
+ * the extension and finishing the wizard, where nothing is enabled yet.
+ */
+export function resolveStudyLang(settings: Settings): string {
+  return settings.studyLang || settings.enabledLanguages[0] || 'zh'
 }
 
 /** Bounds for `studySessionSize`, shared by the picker and the queue. */
@@ -256,10 +318,40 @@ export function clampSpeechRate(rate: number): number {
 
 const STORAGE_KEY = 'bbSubsgenSettings'
 
+/**
+ * A stored blob as the current `Settings`, migrating what has changed shape.
+ *
+ * Both read paths go through this rather than only `loadSettings`: they each do
+ * their own `{ ...DEFAULT_SETTINGS, ...saved }`, and a shallow merge hands an
+ * old `readerOrigins: string[]` straight through typed as the new shape — a lie
+ * the compiler cannot catch. Missing the echo path would silently un-migrate
+ * the list the moment anything else wrote a setting.
+ */
+function normalise(saved: Partial<Settings> | undefined): Settings {
+  const merged = { ...DEFAULT_SETTINGS, ...saved }
+  return { ...merged, readerOrigins: readerOriginsFrom(merged.readerOrigins) }
+}
+
+/** `['https://a']` and `[{ origin: 'https://a' }]` both read as the latter. */
+function readerOriginsFrom(stored: unknown): ReaderOrigin[] {
+  if (!Array.isArray(stored)) return []
+  const origins: ReaderOrigin[] = []
+  for (const entry of stored) {
+    if (typeof entry === 'string') {
+      if (entry) origins.push({ origin: entry })
+      continue
+    }
+    if (typeof entry !== 'object' || entry === null) continue
+    const { origin, lang } = entry as { origin?: unknown; lang?: unknown }
+    if (typeof origin !== 'string' || !origin) continue
+    origins.push(typeof lang === 'string' && lang ? { origin, lang } : { origin })
+  }
+  return origins
+}
+
 export async function loadSettings(): Promise<Settings> {
   const stored = await chrome.storage.sync.get(STORAGE_KEY)
-  const saved = stored[STORAGE_KEY] as Partial<Settings> | undefined
-  return { ...DEFAULT_SETTINGS, ...saved }
+  return normalise(stored[STORAGE_KEY] as Partial<Settings> | undefined)
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
@@ -271,7 +363,7 @@ export function onSettingsChanged(callback: (settings: Settings) => void): () =>
   const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName !== 'sync' || !changes[STORAGE_KEY]) return
     const saved = changes[STORAGE_KEY].newValue as Partial<Settings> | undefined
-    callback({ ...DEFAULT_SETTINGS, ...saved })
+    callback(normalise(saved))
   }
   chrome.storage.onChanged.addListener(listener)
   return () => chrome.storage.onChanged.removeListener(listener)

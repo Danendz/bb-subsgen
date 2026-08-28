@@ -4,7 +4,8 @@ import type { Item, StudyMode } from './types'
 
 function make(partial: Partial<Item> & Pick<Item, 'kind' | 'text'>): Item {
   return {
-    id: `${partial.kind === 'word' ? 'w' : 's'}:${partial.text}`,
+    id: `${partial.kind === 'word' ? 'w' : 's'}:zh:${partial.text}`,
+    lang: 'zh',
     state: 'new',
     interval: 0,
     ease: 2.5,

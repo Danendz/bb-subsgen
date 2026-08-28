@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-// The pass talks to four things. Three of them are stubbed so what is under
-// test is the orchestration itself — the order work is done in, what is retried,
-// what is cached and what is sent back.
-vi.mock('./defs-store', () => ({ lookupDefs: vi.fn(async () => ({})) }))
+// The pass talks to four things. Two of them are stubbed so what is under test
+// is the orchestration itself — the order work is done in, what is retried, what
+// is cached and what is sent back. The dictionary is not stubbed: it runs
+// against fake-indexeddb with nothing installed, which answers every headword
+// with no entries and is exactly the glossary these tests want.
 vi.mock('../llm/log', () => ({ log: () => {} }))
 vi.mock('./llm-cache', () => ({
   readTrack: vi.fn(async () => new Map<number, string>()),
@@ -54,6 +55,7 @@ function request(over: Partial<Parameters<typeof startPass>[0]> = {}) {
     tabId: TAB,
     videoId: 'BV1',
     lang: 'en' as const,
+    studyLang: 'zh',
     model: 'gemma',
     baseUrl: 'http://localhost:1234/v1',
     cues: cues(4),
