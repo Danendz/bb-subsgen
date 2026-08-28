@@ -601,6 +601,9 @@ async function main() {
      * already understands it.
      */
     const updateLatch = (lang: TranslationLang): boolean => {
+      // The gate never closes, so once it is open there is nothing to count and
+      // nothing the diagnostic below could say that would still be true.
+      if (lanes.isLatched(lang)) return false
       const from = Math.max(currentIndex(), 0)
       const buffered = bufferedAhead(
         from,

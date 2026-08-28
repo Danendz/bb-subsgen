@@ -32,6 +32,15 @@ export interface Lanes {
   countNmt(lang: TranslationLang): number
   countLlm(lang: TranslationLang): number
   /**
+   * Whether the buffer gate has already opened for this language.
+   *
+   * Asked before counting rather than left to `latchOn` to shrug off, because
+   * the counting is a walk of the whole cue list and the gate never closes:
+   * after it opens, every further batch would pay for an answer that cannot
+   * change.
+   */
+  isLatched(lang: TranslationLang): boolean
+  /**
    * Opens the buffer gate if `buffered` is enough, and says whether this was the
    * call that opened it.
    *
@@ -108,6 +117,8 @@ export function createLanes(): Lanes {
     hasLlm: (lang, start) => laneFor(llmLanes, lang).has(start),
     countNmt: (lang) => laneFor(nmtLanes, lang).size,
     countLlm: (lang) => laneFor(llmLanes, lang).size,
+
+    isLatched: (lang) => latched.has(lang),
 
     latchOn: (lang, buffered) => {
       if (latched.has(lang)) return false

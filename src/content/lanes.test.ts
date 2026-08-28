@@ -32,6 +32,22 @@ describe('createLanes', () => {
     expect(lanes.shown('en', 10)).toEqual({ text: 'model', source: 'llm' })
   })
 
+  /**
+   * The caller checks this before counting, which means walking the whole cue
+   * list. The gate never closes, so after it opens that walk buys an answer
+   * that cannot change — and the diagnostic it feeds would report "closed" for
+   * a gate that is open.
+   */
+  test('reports the gate open, so the caller can stop counting for it', () => {
+    const lanes = createLanes()
+
+    expect(lanes.isLatched('en')).toBe(false)
+    lanes.latchOn('en', BUFFER_CUES)
+    expect(lanes.isLatched('en')).toBe(true)
+    // Per language, like everything else here.
+    expect(lanes.isLatched('ru')).toBe(false)
+  })
+
   /** Only the call that opened it, so the caller knows to repaint the line up. */
   test('says it opened the gate once and not on every batch after', () => {
     const lanes = createLanes()
