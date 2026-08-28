@@ -51,7 +51,8 @@ import {
 } from '../shared/messages'
 import { alignCues } from '../llm/timing'
 import { openExplainDrawer } from './explain-drawer'
-import { bufferedAhead, BUFFER_CUES, forCard, latch, preferred, type Shown } from './tier'
+import { bufferedAhead, BUFFER_CUES, type Shown } from './tier'
+import { createLanes } from './lanes'
 import { planTranscription } from './transcribe-plan'
 import { createTranslatorPool, labelFor } from './translator-pool'
 
@@ -166,28 +167,9 @@ async function main() {
   let startTranslation: (() => void) | null = null
   let startLlmTranslation: (() => void) | null = null
   let translationAbort: AbortController | null = null
-  /**
-   * Per target language, each inner map keyed by the cue's **start**.
-   *
-   * Not by its index in the array, which is where these all began. A transcript
-   * arrives in pieces and playhead-first, so a chunk landing early in the track
-   * shifts every index after it — and an index-keyed translation would then be
-   * painted under a different line than the one it was written for. Start is the
-   * identity `llm-cache` and `Context` already use, for the same reason.
-   *
-   * Keeping a map per language means switching back to one already translated
-   * renders instantly instead of re-running the pass.
-   */
-  const translations = new Map<TranslationLang, Map<number, string>>()
-  /**
-   * The local model's translations, alongside Chrome's rather than instead.
-   *
-   * Same keying, filled by the worker as each batch lands. Which of the two a
-   * line actually shows is `tier.ts`'s decision, not this map's.
-   */
-  const llmTranslations = new Map<TranslationLang, Map<number, string>>()
-  /** Languages whose model output is now buffered far enough ahead to prefer. */
-  const latched = new Set<TranslationLang>()
+  // Both translations of every line, per target language, plus the buffer gate.
+  // One for the page and cleared per video; the mount closes over it.
+  const lanes = createLanes()
   let status: Status = 'loading'
   // Mirrored from the worker; drives what the overlay stops annotating and
   // which lines are still worth capturing.
@@ -201,21 +183,6 @@ async function main() {
   // to the stored setting: it is this visit that is a test, not every visit.
   const quizForThisVisit = new URLSearchParams(location.search).get('bbq') === '1'
   const quizMode = () => settings.quizMode || quizForThisVisit
-
-  const laneFor = <V>(
-    lanes: Map<TranslationLang, Map<number, V>>,
-    lang: TranslationLang,
-  ): Map<number, V> => {
-    let cache = lanes.get(lang)
-    if (!cache) {
-      cache = new Map()
-      lanes.set(lang, cache)
-    }
-    return cache
-  }
-
-  const cacheFor = (lang: TranslationLang) => laneFor(translations, lang)
-  const llmCacheFor = (lang: TranslationLang) => laneFor(llmTranslations, lang)
 
   /**
    * Fire-and-forget to the worker.
@@ -381,9 +348,7 @@ async function main() {
     stopAsr = null
     stopLlmResults?.()
     stopLlmResults = null
-    translations.clear()
-    llmTranslations.clear()
-    latched.clear()
+    lanes.clear()
     status = 'loading'
     if (!settings.enabled) return
 
@@ -596,35 +561,27 @@ async function main() {
     const translationFor = (index: number): Shown => {
       const start = index < 0 ? undefined : cues[index]?.start
       if (start === undefined) return { text: '', source: null }
-      const lang = settings.translationLang
-
-      return preferred({
-        nmt: cacheFor(lang).get(start),
-        llm: llmCacheFor(lang).get(start),
-        latched: latched.has(lang),
-      })
+      return lanes.shown(settings.translationLang, start)
     }
 
     /**
-     * Opens the gate once the model is far enough ahead to stay ahead, and says
-     * whether this was the call that opened it.
+     * Counts how much the model has ready ahead of the playhead and offers it to
+     * the gate, returning `lanes.latchOn`'s answer unchanged.
      *
-     * The caller needs that answer: opening the gate changes which tier wins for
-     * the line already on screen, whose model translation may have arrived
-     * batches ago and been passed over.
+     * The counting is here rather than in `lanes.ts` because it walks this cue
+     * array, which is renumbered underneath both of them every time a chunk
+     * lands. Handing over a number keeps that hazard in the one scope that
+     * already understands it.
      */
     const updateLatch = (lang: TranslationLang): boolean => {
-      if (latched.has(lang)) return false
-      const llm = llmCacheFor(lang)
       const from = Math.max(currentIndex(), 0)
       const buffered = bufferedAhead(
         from,
         cues.length,
-        (index) => llm.has(cues[index].start),
+        (index) => lanes.hasLlm(lang, cues[index].start),
         (index) => Boolean(cues[index].text.trim()),
       )
-      const opened = latch(false, buffered)
-      if (opened) latched.add(lang)
+      const opened = lanes.latchOn(lang, buffered)
 
       // Diagnostic, on the page console rather than the model log, which the
       // worker owns. This is the one place that can answer "the model has
@@ -633,7 +590,7 @@ async function main() {
       // whole answer, and it is invisible from anywhere else.
       console.debug(
         `[bb-subsgen] llm buffer: ${buffered}/${BUFFER_CUES} contiguous cues ahead of ${from}` +
-          `, ${llm.size} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
+          `, ${lanes.countLlm(lang)} translated in total, gate ${opened ? 'OPEN' : 'closed'}`,
       )
       return opened
     }
@@ -669,10 +626,7 @@ async function main() {
         const { start, text } = cues[index]
         return {
           text,
-          translation: forCard({
-            nmt: cacheFor(settings.translationLang).get(start),
-            llm: llmCacheFor(settings.translationLang).get(start),
-          }),
+          translation: lanes.card(settings.translationLang, start),
           videoId,
           start,
           url: location.href,
@@ -749,7 +703,7 @@ async function main() {
        * reaches the stretch you are watching there is no line there to translate.
        */
       const renderProgress = () => {
-        const cache = cacheFor(settings.translationLang)
+        const shownLang = settings.translationLang
         const state: ProgressState = transcribeState
           ? { phase: 'transcribe', ...transcribeState }
           : progress
@@ -759,7 +713,9 @@ async function main() {
             // `?.` because this runs on a frame callback while the cue list is
             // being replaced under it; a stale index must not throw here, of all
             // places, and the next frame corrects it.
-            waiting: isWaiting(lastIndex, (index) => cache.has(cues[index]?.start ?? -1)),
+            waiting: isWaiting(lastIndex, (index) =>
+              lanes.hasNmt(shownLang, cues[index]?.start ?? -1),
+            ),
             playhead: video.currentTime,
           }),
         )
@@ -977,7 +933,6 @@ async function main() {
       // Captured, not re-read: a result arriving after the user switches
       // language belongs to the language the pass was started for.
       const lang = settings.translationLang
-      const cache = cacheFor(lang)
       // Captured alongside the texts, for the same reason. `onResult` reports a
       // position in the array it was handed, and by the time it does, the live
       // array may have had a chunk spliced into it.
@@ -985,7 +940,7 @@ async function main() {
       const controller = new AbortController()
       translationAbort = controller
 
-      progress = { phase: 'pass', done: cache.size, total: translatable() }
+      progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
       repaintProgress?.()
 
       void translators.translateTrack({
@@ -993,24 +948,24 @@ async function main() {
         // Blanking already-translated cues makes the pass skip them, so toggling
         // the setting off and back on — or a chunk landing — doesn't redo
         // finished work.
-        texts: cues.map((cue) => (cache.has(cue.start) ? '' : cue.text)),
+        texts: cues.map((cue) => (lanes.hasNmt(lang, cue.start) ? '' : cue.text)),
         currentIndex: () => currentIndex(),
         onDownload: (fraction) => {
           progress = { phase: 'download', label: labelFor(lang), fraction }
           repaintProgress?.()
         },
         onReady: () => {
-          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
           repaintProgress?.()
         },
         onResult: (index, translated) => {
-          cache.set(starts[index], translated)
+          lanes.nmt(lang, starts[index], translated)
           if (lang !== settings.translationLang) return // superseded mid-flight
           // Through the tier rather than straight to the overlay: this line may
           // already be showing the model's translation, and `preferred` is what
           // stops the on-device one arriving late from displacing it.
           paintTranslation?.(starts[index])
-          progress = { phase: 'pass', done: cache.size, total: translatable() }
+          progress = { phase: 'pass', done: lanes.countNmt(lang), total: translatable() }
           repaintProgress?.()
         },
         signal: controller.signal,
@@ -1056,15 +1011,14 @@ async function main() {
     // that lands between the old overlay going and the new one arriving.
     stopLlmResults = onLlmTranslations((msg) => {
       if (msg.videoId !== videoId) return // a previous video's pass, still landing
-      const cache = llmCacheFor(msg.lang)
-      for (const line of msg.lines) cache.set(line.start, line.text)
+      lanes.llm(msg.lang, msg.lines)
 
       // Logged before the language check below, so a pass still finishing for a
       // language you have just switched away from is visibly still running
       // rather than appearing to have stalled.
       const total = translatable()
       console.log(
-        `[bb-subsgen] model translated ${cache.size}/${total} lines to ${msg.lang}` +
+        `[bb-subsgen] model translated ${lanes.countLlm(msg.lang)}/${total} lines to ${msg.lang}` +
           ` (+${msg.lines.length} this batch)`,
       )
 
