@@ -54,6 +54,7 @@ import { openExplainDrawer } from './explain-drawer'
 import { bufferedAhead, BUFFER_CUES, type Shown } from './tier'
 import { createLanes } from './lanes'
 import { planTranscription } from './transcribe-plan'
+import { settingsEffect } from './settings-effect'
 import { createTranslatorPool, labelFor } from './translator-pool'
 
 console.log('[bb-subsgen] content script loaded', location.href)
@@ -1163,40 +1164,35 @@ async function main() {
 
   watchVideoChange(site.parseVideoId, loadCurrentVideo)
   onSettingsChanged((next) => {
-    const enabledChanged = next.enabled !== settings.enabled
-    const translationToggled = next.showTranslation !== settings.showTranslation
-    const langChanged = next.translationLang !== settings.translationLang
-    const llmToggled =
-      next.llmEnabled !== settings.llmEnabled ||
-      next.llmTranslationEnabled !== settings.llmTranslationEnabled ||
-      next.llmTranslationModel !== settings.llmTranslationModel ||
-      // Pointing at a different server is as much a change of translator as
-      // picking a different model, and leaving it out meant correcting a typo'd
-      // URL took a page reload to have any effect.
-      next.llmBaseUrl !== settings.llmBaseUrl
+    const effect = settingsEffect(settings, next)
     settings = next
-    if (enabledChanged) {
-      loadCurrentVideo()
-      return
-    }
-    if (langChanged) {
-      // The caches survive, so switching back to a finished language is instant.
-      stopTranslation()
-      startTranslation?.()
-      startLlmTranslation?.()
-    } else if (translationToggled) {
-      if (next.showTranslation) {
+
+    switch (effect) {
+      case 'reload':
+        // Returns rather than breaks: this rebuilds the overlay that the
+        // repaint below would otherwise be painting into.
+        loadCurrentVideo()
+        return
+      case 'restart-passes':
+        stopTranslation()
         startTranslation?.()
         startLlmTranslation?.()
-      } else stopTranslation()
-    } else if (llmToggled) {
-      // Turned on mid-video: the worker already has everything it needs to
-      // start, and everything cached from a previous viewing comes back at once.
-      if (next.llmEnabled && next.llmTranslationEnabled) startLlmTranslation?.()
-      else {
-        releasePassPort()
-        tellWorker({ type: 'bb-subsgen:llm-cancel' })
-      }
+        break
+      case 'start-passes':
+        startTranslation?.()
+        startLlmTranslation?.()
+        break
+      case 'stop-passes':
+        stopTranslation()
+        break
+      case 'start-llm':
+        startLlmTranslation?.()
+        break
+      case 'stop-llm':
+        stopLlm()
+        break
+      case 'repaint':
+        break
     }
     rerenderCurrentCue?.()
   })
