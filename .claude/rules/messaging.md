@@ -47,9 +47,8 @@ it.
 
 ## Streaming results
 
-Address a streamed result by **cue start time, not array index**. A transcribed track grows
-underneath a translation pass, so an index means something different by the time the reply lands.
-This has already caused one class of bug; see `src/llm/batch.ts`.
+If the message carries a streamed result, address it by cue start time rather than array
+index — the rule and its reason are in `llm-and-asr.md`.
 
 ## When you add or change a message
 

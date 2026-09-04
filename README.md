@@ -1,121 +1,67 @@
 # bb-subsgen
 
-Hover readings and dictionary glosses over Chinese and Japanese text — pinyin
-over hanzi from CC-CEDICT, furigana over the kanji it belongs to from JMdict. A
-Chrome MV3 extension, no backend and no account. A first-run wizard downloads the
-dictionary for each language you pick — a 3.9MB export from MDBG for Chinese, a
-10.5MB one from the EDRDG for Japanese — and everything after that runs offline.
+Learn Chinese or Japanese from the videos and pages you already watch and read.
 
-Two ways in:
+Hover any word for its reading and what it means — pinyin over hanzi, furigana over
+kanji — and every word you look up becomes a flashcard you review later.
 
-- **Bilibili subtitles** — the player's subtitle track, re-rendered with the
-  reading above each word and a dictionary card on hover, characters broken down
-  and all.
-- **Page reader** — hold Shift on any site you opt into and point at a word to
-  get the same card, characters broken down and all. Select a phrase — by
-  dragging or by double-clicking — for a segmented card with its translation,
-  and hover any word inside it for that word's own card.
+A Chrome extension that runs entirely on your machine. No account, no server, works
+offline.
 
-While Shift is down the page turns selectable: links stop dragging, text a site
-marked unselectable can be selected, and clicks don't reach the page, so
-selecting a headline never navigates. Let go and the site behaves normally
-again. The reader modifies no page markup — it finds words with
-`caretPositionFromPoint`, reaching into shadow roots for sites like Bilibili's
-comments, and marks them with the CSS Custom Highlight API, so nothing breaks
-on dynamic sites.
+## What it does
 
-The reader is off everywhere until you enable it per site from the extension
-popup, which is also where Chrome asks for access to that origin. Sentence
-translation uses Chrome's on-device Translator API (desktop Chrome 138+); where
-it isn't available the card simply renders without it.
+- **Video subtitles** — on Bilibili and YouTube, the player's own track re-rendered with
+  the reading over each word and a dictionary card on hover.
+  [More](docs/reader.md#video-subtitles)
+- **Page reader** — hold Shift on any site you opt into and point at a word for the same
+  card. Select a phrase for a segmented card with its translation.
+  [More](docs/reader.md#page-reader)
+- **Flashcards** — everything you look up is kept and paced into a deck a few cards a
+  day, so an evening's watching doesn't bury you. [More](docs/flashcards.md)
+- **Two languages, per site** — Chinese from CC-CEDICT, Japanese from JMdict, with
+  conjugations resolved back to the dictionary form. Which language a site is read in is
+  a property of that site, so a Japanese blog and a Chinese one can both be open.
+  [More](docs/reader.md#which-language-a-page-is-read-in)
+- **Videos with no subtitles** — transcribed from the audio.
+  *Needs a local speech server* — [see docs](docs/local-models.md)
+- **Chat tutor and better translation** — ask about a line you didn't get.
+  *Needs a local model server* — [see docs](docs/local-models.md)
 
-Which language a site is read in is a property of the site, not a global switch,
-so a Japanese blog and a Chinese one can both be open. Where the guess is wrong,
-a card offers to reread the page in another installed language for as long as the
-tab is open; nothing is written down, so a reload goes back to the site's own
-setting.
+The last two are off until you set them up. Everything above them works with nothing
+installed but the extension.
 
-Japanese words are found in the form they are written in. 食べる turns up as
-食べました, 食べて, 食べさせられなかった, and none of those is a dictionary
-headword — the reader undoes the conjugation, shows you the dictionary form, and
-files that in the deck rather than one card per ending. Furigana lands over the
-kanji it reads and nothing is drawn over the kana.
+## Install
 
-## Flashcards
+Not on the Chrome Web Store — build it yourself:
 
-Everything you look up is kept, and reviewed in an app that opens from the popup
-(**Open flashcards**). It's a page inside the extension — no account, no server,
-and it works offline.
+```sh
+npm install
+npm run build
+```
 
-Every word rendered on screen is *counted*, which is what powers "seen 12× in
-this video" and the per-video coverage figure. What gets *collected* is a
-subtitle line still containing a word you don't know, together with those words —
-each carrying the sentence it was met in, and on Bilibili its timestamp, so a
-card can send you back to ten seconds before the line to hear it again.
+Then open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked** and
+pick the `dist/` folder.
 
-Collecting is generous; intake is not. Lines and words both wait in a pool and
-are let into the deck a few a day: lines fewest-unknown-words first, so the most
-learnable thing you have collected comes next; words most-seen first, so an
-evening's watching offers up the vocabulary that actually kept recurring in it.
-That's what lets capture take hundreds of lines a night while the deck still
-only grows by the daily limit.
+The first run opens a wizard: pick the languages you study and it downloads their
+dictionaries — 3.9MB from MDBG for Chinese, 10.5MB from the EDRDG for Japanese. After
+that nothing leaves your machine.
 
-Stopping on a word is the exception. Hovering one puts it straight into the
-deck — that lookup says more than any amount of passing exposure — and it pulls
-a word out of the pool if it was waiting there.
-
-Reviews answer one question — did you get it or not — and each card climbs a
-seven-rung ladder, one rung up for right and one down for wrong, so the rung
-itself is the mastery the app shows you. Choose how you're asked (recall, typing,
-audio, or all three in rotation), what's included, and how many cards a sitting
-takes.
-
-A sitting is never empty. Once what's due and the day's new material run out,
-the rest is filled with practice drawn from the deck — coldest first, most
-frequent among cards last met on the same day, so it works through everything
-you've collected rather than the same twenty words each time. Practice doesn't
-move a card up the ladder: answering early shows you know it today, which isn't
-what the interval claimed. Getting one wrong does count, because failing a card
-ahead of its due date says the interval was too long.
-
-As words become known, the overlay stops annotating them — the reading disappears
-from words you've declared known or reviewed to maturity, and a line whose words you
-all know loses its translation too. Hovering always brings both back, and doing
-so is itself taken as a signal that the line was harder than its vocabulary
-suggested, so it gets kept. **Alt+Q** hides everything at once, for testing
-yourself against a video.
-
-Moving between browsers is export and import. Import merges rather than
-overwrites: the review logs from both sides are combined and the schedule
-recomputed from them, so studying done on another machine still counts. You're
-only asked about words declared known on one side and not the other.
-
-No word list ships with the extension — every usable frequency or HSK list
-belongs to someone, so you supply your own and nothing is redistributed. Load
-one from the app's **Data** screen, which lists where to get them, what their
-licences are, and which file to take. Without one everything still works; new
-cards are simply introduced in the order you found them.
+Open the flashcards app from the extension popup. The page reader is off everywhere until
+you enable it per site, also from the popup.
 
 ## Development
 
 ```sh
-npm install
-npm run dev
-npm test
+npm run dev        # Vite; load dist/ unpacked
+npm test           # Vitest, single run
+npx tsc --noEmit   # typecheck
 npm run format     # Prettier; CI checks this with `npm run format:check`
+npm run services   # the local ASR / LLM / yt-dlp processes, together
 ```
 
-Load `dist/` as an unpacked extension via `chrome://extensions`.
-
-The tree was reformatted with Prettier in one commit, which `git blame` will
-otherwise attribute every touched line to. Look past it with:
-
-```sh
-git config blame.ignoreRevsFile .git-blame-ignore-revs
-```
-
-Conventions for this codebase are written down in `CLAUDE.md` and
-`.claude/rules/` — worth reading before a first change, agent or not.
+Conventions are written down in `CLAUDE.md` and `.claude/rules/` — worth reading before a
+first change, agent or not. Nearly every module opens with a comment explaining why it
+exists and what it deliberately is not; that's where the reasoning lives.
 
 ## Attribution
 

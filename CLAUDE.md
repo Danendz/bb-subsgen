@@ -46,6 +46,13 @@ Read before working in the area:
 These files are expected to change as the project does. `maintaining-rules.md` lists which
 change obliges which update, and the bar a new rule has to clear.
 
+## User-facing documentation
+
+`README.md` is the pitch, the feature list and how to install it. Behaviour that needs more
+than a line lives in `docs/` — `reader.md`, `flashcards.md`, `local-models.md` — which the
+README links into. They describe behaviour and link to modules rather than restating what a
+module header says.
+
 ## Where the reasoning lives
 
 This codebase argues for its decisions in source. Nearly every module opens with a comment
