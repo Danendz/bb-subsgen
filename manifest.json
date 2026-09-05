@@ -12,7 +12,8 @@
     "https://*.akamaized.net/*",
     "https://www.youtube.com/*",
     "https://www.mdbg.net/*",
-    "https://www.edrdg.org/*"
+    "https://www.edrdg.org/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {

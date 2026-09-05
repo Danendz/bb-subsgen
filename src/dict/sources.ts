@@ -3,8 +3,12 @@
 // `lang` is the key the store, the settings and the messages already use, and
 // `licence`/`attribution` exist because both dictionaries here are CC BY-SA 4.0,
 // which requires attribution wherever the derived data is shown or
-// redistributed. Which parser reads a source is deliberately not a field on it —
-// see `parsers.ts` for why.
+// redistributed. Neither file ships in the crx — the user downloads it — so the
+// lines say "downloaded when you install X" rather than implying otherwise;
+// what is Shared is the adapted data the hover card draws, which is enough.
+//
+// Which parser reads a source is deliberately not a field on it — see
+// `parsers.ts` for why.
 export interface DictSource {
   lang: string
   /**
@@ -28,7 +32,8 @@ export const DICT_SOURCES: Record<string, DictSource> = {
     name: 'CC-CEDICT',
     url: 'https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz',
     licence: 'CC BY-SA 4.0',
-    attribution: 'Dictionary data from CC-CEDICT, © MDBG, CC BY-SA 4.0.',
+    attribution:
+      'Definitions come from CC-CEDICT, © MDBG, downloaded when you install Chinese. CC BY-SA 4.0.',
   },
   ja: {
     lang: 'ja',
@@ -42,7 +47,7 @@ export const DICT_SOURCES: Record<string, DictSource> = {
     url: 'https://www.edrdg.org/pub/Nihongo/JMdict_e.gz',
     licence: 'CC BY-SA 4.0',
     attribution:
-      'Dictionary data from JMdict, © Electronic Dictionary Research and Development Group, CC BY-SA 4.0.',
+      'Definitions come from JMdict, © Electronic Dictionary Research and Development Group, downloaded when you install Japanese. CC BY-SA 4.0.',
   },
 }
 

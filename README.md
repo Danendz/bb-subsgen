@@ -65,7 +65,15 @@ exists and what it deliberately is not; that's where the reasoning lives.
 
 ## Attribution
 
-Dictionary data is derived from [CC-CEDICT](https://cc-cedict.org), © MDBG and
-contributors, and from [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html),
-© the Electronic Dictionary Research and Development Group. Both are licensed
-under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+No dictionary or word list ships in the extension; each is downloaded from its own
+host when you install it.
+
+Definitions come from [CC-CEDICT](https://cc-cedict.org), © MDBG and contributors,
+and from [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html), © the Electronic
+Dictionary Research and Development Group. Both are licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
+The optional Chinese word lists come from
+[complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary),
+© Yanis Zafirópulos, [MIT](https://opensource.org/licenses/MIT); their frequency
+data derives from [SUBTLEX-CH](http://crr.ugent.be/programs-data/subtitle-frequencies).

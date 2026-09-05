@@ -118,6 +118,34 @@ Nothing here is a build step: it all runs in the extension at install time, from
 `src/app/SetupWizard.tsx`, which is why `install.ts` takes `fetch` as an injected parameter
 (`.claude/rules/testing.md`).
 
+## Word lists
+
+The same three-part shape as `src/dict/`, one level down and for the same reasons:
+`src/flashcards/wordlist-sources.ts` is the registry, `wordlist-readers.ts` is the seam that
+knows a payload's format, and `wordlist-install.ts` reads neither. `readerFor` is imported by
+the installer and nothing else — `Data.tsx` imports only the registry, to ask what exists for
+a language, so a reader hanging off `WordListSource` would pull every payload format into the
+app bundle.
+
+Two things here are deliberately *not* the dictionary's shape. There is no
+`DecompressionStream` and no incremental parser: these are ~3MB of plain JSON and `JSON.parse`
+needs the whole string, so the seam that makes a 63MB dictionary streamable would buy nothing.
+And a download skips the confirmation preview an upload gets — that step exists to show a
+format *guess* to someone who can check it, and a pinned commit of a known payload has no
+guess in it.
+
+**`wordlist.ts` and `wordlist-readers.ts` are not the same job**, however similar their output
+looks. The first sniffs a file nobody has seen before — delimiter, header row, which column
+holds the language — and the second reads a payload we chose and pinned. Running a download
+through the sniffer would re-guess a shape already known, and would then apply
+`byPosition`'s rule to a file that has a real frequency field.
+
+Every source is pinned to a commit SHA, not a branch. A word list that changes under an
+installed deck re-ranks every card with nothing to say so, and `main` gives
+`WordListMeta.ref` nothing to compare against. Each new host also costs a `host_permissions`
+entry in `manifest.json` — that allowlist is explicit, and `optional_host_permissions` is not
+the pattern the dictionary sources follow.
+
 ## The setup surface
 
 `src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** one of the tabs in

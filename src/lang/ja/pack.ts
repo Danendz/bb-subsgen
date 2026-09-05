@@ -26,6 +26,7 @@ function cardHeadwords(headword: string): string[] {
 export const japanesePack: LanguagePack = {
   code: 'ja',
   name: 'Japanese',
+  levelsName: 'JLPT',
   // Pitch accent is not modelled and is not planned, so there is no tone to
   // colour and nothing for the tone controls to switch.
   displaysTones: false,
