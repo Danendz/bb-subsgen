@@ -107,13 +107,16 @@ h1 {
 
 /* Navigation ---------------------------------------------------------------- */
 
-nav {
+/* Scoped to `.tabs` rather than the bare element: the section rails beside Data
+   and Settings are navs too, and a flex row with a bottom border is the last
+   thing they want. */
+nav.tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--edge);
 }
-nav a {
+nav.tabs a {
   padding: 9px 14px;
   border-bottom: 2px solid transparent;
   color: var(--text-3);
@@ -121,10 +124,10 @@ nav a {
   font: 500 13px var(--display);
   transition: color 0.15s;
 }
-nav a:hover {
+nav.tabs a:hover {
   color: var(--text);
 }
-nav a.on {
+nav.tabs a.on {
   color: var(--text);
   border-bottom-color: var(--action);
 }
@@ -1356,12 +1359,47 @@ select.model {
   word-break: break-word;
 }
 
+/* Section rail --------------------------------------------------------------- */
+
+/* Data and Settings are a rail beside a pane, the shape `.chat-layout` already
+   uses. Narrower than the chat list at 180px because these are four short labels
+   rather than sentences, and the panes hold sliders that want the room. */
+.section-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.section-rail {
+  padding: 8px 10px;
+  position: sticky;
+  top: 16px;
+}
+.section-row {
+  padding: 2px 0;
+  border-bottom: none;
+}
+.section-row .row-btn {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  font: 500 13px var(--display);
+  text-align: left;
+  transition: color 0.15s;
+}
+.section-row .row-btn:hover {
+  color: var(--text);
+}
+.section-row.on .row-btn {
+  color: var(--text);
+  background: var(--inset);
+}
 /* Settings ------------------------------------------------------------------- */
 
 /* The groups themselves are shared with the popup (src/settings/), which is why
    this is a skin rather than a layout: identical markup, one panel-shaped and
-   one 300px-wide. Anything scoped to `.settings-group` here has a counterpart
-   in src/popup/style.css. */
+   one sitting in the popup's narrower pane. Anything scoped to `.settings-group`
+   here has a counterpart in src/popup/style.css. */
 
 .settings-group {
   padding: 14px 18px 16px;
@@ -1473,6 +1511,14 @@ select.model {
   }
   .chat-list {
     max-height: 180px;
+  }
+  /* Same reason, and the rail stops sticking: pinned to the top of a stacked
+     layout it would sit over the pane it scrolls. */
+  .section-layout {
+    grid-template-columns: 1fr;
+  }
+  .section-rail {
+    position: static;
   }
   .card {
     min-height: 240px;
