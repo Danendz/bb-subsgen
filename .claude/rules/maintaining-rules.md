@@ -13,6 +13,7 @@ code.** A follow-up commit is a commit that does not happen.
 | add, rename or remove an npm script | `CLAUDE.md` |
 | bump an IndexedDB `VERSION`, or add a database | `architecture.md` |
 | add an LLM preset, endpoint, or prompt rule | `llm-and-asr.md` |
+| add a target language to `TranslationLang` | `llm-and-asr.md` (a `LANGUAGE_RULES` entry if it marks gender or formality), and a locale under `src/i18n/` — the compiler will tell you |
 | change `tsconfig.json`, `.prettierrc`, or CI | `code-style.md`, `CLAUDE.md` |
 | get corrected on the same thing twice | add a rule (see the bar below) |
 | delete the code a rule describes | delete the rule |

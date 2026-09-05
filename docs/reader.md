@@ -41,6 +41,32 @@ both be open. Where the guess is wrong, a card offers to reread the page in anot
 installed language for as long as the tab is open; nothing is written down, so a reload
 goes back to the site's own setting.
 
+## The language you read it in
+
+One setting in Settings → Language, and everything learner-facing follows it: the
+translated subtitle line, the sentence translation under a selection, the chat tutor's
+replies, and the definitions on the hover card. English, Russian, Spanish, French, German
+and Portuguese.
+
+Two things about it are worth knowing.
+
+**Definitions are translated, not sourced.** CC-CEDICT and JMdict ship English and nothing
+else, so a Spanish definition is the English one put through a translator, once per word,
+and kept. Sound for the great majority of entries and occasionally clumsy on the ones that
+were terse to begin with. A word that cannot be translated shows its English rather than
+showing nothing.
+
+**The fast path is not available for every language.** Chrome's on-device translator
+serves Chinese→English and Chinese→Russian directly; the others it may not serve at all,
+which Settings says plainly when it happens. There the local model does the subtitle
+lines instead — slower, and nothing is translated while the model is off. The dictionary
+definitions are unaffected, because those are translated out of English, which Chrome is
+much better at.
+
+Cards keep the language they were captured in. Switch target and a card captured under the
+old one re-translates itself the first time you review it; if that cannot be done, it keeps
+the answer it had rather than showing you a blank.
+
 ## Japanese
 
 Words are found in the form they are written in. 食べる turns up as 食べました, 食べて,

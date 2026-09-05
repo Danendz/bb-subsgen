@@ -1,6 +1,8 @@
 // The flashcards data model, shared by the worker, the content scripts and the
 // study app. Kept free of DOM and IndexedDB so it can be imported anywhere.
 
+import type { TranslationLang } from '../shared/settings'
+
 /**
  * Where a word or sentence was met, snapshotted at capture time.
  *
@@ -14,6 +16,21 @@ export interface Context {
   text: string
   /** Translation as it stood when captured; empty when none was available. */
   translation: string
+  /**
+   * Which language `translation` is in.
+   *
+   * Without it a deck is a silent mix: the target is a setting, so a learner who
+   * switches from English to Spanish keeps every card they already had and every
+   * one of them keeps answering in English, with nothing on the record saying
+   * so. The reveal reads this, and re-translates a card whose tag no longer
+   * matches — see `staleTranslations`.
+   *
+   * Optional only for rows that predate the tag. Schema 5 stamped every card
+   * already in the deck, so the only way to meet one now is to import a backup
+   * written before it; those are treated as stale rather than as matching,
+   * because assuming they match is exactly the bug this field exists to end.
+   */
+  translationLang?: TranslationLang
   /** Video id, when this came from a subtitle. See `VideoId`. */
   videoId?: string
   /**

@@ -1,6 +1,12 @@
-import { buildCard, buildWordElement, setCardTranslation } from '../content/card'
+import {
+  buildCard,
+  buildWordElement,
+  MAX_DEFINITIONS,
+  setCardGlosses,
+  setCardTranslation,
+} from '../content/card'
 import { cardData, headwordOf } from '../content/card-data'
-import type { LanguagePack, Lexicon, Match } from '../lang/pack'
+import type { Entry, LanguagePack, Lexicon, Match } from '../lang/pack'
 import { captureSentence, discoverWord, markKnown } from '../shared/flashcards-client'
 import { vocabularyIn, selectionTarget, unknownIn } from '../flashcards/capture'
 import type { Context } from '../flashcards/types'
@@ -11,7 +17,7 @@ import { dismisses, hoverOutcome, modifierMatches, sameWord, type CardIdentity }
 import { anchorFrom, placeCard, type Anchor } from './position'
 import { ClickGuard } from './selection'
 import type { SentenceTranslator } from './translator'
-import type { DefsLookup } from '../shared/dict-client'
+import { translatedGlosses, type DefsLookup } from '../shared/dict-client'
 import type { ReaderMount } from './mount'
 import type { PageMode } from './page-mode'
 import type { Settings } from '../shared/settings'
@@ -197,6 +203,7 @@ export function attachReader({
     return {
       text,
       translation: translator.cached(text) ?? '',
+      translationLang: settings().translationLang,
       url: location.href,
       title: document.title,
       at: Date.now(),
@@ -264,6 +271,28 @@ export function attachReader({
     // Append before measuring — the card needs layout to have a size.
     place(card, anchor)
     fillTranslation(card, sentence, token)
+    fillGlosses(card, headword, found[headword] ?? [])
+  }
+
+  /**
+   * Swaps the English definitions for the language being read.
+   *
+   * Runs after the card is on screen, never before: the dictionary's English is
+   * available synchronously and a lookup must not delay the card drawing at all.
+   * `open.element` is re-checked because a translation that lands after the
+   * pointer moved belongs to a card that no longer exists.
+   */
+  const fillGlosses = (card: HTMLElement, headword: string, found: Entry[]) => {
+    const target = settings().translationLang
+    const [primary] = pack.rank(found, headword)
+    const senses = primary?.senses.slice(0, MAX_DEFINITIONS).map((sense) => sense.gloss) ?? []
+    if (target === 'en' || !senses.length) return
+
+    void translatedGlosses(pack.code, target, [{ headword, senses }]).then((translated) => {
+      if (open?.element !== card || !card.isConnected) return
+      setCardGlosses(card, translated[headword] ?? [])
+      place(card, open.anchor)
+    })
   }
 
   /** Resolves the word under a point, or null if there isn't one. */

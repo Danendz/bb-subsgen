@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import {
+  clearGlossesIn,
   clearLangIn,
   getLexiconIn,
   getMetaIn,
   lookupDefsIn,
+  lookupGlossesIn,
   openDictDb,
   putDefsChunk,
+  putGlossesIn,
   putLexicon,
   putMeta,
 } from './store'
@@ -93,5 +96,64 @@ describe('dict definitions store', () => {
 
     expect(await getLexiconIn(db, 'zh')).toBe('喜欢\txi3 huan5')
     expect(await getMetaIn(db, 'zh')).toEqual(meta)
+  })
+})
+
+describe('translated glosses', () => {
+  const fresh = () => openDictDb(`test-${Math.random()}`)
+
+  test('a headword nobody has translated is absent, not empty', async () => {
+    const db = await fresh()
+
+    // "not translated yet" and "translated to nothing" have to be told apart:
+    // the first means ask the translator, the second means never ask again.
+    expect(await lookupGlossesIn(db, 'zh', 'es', ['生'])).toEqual({})
+  })
+
+  test('senses round-trip as a list, not as one joined string', async () => {
+    const db = await fresh()
+    await putGlossesIn(db, 'zh', 'es', new Map([['生', ['vida', 'nacer']]]))
+
+    expect(await lookupGlossesIn(db, 'zh', 'es', ['生'])).toEqual({ 生: ['vida', 'nacer'] })
+  })
+
+  // The target is in the key so that switching away and back keeps what was
+  // already paid for, rather than re-translating a deck twice.
+  test('one headword holds a separate translation per target', async () => {
+    const db = await fresh()
+    await putGlossesIn(db, 'zh', 'es', new Map([['生', ['vida']]]))
+    await putGlossesIn(db, 'zh', 'fr', new Map([['生', ['vie']]]))
+
+    expect(await lookupGlossesIn(db, 'zh', 'es', ['生'])).toEqual({ 生: ['vida'] })
+    expect(await lookupGlossesIn(db, 'zh', 'fr', ['生'])).toEqual({ 生: ['vie'] })
+  })
+
+  test('two study languages sharing a headword do not share its translation', async () => {
+    const db = await fresh()
+    await putGlossesIn(db, 'zh', 'es', new Map([['生', ['vida']]]))
+    await putGlossesIn(db, 'ja', 'es', new Map([['生', ['crudo']]]))
+
+    expect(await lookupGlossesIn(db, 'zh', 'es', ['生'])).toEqual({ 生: ['vida'] })
+    expect(await lookupGlossesIn(db, 'ja', 'es', ['生'])).toEqual({ 生: ['crudo'] })
+  })
+
+  // A re-install can drop a headword. A translation still keyed to it would
+  // outlive the definition it was made from, in every target at once.
+  test('a re-install clears the language across every target it was translated into', async () => {
+    const db = await fresh()
+    await putGlossesIn(db, 'zh', 'es', new Map([['生', ['vida']]]))
+    await putGlossesIn(db, 'zh', 'fr', new Map([['生', ['vie']]]))
+    await putGlossesIn(db, 'ja', 'es', new Map([['生', ['crudo']]]))
+
+    await clearGlossesIn(db, 'zh')
+
+    expect(await lookupGlossesIn(db, 'zh', 'es', ['生'])).toEqual({})
+    expect(await lookupGlossesIn(db, 'zh', 'fr', ['生'])).toEqual({})
+    expect(await lookupGlossesIn(db, 'ja', 'es', ['生'])).toEqual({ 生: ['crudo'] })
+  })
+
+  test('asking for nothing does not open a transaction', async () => {
+    const db = await fresh()
+    expect(await lookupGlossesIn(db, 'zh', 'es', [])).toEqual({})
   })
 })

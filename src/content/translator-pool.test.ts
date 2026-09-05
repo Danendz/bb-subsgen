@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
+import type { TranslationLang } from '../shared/settings'
 import { createTranslatorPool, labelFor } from './translator-pool'
 import type { TranslatorLike } from '../lang/translate'
 
@@ -47,7 +48,7 @@ describe('createTranslatorPool', () => {
   })
 
   test('keeps one translator per language, not one for the page', async () => {
-    const create = vi.fn(async (lang: 'en' | 'ru') => translator(lang))
+    const create = vi.fn(async (lang: TranslationLang) => translator(lang))
     const pool = createTranslatorPool(create)
 
     const en = await pool.translatorFor('en', () => {})

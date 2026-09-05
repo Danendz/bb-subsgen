@@ -54,7 +54,7 @@ import { looksLikeTranscript, type Cue } from '../media/cue'
 import type { Token } from '../lang/pack'
 import { dropLegacyPageDefsDb } from '../shared/legacy-db'
 import { loadLexicon } from '../shared/dict-client'
-import { lookupDefs } from '../shared/dict-client'
+import { lookupDefs, translatedGlosses } from '../shared/dict-client'
 import {
   captureSentence,
   createExposureBuffer,
@@ -657,6 +657,10 @@ async function main() {
         return {
           text,
           translation: lanes.card(settings.translationLang, start),
+          // Stamped at capture, beside the text it describes. The target is a
+          // setting and settings change; without this the card would keep
+          // answering in a language nothing records.
+          translationLang: settings.translationLang,
           videoId,
           start,
           url: location.href,
@@ -679,6 +683,12 @@ async function main() {
         // setting reaches the next hover without a reload.
         lookup: (headwords) => lookupDefs(lang, headwords, settings.useTraditional),
         showToneColors: () => settings.showToneColors,
+        // Read inside the closure for the same reason `lookup` is: changing the
+        // target reaches the next hover without a reload.
+        localizedGlosses: (headword, senses) =>
+          translatedGlosses(lang, settings.translationLang, [{ headword, senses }]).then(
+            (found) => found[headword] ?? senses,
+          ),
         currentTokens: () => currentTokens,
         currentContext: () => (lastIndex >= 0 ? contextFor(lastIndex) : null),
         known: () => known,

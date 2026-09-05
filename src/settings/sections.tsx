@@ -20,6 +20,7 @@ import {
   type TranslationLang,
   type TranslationLayout,
 } from '../shared/settings'
+import { isTranslatorSupported, translatorAvailability } from '../lang/translate'
 import { isRemote, speak } from '../shared/speak'
 import { hasLlmPermission, requestLlmPermission } from '../shared/llm-permission'
 import { listModels, LlmError, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
@@ -117,7 +118,38 @@ export function StudyingSection({ settings, update }: SectionProps) {
   )
 }
 
+/**
+ * Whether Chrome will translate into the chosen language on this machine.
+ *
+ * `null` while the probe is out, so nothing is claimed before it is known. Only
+ * zh→en and zh→ru are guaranteed direct; the rest are asked about, and a pair
+ * Chrome will not serve is a normal answer that costs the fast lane, not the
+ * feature — the local model fills the same lines.
+ */
+function useOnDeviceSupport(lang: TranslationLang): boolean | null {
+  const [available, setAvailable] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    setAvailable(null)
+    if (!isTranslatorSupported()) {
+      setAvailable(false)
+      return
+    }
+    let live = true
+    void translatorAvailability(lang).then((state) => {
+      if (live) setAvailable(state !== 'unavailable')
+    })
+    return () => {
+      live = false
+    }
+  }, [lang])
+
+  return available
+}
+
 export function LanguageSection({ settings, update }: SectionProps) {
+  const onDevice = useOnDeviceSupport(settings.translationLang)
+
   return (
     <Section title="Language">
       <Select
@@ -126,6 +158,12 @@ export function LanguageSection({ settings, update }: SectionProps) {
         options={TRANSLATION_LANGS}
         onChange={(v: TranslationLang) => update({ translationLang: v })}
       />
+      {onDevice === false && (
+        <Hint>
+          Chrome has no on-device translator for this pair, so lines are translated by your local
+          model instead. Slower, and nothing is translated while the model is off.
+        </Hint>
+      )}
       <Toggle
         label="Tone colors"
         checked={settings.showToneColors}

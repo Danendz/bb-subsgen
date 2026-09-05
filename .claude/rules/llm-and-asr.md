@@ -36,6 +36,14 @@ Keep them short. These are small quantized models; three rules are followed more
 ten, and the existing tutor prompt is brief on purpose. Adding a clause has a cost paid by every
 other clause.
 
+`LANGUAGE_NAME` and `LANGUAGE_RULES` both live in `src/llm/languages.ts` — one table, imported
+by `prompts.ts` and `batch.ts` alike. They were a copy each and had drifted.
+
+A rule set carries its own one-line `reminder`, repeated next to the lines in `batchUser`.
+That is a field rather than a literal at the call site because the literal was gendered and
+was emitted for *any* language that had rules at all: German has rules, marks no gender on its
+predicates, and would have been told to agree endings it does not inflect.
+
 Prompt rules can be language-conditional. The Russian gender-agreement rule exists because
 Chinese marks no gender on verbs or adjectives while Russian marks it on past-tense verbs, short
 adjectives and participles — so the model is told to settle who is speaking *once* and keep every
@@ -53,6 +61,12 @@ Do not add a second ranking for one caller of a language's pack.
 The glossary holds an `Entry`, not a dictionary row, so `Glossed.pinyin` is display form —
 `了 (le)`, not `了 (le5)`. A prompt that quotes tone digits is quoting notation the learner has
 never been shown.
+
+**The glossary stays English whatever the target is**, even though the hover card no longer
+does. CC-CEDICT and JMdict ship English and the learner-facing glosses are now translated out
+of it (`src/dict/gloss-translate.ts`); the glossary is not, because it is telling the model
+which sense was meant rather than showing anyone a definition, and a sense round-tripped
+through a second translator is a worse answer to that question, not a better one.
 
 Glossaries cover words the learner does *not* know (`splitByKnown`, `glossFor`) so the model does
 not re-teach 是 and 了.

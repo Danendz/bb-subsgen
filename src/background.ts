@@ -15,6 +15,8 @@ import {
   isGetTranscriptStatusMessage,
   isLlmMessage,
   isLookupDefsMessage,
+  isLookupGlossesMessage,
+  isPutGlossesMessage,
   type AsrMessage,
   type DictStatus,
   type DictStatusResponse,
@@ -22,6 +24,7 @@ import {
   type GetLexiconResponse,
   type LlmMessage,
   type LookupDefsResponse,
+  type LookupGlossesResponse,
   type PassStatusResponse,
   type TranscriptStatusResponse,
 } from './shared/messages'
@@ -43,7 +46,14 @@ import {
   setChatBusy,
   startPass,
 } from './background/llm-translate'
-import { dictDb, getAllMeta, getLexiconIn, lookupDefs } from './dict/store'
+import {
+  dictDb,
+  getAllMeta,
+  getLexiconIn,
+  lookupDefs,
+  lookupGlossesIn,
+  putGlossesIn,
+} from './dict/store'
 import type { Entry } from './lang/pack'
 import { packFor } from './lang/packs'
 import { refreshBadge } from './background/badge'
@@ -238,6 +248,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     )
     // Keeps the message channel open for the async response above.
     return true
+  }
+
+  if (isLookupGlossesMessage(msg)) {
+    dictDb()
+      .then((db) => lookupGlossesIn(db, msg.lang, msg.target, msg.headwords))
+      .then(
+        (glosses) => sendResponse({ glosses } satisfies LookupGlossesResponse),
+        (e) => {
+          // An empty answer means "nothing cached", which sends the caller to
+          // the translator. Degrading to a re-translation is the right failure.
+          console.warn('[bb-subsgen] gloss lookup failed in worker', e)
+          sendResponse({ glosses: {} } satisfies LookupGlossesResponse)
+        },
+      )
+    // Keeps the message channel open for the async response above.
+    return true
+  }
+
+  if (isPutGlossesMessage(msg)) {
+    void dictDb()
+      .then((db) => putGlossesIn(db, msg.lang, msg.target, new Map(Object.entries(msg.glosses))))
+      .catch((e) => console.warn('[bb-subsgen] gloss write failed in worker', e))
+    return false
   }
 
   if (isGetLexiconMessage(msg)) {

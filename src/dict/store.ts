@@ -20,16 +20,24 @@
 //     place: the key shape changed, the data is re-derivable from a re-install
 //     (see install.ts), and clearing also fixes a bug in the old code where a
 //     re-import never removed a headword CC-CEDICT had since dropped.
+// 3 — `glosses` added: definitions machine-translated out of the English the
+//     dictionaries ship, keyed `` `${lang}:${headword}:${target}` ``. A new
+//     store rather than a field on a `defs` row, because a row is opaque here
+//     and only the language's pack may read one — and because the two have
+//     different lifetimes: a re-install replaces `defs` wholesale, while a
+//     translation of a headword that survived the re-install is still good.
+//     Nothing is migrated: the store starts empty and fills on demand.
 import type { DictRow } from '../lang/pack'
 import { connection, done, request } from '../shared/idb'
 
 const DB_NAME = 'bb-subsgen'
-const VERSION = 2
+const VERSION = 3
 
 export const STORES = {
   defs: 'defs',
   lexicons: 'lexicons',
   meta: 'meta',
+  glosses: 'glosses',
 } as const
 
 export interface DictMeta {
@@ -51,6 +59,12 @@ export function openDictDb(dbName = DB_NAME): Promise<IDBDatabase> {
         db.createObjectStore(STORES.defs)
         db.createObjectStore(STORES.lexicons)
         db.createObjectStore(STORES.meta)
+      }
+      // Steps run one after another rather than as one branch: a profile on
+      // schema 1 has to get both, and an `else if` would leave it without a
+      // `glosses` store that every read from here on assumes exists.
+      if (event.oldVersion < 3) {
+        db.createObjectStore(STORES.glosses)
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -157,6 +171,96 @@ export async function getAllMeta(db: IDBDatabase): Promise<Record<string, DictMe
     request<DictMeta[]>(store.getAll()),
   ])
   return Object.fromEntries(keys.map((key, i) => [key as string, values[i]]))
+}
+
+/**
+ * A definition as it is shown, once translated out of English.
+ *
+ * The senses are held as a list in the order the pack ranked them, not as one
+ * joined string: the hover card shows the first few and the review reveal shows
+ * one, and rejoining a string it had already split is how the separator ends up
+ * translated along with the text.
+ */
+export interface GlossTranslation {
+  senses: string[]
+  /** When it was written, so a stale cache can be recognised without a version. */
+  at: number
+}
+
+/**
+ * Keyed by all three of study language, headword and target.
+ *
+ * The target is part of the key rather than a separate store per language
+ * because it is the thing that changes: a learner switching from English to
+ * Spanish keeps every Spanish row already written and re-translates nothing on
+ * switching back.
+ */
+function glossKey(lang: string, headword: string, target: string): string {
+  return `${lang}:${headword}:${target}`
+}
+
+export function putGlossesIn(
+  db: IDBDatabase,
+  lang: string,
+  target: string,
+  entries: Map<string, string[]>,
+): Promise<void> {
+  const tx = db.transaction(STORES.glosses, 'readwrite')
+  const store = tx.objectStore(STORES.glosses)
+  const at = Date.now()
+  for (const [headword, senses] of entries) {
+    store.put({ senses, at } satisfies GlossTranslation, glossKey(lang, headword, target))
+  }
+  return done(tx)
+}
+
+/**
+ * Looks up several headwords' translated senses in one transaction.
+ *
+ * Shaped like `lookupDefsIn` on purpose — the same call site asks both, and a
+ * headword with no translation yet is absent from the result rather than
+ * present and empty, because "not translated" and "translated to nothing" have
+ * to be told apart here.
+ */
+export function lookupGlossesIn(
+  db: IDBDatabase,
+  lang: string,
+  target: string,
+  headwords: string[],
+): Promise<Record<string, string[]>> {
+  return new Promise((resolve, reject) => {
+    const found: Record<string, string[]> = {}
+    if (!headwords.length) {
+      resolve(found)
+      return
+    }
+
+    const store = db.transaction(STORES.glosses, 'readonly').objectStore(STORES.glosses)
+    for (const headword of new Set(headwords)) {
+      const req = store.get(glossKey(lang, headword, target))
+      req.onsuccess = () => {
+        const row = req.result as GlossTranslation | undefined
+        if (row) found[headword] = row.senses
+      }
+    }
+
+    const tx = store.transaction
+    tx.oncomplete = () => resolve(found)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+/**
+ * Drops every translated gloss for a language, ahead of a fresh install.
+ *
+ * Across all targets, not just the current one: the headwords themselves have
+ * changed, so a translation keyed to one that the new dictionary dropped is
+ * pointing at a definition that no longer exists.
+ */
+export function clearGlossesIn(db: IDBDatabase, lang: string): Promise<void> {
+  const tx = db.transaction(STORES.glosses, 'readwrite')
+  tx.objectStore(STORES.glosses).delete(IDBKeyRange.bound(`${lang}:`, `${lang}:￿`))
+  return done(tx)
 }
 
 // Memoized, not eager: the worker is torn down whenever it goes idle and woken

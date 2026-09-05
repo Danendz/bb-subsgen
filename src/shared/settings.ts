@@ -4,18 +4,35 @@ import type { StudyInclude, StudyMode } from '../flashcards/types'
 export type TranslationLayout = 'inline' | 'card'
 
 /**
- * Target language for the translated line.
+ * Target language for the translated line, and the language the UI speaks.
  *
- * Both pairs are verified against Chrome's Translator API as directly
- * supported (zh→en and zh→ru both resolve), so neither needs to pivot
- * through a second translator. Adding a third means verifying it too.
+ * `zh→en` and `zh→ru` are verified against Chrome's Translator API as directly
+ * supported. The other four are not promised: Chrome may pivot the pair through
+ * a second translator or refuse it outright, and which it does varies by
+ * platform and by Chrome version, so it cannot be settled here. Callers probe
+ * with `translatorAvailability` and fall back to the LLM lane — see
+ * `src/content/translator-pool.ts`. Adding a seventh needs no verification for
+ * the same reason, only a `LANGUAGE_RULES` entry if the language marks gender.
+ *
+ * Every member also needs a locale module under `src/i18n/`, which the compiler
+ * enforces: a locale is a `Record<MessageKey, string>` over this union.
  */
-export type TranslationLang = 'en' | 'ru'
+export type TranslationLang = 'en' | 'ru' | 'es' | 'fr' | 'de' | 'pt'
 
+/** Each label is written in its own language: you pick it before you can read the UI. */
 export const TRANSLATION_LANGS: ReadonlyArray<{ code: TranslationLang; label: string }> = [
   { code: 'en', label: 'English' },
   { code: 'ru', label: 'Русский' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'pt', label: 'Português' },
 ]
+
+/** Guard for a code read back out of storage, which may predate the current union. */
+export function isTranslationLang(code: unknown): code is TranslationLang {
+  return TRANSLATION_LANGS.some((lang) => lang.code === code)
+}
 
 /**
  * Key held to make the page reader look words up.
@@ -329,7 +346,18 @@ const STORAGE_KEY = 'bbSubsgenSettings'
  */
 function normalise(saved: Partial<Settings> | undefined): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...saved }
-  return { ...merged, readerOrigins: readerOriginsFrom(merged.readerOrigins) }
+  return {
+    ...merged,
+    readerOrigins: readerOriginsFrom(merged.readerOrigins),
+    // A shallow spread hands a stored `translationLang` through typed as a
+    // member of the union whether or not it still is one. Storage is synced, so
+    // a profile that used a language a later build dropped would otherwise
+    // reach `LANGUAGE_NAME[lang]` as `undefined` and prompt the model in
+    // nothing at all.
+    translationLang: isTranslationLang(merged.translationLang)
+      ? merged.translationLang
+      : DEFAULT_SETTINGS.translationLang,
+  }
 }
 
 /** `['https://a']` and `[{ origin: 'https://a' }]` both read as the latter. */

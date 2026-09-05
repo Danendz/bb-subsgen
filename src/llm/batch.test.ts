@@ -228,6 +228,69 @@ describe('the prompts', () => {
     expect(batchUser(base)).not.toContain('gender ending')
   })
 
+  // Spanish, French and Portuguese mark gender where Russian does, on the words
+  // describing a person, so they get the same treatment for the same reason.
+  test('carry the gender rule for every target that marks gender', () => {
+    for (const lang of ['ru', 'es', 'fr', 'pt'] as const) {
+      expect(batchSystem({ ...base, lang })).toContain('老公')
+      expect(batchUser({ ...base, lang })).toContain('gender ending')
+    }
+  })
+
+  // The reminder beside the lines used to be a literal about gender endings,
+  // emitted for any language that had rules at all. German has rules and marks
+  // no gender on its predicates, so it is the case that would have been told to
+  // agree endings it does not inflect.
+  test('remind German about formality, not about gender it does not mark', () => {
+    const user = batchUser({ ...base, lang: 'de' })
+
+    expect(user).toContain('du or Sie')
+    expect(user).not.toContain('gender ending')
+    expect(batchSystem({ ...base, lang: 'de' })).not.toContain('marks gender')
+  })
+
+  // Every one of these is a decision Chinese never states, so the model makes it
+  // twice and contradicts itself unless told to settle it once.
+  test('tell every language with a formality distinction which pronoun to hold', () => {
+    const forms: Record<string, string> = {
+      ru: 'ты',
+      es: 'tú',
+      fr: 'tu',
+      pt: 'você',
+      de: 'du',
+    }
+    for (const [lang, pronoun] of Object.entries(forms)) {
+      const system = batchSystem({ ...base, lang: lang as 'ru' })
+      expect(system).toContain(pronoun)
+      expect(system).toContain('do not switch inside a scene')
+    }
+  })
+
+  // English is the one target that needs none of this, and the rules file says
+  // it must stay that way: four rules is already as many as a small model holds.
+  test('leave English carrying nothing but the shared rules', () => {
+    const system = batchSystem(base)
+
+    expect(system).not.toContain('marks gender')
+    expect(system).not.toContain('do not switch inside a scene')
+    expect(batchUser(base)).not.toContain('gender ending')
+  })
+
+  test('name every target language the settings offer', () => {
+    const names: Record<string, string> = {
+      en: 'English',
+      ru: 'Russian',
+      es: 'Spanish',
+      fr: 'French',
+      de: 'German',
+      pt: 'Portuguese',
+    }
+    for (const [lang, name] of Object.entries(names)) {
+      expect(batchSystem({ ...base, lang: lang as 'en' })).toContain(name)
+      expect(batchUser({ ...base, lang: lang as 'en' })).toContain(name)
+    }
+  })
+
   test('carry the video subject when it is known', () => {
     const system = batchSystem({ ...base, video: { title: '家常菜', description: '做饭' } })
 

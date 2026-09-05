@@ -20,8 +20,10 @@ import type { Lexicon } from '../../lang/pack'
 import { lookupDefs } from '../../shared/dict-client'
 import type { Context, Grade, Item, StudyMode } from '../../flashcards/types'
 import { useAsync } from '../hooks'
+import { useTranslatedGlosses } from '../useGlosses'
+import { useTranslationHealing } from './useTranslationHealing'
 import { canSpeak, speak } from '../../shared/speak'
-import { loadSettings, resolveStudyLang } from '../../shared/settings'
+import { loadSettings, resolveStudyLang, type TranslationLang } from '../../shared/settings'
 import { WordBank } from './WordBank'
 import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
@@ -149,13 +151,26 @@ export function Session({
   const [explaining, setExplaining] = useState<{ chatId: string; question: string } | null>(null)
   const [opening, setOpening] = useState(false)
   const [llmReady, setLlmReady] = useState(false)
+  // Null until settings arrive, so nothing is judged stale against a language
+  // that is only the default standing in for one not yet read.
+  const [translationLang, setTranslationLang] = useState<TranslationLang | null>(null)
 
   useEffect(() => {
-    void loadSettings().then((s) => setLlmReady(s.llmEnabled && Boolean(s.llmBaseUrl)))
+    void loadSettings().then((s) => {
+      setLlmReady(s.llmEnabled && Boolean(s.llmBaseUrl))
+      setTranslationLang(s.translationLang)
+    })
   }, [])
 
   const total = initial.length
   const current = queue[at] ?? null
+
+  // A card captured under a different target answers in a language the learner
+  // is no longer reading. Healed in place so the queue re-renders with the new
+  // text, rather than waiting for the next sitting to load it back.
+  useTranslationHealing(current, translationLang, (id, contexts) => {
+    setQueue((cards) => cards.map((card) => (card.id === id ? { ...card, contexts } : card)))
+  })
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   // The Chinese line this card puts on screen: a word's example, or the
@@ -229,7 +244,7 @@ export function Session({
       current.kind === 'sentence' ? distinctPatterns(words.pack.findPatterns(tokens)) : []
 
     return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
-  }, [current?.id, current?.reps, words, known, distractorPool, mode])
+  }, [current?.id, current?.reps, current?.contexts, words, known, distractorPool, mode])
 
   // Speaking is the question on a listening card, so it has to happen on its own
   // rather than waiting for a button that would give the answer away.
@@ -243,11 +258,25 @@ export function Session({
 
   const entries = defs?.[current?.text ?? '']
   const [primary] = words.pack.rank(entries ?? [], current?.text ?? '')
-  const gloss =
-    primary?.senses
-      .slice(0, SENSES)
-      .map((sense) => sense.gloss)
-      .join('; ') ?? ''
+  const englishSenses = primary?.senses.slice(0, SENSES).map((sense) => sense.gloss) ?? []
+  const headword = current?.text ?? ''
+
+  // Every word on the line, not just the card's own: the line's per-word hovers
+  // read the same definitions, and `defs` was already fetched in one batch, so
+  // translating them together costs one round trip instead of one per hover.
+  const glossRequests = useMemo(
+    () =>
+      Object.entries(defs ?? {}).flatMap(([word, found]) => {
+        const [best] = words.pack.rank(found, word)
+        const senses = best?.senses.slice(0, SENSES).map((sense) => sense.gloss) ?? []
+        return senses.length ? [{ headword: word, senses }] : []
+      }),
+    [defs, words],
+  )
+  const glosses = useTranslatedGlosses(words.pack.code, translationLang, glossRequests)
+  // The English is the fallback, not the loading state: the reveal renders the
+  // moment it has a definition and improves when the translation lands.
+  const gloss = (glosses[headword] ?? englishSenses).join('; ')
 
   const answered =
     card?.exercise.response === 'tiles'
@@ -510,7 +539,14 @@ export function Session({
         ) : exercise.cue === 'cloze' && target ? (
           <div class="prompt">
             <p class="hanzi-line">
-              <Line text={current.text} words={words} known={known} defs={defs} blank={target} />
+              <Line
+                text={current.text}
+                words={words}
+                known={known}
+                defs={defs}
+                glosses={glosses}
+                blank={target}
+              />
             </p>
             <button class="speak" onClick={() => speak(current.text)}>
               <span aria-hidden="true">♪</span> Play again
@@ -524,7 +560,13 @@ export function Session({
               {current.kind === 'word' ? (
                 current.text
               ) : (
-                <Line text={current.text} words={words} known={known} defs={defs} />
+                <Line
+                  text={current.text}
+                  words={words}
+                  known={known}
+                  defs={defs}
+                  glosses={glosses}
+                />
               )}
             </p>
           </div>
@@ -593,7 +635,14 @@ export function Session({
                 <p class="meaning">{ownPattern.explanation}</p>
                 {exampleText && (
                   <p class="answer-hanzi">
-                    <Line text={exampleText} words={words} known={known} defs={defs} readings />
+                    <Line
+                      text={exampleText}
+                      words={words}
+                      known={known}
+                      defs={defs}
+                      glosses={glosses}
+                      readings
+                    />
                   </p>
                 )}
                 {translation && <p class="context">{translation}</p>}
@@ -608,7 +657,14 @@ export function Session({
                 {current.kind === 'word' ? (
                   current.text
                 ) : (
-                  <Line text={current.text} words={words} known={known} defs={defs} readings />
+                  <Line
+                    text={current.text}
+                    words={words}
+                    known={known}
+                    defs={defs}
+                    glosses={glosses}
+                    readings
+                  />
                 )}
               </p>
             )}
@@ -666,6 +722,7 @@ export function Session({
                     words={words}
                     known={known}
                     defs={defs}
+                    glosses={glosses}
                     mark={current.text}
                     readings
                   />

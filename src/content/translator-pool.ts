@@ -106,8 +106,20 @@ export function createTranslatorPool(create: AcquireTranslator = acquire): Trans
         )
         return
       }
+      // Probed rather than assumed. Only zh→en and zh→ru are known to resolve
+      // directly; the other four targets the settings offer may be refused
+      // outright on this machine. An unavailable pair is not an error and must
+      // not be retried per track — the LLM lane fills the same cues from the
+      // worker, and `lanes.ts` already renders whichever arrives.
       if (!translators.has(lang)) {
-        console.log(`[bb-subsgen] zh→${lang} availability:`, await translatorAvailability(lang))
+        const availability = await translatorAvailability(lang)
+        console.log(`[bb-subsgen] zh→${lang} availability:`, availability)
+        if (availability === 'unavailable') {
+          console.log(
+            `[bb-subsgen] no on-device zh→${lang} pair — leaving this lane to the local model.`,
+          )
+          return
+        }
       }
 
       let translator: TranslatorLike

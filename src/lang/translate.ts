@@ -9,8 +9,6 @@
 //     NotAllowedError — see content/activation.ts.
 //   - Unavailable in Web Workers, so this cannot live in the service worker.
 
-import type { TranslationLang } from '../shared/settings'
-
 /** The only capability the rest of the extension needs from a translator. */
 export interface TranslatorLike {
   translate(text: string): Promise<string>
@@ -35,21 +33,38 @@ declare global {
   var Translator: TranslatorFactory | undefined
 }
 
-// Both supported targets are directly available from Chinese — verified
-// against the live API, which reports zh→en and zh→ru alike. Neither has to
-// pivot through a second translator, so `TranslatorLike` stays one hop.
-function pairFor(target: TranslationLang): LanguagePair {
-  return { sourceLanguage: 'zh', targetLanguage: target }
+/**
+ * The default source: the language being studied on the surface that asked.
+ *
+ * Named rather than inlined so the Chinese assumption this module used to carry
+ * is visible at the one place it survives — as a default argument, not a
+ * constant folded into every pair.
+ */
+const DEFAULT_SOURCE = 'zh'
+
+function pairFor(target: string, source: string = DEFAULT_SOURCE): LanguagePair {
+  return { sourceLanguage: source, targetLanguage: target }
 }
 
 export function isTranslatorSupported(): boolean {
   return typeof globalThis.Translator?.create === 'function'
 }
 
-export async function translatorAvailability(target: TranslationLang): Promise<Availability> {
+/**
+ * Whether Chrome can translate `source`→`target` on this machine.
+ *
+ * Only `zh→en` and `zh→ru` are known to resolve directly; every other pair the
+ * settings now offer has to be asked about rather than assumed, and a pair
+ * Chrome will not serve is a normal answer, not a failure. `'downloadable'`
+ * counts as usable — `createTranslator` fetches the pack on first use.
+ */
+export async function translatorAvailability(
+  target: string,
+  source: string = DEFAULT_SOURCE,
+): Promise<Availability> {
   if (!isTranslatorSupported()) return 'unavailable'
   try {
-    return await globalThis.Translator!.availability(pairFor(target))
+    return await globalThis.Translator!.availability(pairFor(target, source))
   } catch (e) {
     console.warn('[bb-subsgen] translator availability check failed', e)
     return 'unavailable'
@@ -57,19 +72,20 @@ export async function translatorAvailability(target: TranslationLang): Promise<A
 }
 
 /**
- * Creates a zh→`target` translator, downloading the language pack on first use.
+ * Creates a `source`→`target` translator, downloading the pack on first use.
  *
  * Must be called from within a user gesture. Callers should route through
  * `withUserActivation` rather than calling this directly.
  */
 export async function createTranslator(
-  target: TranslationLang,
+  target: string,
   onProgress?: (fraction: number) => void,
+  source: string = DEFAULT_SOURCE,
 ): Promise<TranslatorLike> {
   const factory = globalThis.Translator
   if (!factory) throw new Error('Translator API unavailable')
   return factory.create({
-    ...pairFor(target),
+    ...pairFor(target, source),
     monitor(monitor) {
       monitor.addEventListener('downloadprogress', (event) => {
         onProgress?.((event as ProgressEvent).loaded)

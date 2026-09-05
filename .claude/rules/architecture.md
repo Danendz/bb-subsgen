@@ -21,6 +21,15 @@ worker guessing a URL.
 Both directions are reasoned out in the headers of `src/llm/client.ts`,
 `src/background/llm-translate.ts` and `src/offscreen/main.ts`.
 
+**Chrome's Translator API is the mirror image of both.** It does not exist in a
+worker at all (`src/lang/translate.ts`), so the service worker can neither translate a
+subtitle nor a dictionary gloss — but the `glosses` cache lives in IndexedDB on the
+extension origin, which a content script cannot reach. So the *caller* translates and the
+*worker* remembers: `bb-subsgen:lookup-glosses` reads the cache and
+`bb-subsgen:put-glosses` writes it, with `translatedGlosses` in `src/shared/dict-client.ts`
+tying the two together for both surfaces. Anything that moves the translating into the
+worker will compile and then find no `Translator` at runtime.
+
 ## Which UI toolkit goes where
 
 **No Preact in `src/content/` or `src/reader/`.** Those surfaces are imperative DOM inside a
@@ -66,10 +75,10 @@ Five IndexedDB databases, separated by how bad it is to lose them:
 
 | Database | Contents | Losing it means |
 |---|---|---|
-| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language (schema 2, `src/dict/store.ts`) | re-download from the setup wizard |
+| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language; plus `glosses`, definitions machine-translated out of English and keyed `${lang}:${headword}:${target}` (schema 3, `src/dict/store.ts`) | re-download from the setup wizard, and re-translate on next hover |
 | `bb-subsgen-llm` | debug log of model calls | nothing |
 | `bb-subsgen-chat` | conversations | annoying |
-| `bb-subsgen-flashcards` | review history; every key carries its language since schema 4 — card ids are `w:zh:生`, and `exposures` / `videoWords` / `ranks` key on `[lang, headword]` (`src/flashcards/db.ts`) | **irreplaceable** |
+| `bb-subsgen-flashcards` | review history; every key carries its language since schema 4 — card ids are `w:zh:生`, and `exposures` / `videoWords` / `ranks` key on `[lang, headword]`; since schema 5 every captured `Context` also carries the `translationLang` its translation is in (`src/flashcards/db.ts`) | **irreplaceable** |
 | `bb-subsgen-flashcards-snapshots` | the deck as it stood before each schema migration (`src/flashcards/snapshot.ts`) | the undo for a bad migration |
 
 Bumping a `VERSION` requires a numbered migration note in the module header, next to the ones

@@ -19,12 +19,28 @@ export interface LineProps {
   known: Set<string>
   /** Looked up by the card, keyed by headword. Absent while it is still loading. */
   defs?: Record<string, Entry[]> | null
+  /**
+   * Headword → its senses in the language being read.
+   *
+   * Absent for an English target and until a translation arrives, which is why
+   * every word falls back to the English in `defs` rather than waiting.
+   */
+  glosses?: Record<string, string[]>
   readings?: boolean
   mark?: string
   blank?: string
 }
 
-export function Line({ text, words, known, defs, readings = false, mark, blank }: LineProps) {
+export function Line({
+  text,
+  words,
+  known,
+  defs,
+  glosses,
+  readings = false,
+  mark,
+  blank,
+}: LineProps) {
   const tokens = lineTokens(text, words, { known, readings, mark, blank })
 
   return (
@@ -35,6 +51,7 @@ export function Line({ text, words, known, defs, readings = false, mark, blank }
           token={token}
           pack={words.pack}
           entries={defs?.[token.text]}
+          translated={glosses?.[token.text]}
           reserve={readings}
         />
       ))}
@@ -54,12 +71,21 @@ function Word({
   token,
   pack,
   entries,
+  translated,
   reserve,
 }: {
   token: LineToken
   /** Taken from the line's own lexicon: what ranks the entries below. */
   pack: LanguagePack
   entries?: Entry[]
+  /**
+   * The senses in the language being read, when they have been translated.
+   *
+   * Separate from `entries` rather than replacing their glosses: `entries` is
+   * also what supplies the reading and what ranks the senses, and it arrives
+   * synchronously while this does not.
+   */
+  translated?: string[]
   /** Whether the line keeps a row for readings, so its characters share a baseline. */
   reserve: boolean
 }) {
@@ -76,11 +102,13 @@ function Word({
   if (!token.han) return <span class="line-word punct">{token.text}</span>
 
   const [primary] = pack.rank(entries ?? [], token.text)
-  const gloss =
-    primary?.senses
-      .slice(0, SENSES)
-      .map((sense) => sense.gloss)
-      .join('; ') ?? ''
+  // The English is the fallback, not the loading state — a word renders its
+  // meaning immediately and improves if a translation lands.
+  const gloss = (
+    translated ??
+    primary?.senses.slice(0, SENSES).map((sense) => sense.gloss) ??
+    []
+  ).join('; ')
   // The card's own reading is the fallback: a word the dictionary has no entry
   // for can still have been segmented, and half an answer beats none.
   const reading = primary?.reading ?? token.reading ?? []

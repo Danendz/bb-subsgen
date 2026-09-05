@@ -12,11 +12,7 @@
 import type { ChatContext } from '../chat/types'
 import type { TranslationLang } from '../shared/settings'
 import { glossLine } from './glossary'
-
-const LANGUAGE_NAME: Record<TranslationLang, string> = {
-  en: 'English',
-  ru: 'Russian',
-}
+import { LANGUAGE_NAME } from './languages'
 
 /**
  * The standing instruction for every conversation.
