@@ -48,6 +48,7 @@ import { knownSetOf, listItems, videoWords } from '../flashcards/queries'
 import { coverageOf, fraction } from '../flashcards/capture'
 import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import { dictStatus } from '../shared/dict-client'
+import { installedSources } from '../dict/sources'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
 
 type TabStatus = Status | 'no-video'
@@ -290,13 +291,18 @@ export function App() {
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
   const [videoId, setVideoId] = useState<string | null>(null)
   const [needsSetup, setNeedsSetup] = useState(false)
+  const [installed, setInstalled] = useState<ReadonlySet<string>>(new Set())
 
   useEffect(() => {
     if (!settings.enabledLanguages.length) {
       setNeedsSetup(true)
+      setInstalled(new Set())
       return
     }
-    dictStatus().then((languages) => setNeedsSetup(languages.some((l) => !l.installed)))
+    dictStatus().then((languages) => {
+      setNeedsSetup(languages.some((l) => !l.installed))
+      setInstalled(new Set(languages.filter((l) => l.installed).map((l) => l.lang)))
+    })
   }, [settings.enabledLanguages.join(',')])
 
   useEffect(() => {
@@ -447,13 +453,14 @@ export function App() {
         </div>
       </div>
 
-      <p class="attribution">
-        Dictionary data from{' '}
-        <a href="https://cc-cedict.org" target="_blank" rel="noreferrer">
-          CC-CEDICT
-        </a>
-        , CC BY-SA 4.0.
-      </p>
+      {/* Read from `DICT_SOURCES` rather than written out. The hardcoded line
+          this replaces named CC-CEDICT and only CC-CEDICT, so a deck studying
+          Japanese credited the wrong dictionary and never credited JMdict. */}
+      {installedSources(settings.enabledLanguages, installed).map((source) => (
+        <p class="attribution" key={source.lang}>
+          {source.attribution}
+        </p>
+      ))}
     </div>
   )
 }

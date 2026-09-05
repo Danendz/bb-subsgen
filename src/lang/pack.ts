@@ -192,8 +192,17 @@ export interface Entry {
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
   readonly code: string
-  /** For log lines and for nothing that branches. */
+  /** The language's name in English, for log lines and for prose the user reads. */
   readonly name: string
+  /**
+   * What this language's standard proficiency scale is called — 'HSK', 'JLPT'.
+   *
+   * Here rather than in the Data tab because the alternative is a switch on
+   * `code` in a component, which is the Chinese assumption that compiles
+   * cleanly and only shows up as an 'HSK levels' row on a Japanese deck. The
+   * stored field is still named `hsk` and stays that way; this is the label.
+   */
+  readonly levelsName: string
   /**
    * Whether readings carry tone worth colouring.
    *

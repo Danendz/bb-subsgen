@@ -476,9 +476,21 @@ export function rankKey(lang: string, headword: string): string {
 }
 
 export interface WordListMeta {
+  /** The file it came from, or the source's label when it was downloaded. */
   name: string
   count: number
+  /** Named for the upload it used to only ever be; a download sets it too. */
   uploadedAt: number
+  /**
+   * The `WordListSource` this was installed from. Absent means hand-uploaded.
+   *
+   * Optional rather than required because every list stored before downloads
+   * existed has neither field, and re-asking for a file the user already gave
+   * us is a worse migration than reading the absence.
+   */
+  sourceId?: string
+  /** The commit the source was pinned to, so a later update check has something to compare. */
+  ref?: string
 }
 
 const WORD_LIST_META_KEY = 'bbSubsgenWordLists'

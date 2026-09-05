@@ -26,6 +26,7 @@ function cardHeadwords(headword: string): string[] {
 export const chinesePack: LanguagePack = {
   code: 'zh',
   name: 'Chinese',
+  levelsName: 'HSK',
   displaysTones: true,
 
   inScript: isHan,

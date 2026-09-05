@@ -62,10 +62,17 @@ still counts. You're only asked about words declared known on one side and not t
 
 ## Frequency lists
 
-No word list ships with the extension — every usable frequency or HSK list belongs to
-someone, so you supply your own and nothing is redistributed. Load one from the app's
-**Data** screen, which lists where to get them, what their licences are, and which file to
-take.
+None ships with the extension, but the app's **Data** screen will fetch one. For Chinese
+it offers two, both from [complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary)
+(MIT): frequency order, and HSK 3.0 levels. Installing is one button and a few seconds.
 
-Without one everything still works; new cards are simply introduced in the order you
+The frequency list is HSK vocabulary — about 11,000 words — ranked by how often each turns
+up in film and TV subtitles, which is the corpus that matches what this extension reads.
+A word outside HSK stays unranked, and unranked words are introduced last.
+
+You can still upload your own file for anything the downloads don't cover — a broader
+frequency corpus, a private list, or a language nothing is offered for yet. That path is
+unchanged, and nothing you upload leaves the browser.
+
+Without any list everything still works; new cards are simply introduced in the order you
 found them.

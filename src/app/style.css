@@ -1045,36 +1045,16 @@ details.help p {
   background: var(--inset);
 }
 
-table.sources {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 8px;
+/* One downloadable list under the row it belongs to. Indented rather than
+   boxed: it is an offer within the kind, not a second kind. */
+.source {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--edge);
 }
-table.sources th {
-  text-align: left;
-  font: 500 11px var(--display);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  padding: 4px 8px 4px 0;
-  border-bottom: 1px solid var(--edge);
-}
-table.sources td {
-  padding: 8px 8px 8px 0;
-  border-bottom: 1px solid var(--edge);
-  vertical-align: top;
-}
-
-details.help pre {
-  overflow-x: auto;
-  padding: 12px 14px;
-  border-radius: var(--r-sm);
-  background: var(--inset);
-  font-size: 12px;
-  line-height: 1.5;
-}
-details.help code {
-  font-size: 12px;
+.source .bar,
+.source button {
+  margin-top: 6px;
 }
 
 /* Chat --------------------------------------------------------------------- */

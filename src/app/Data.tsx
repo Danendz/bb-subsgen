@@ -17,6 +17,9 @@ import {
   type WordListMeta,
 } from '../background/flashcards-store'
 import { errorMessage, parseWordList, type ListKind, type ParsedList } from '../flashcards/wordlist'
+import { installWordList, type WordListProgress } from '../flashcards/wordlist-install'
+import { sourcesFor, type WordListSource } from '../flashcards/wordlist-sources'
+import type { LanguagePack } from '../lang/pack'
 import { packFor } from '../lang/packs'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { WordListHelp } from './WordListHelp'
@@ -83,19 +86,28 @@ function DeckSnapshots() {
     </div>
   )
 }
-
-const LISTS: Array<{ kind: ListKind; label: string; blurb: string }> = [
+/**
+ * The two kinds of list, and what each one changes once it is loaded.
+ *
+ * `label` names the kind rather than the standard behind it — the HSK row is
+ * headed with `pack.levelsName`, so a Japanese deck says JLPT and a Chinese one
+ * says HSK, and neither is written down here.
+ */
+const LISTS: Array<{ kind: ListKind; blurb: (pack: LanguagePack) => string }> = [
   {
     kind: 'frequency',
-    label: 'Frequency list',
-    blurb: 'Orders which new words you meet first, and gives progress a denominator.',
+    blurb: () => 'Orders which new words you meet first, and gives progress a denominator.',
   },
   {
     kind: 'hsk',
-    label: 'HSK levels',
-    blurb: 'Groups the dictionary by level and adds the progress bars on Overview.',
+    blurb: (pack) =>
+      `Groups the dictionary by ${pack.levelsName} level and adds the progress bars on Overview.`,
   },
 ]
+
+function labelFor(kind: ListKind, pack: LanguagePack): string {
+  return kind === 'frequency' ? 'Frequency list' : `${pack.levelsName} levels`
+}
 
 interface PendingList {
   kind: ListKind
@@ -119,7 +131,11 @@ function describe(list: ParsedList): string {
 
 function WordLists() {
   const [meta, setMeta] = useState<Partial<Record<ListKind, WordListMeta>>>({})
+  const [pack, setPack] = useState<LanguagePack | null>(null)
   const [pending, setPending] = useState<PendingList | null>(null)
+  const [downloading, setDownloading] = useState<{ id: string; progress: WordListProgress } | null>(
+    null,
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -127,24 +143,20 @@ function WordLists() {
   // "which file, how many rows" note are keyed by it — otherwise this panel
   // reports a Chinese HSK upload while you are studying Japanese.
   const refresh = () =>
-    void loadSettings()
-      .then((settings) => wordListMeta(resolveStudyLang(settings)))
-      .then(setMeta)
+    void loadSettings().then(async (settings) => {
+      const lang = resolveStudyLang(settings)
+      setPack(packFor(lang))
+      setMeta(await wordListMeta(lang))
+    })
   useEffect(refresh, [])
-
-  /** The pack for the language being studied, which the parse and the write both need. */
-  const studyPack = async () => packFor(resolveStudyLang(await loadSettings()))
 
   const onFile = async (kind: ListKind, file: File) => {
     setError('')
     setPending(null)
     // A word list is a list of words in the language you study, so the column
-    // sniffing has to know which script it is looking for.
-    const pack = await studyPack()
-    if (!pack) {
-      setError('No dictionary installed yet — set one up from the extension popup first.')
-      return
-    }
+    // sniffing has to know which script it is looking for. Unreachable in
+    // practice — the input this fires from only renders once a pack resolved.
+    if (!pack) return
     const result = parseWordList(kind, await file.text(), pack)
     if (!result.ok) {
       setError(errorMessage(result.error))
@@ -154,11 +166,9 @@ function WordLists() {
   }
 
   const confirm = async () => {
-    if (!pending) return
+    if (!pending || !pack) return
     setBusy(true)
     try {
-      const pack = await studyPack()
-      if (!pack) return
       await replaceWordList(pack.code, pending.kind, pending.list.rows, {
         name: pending.fileName,
         count: pending.list.rows.length,
@@ -171,8 +181,30 @@ function WordLists() {
     }
   }
 
+  // No confirmation step, unlike an upload: that exists because an arbitrary
+  // file has to be sniffed and the guess shown to someone who can check it. A
+  // pinned commit of a known payload has nothing to guess and nothing to check.
+  const download = async (source: WordListSource) => {
+    setError('')
+    setBusy(true)
+    setDownloading({ id: source.id, progress: { loaded: 0, total: null } })
+    try {
+      await installWordList({
+        source,
+        fetch,
+        onProgress: (progress) => setDownloading({ id: source.id, progress }),
+      })
+      refresh()
+    } catch (e) {
+      console.warn('[bb-subsgen] word list install failed', e)
+      setError('Could not download the list. Check your connection and try again.')
+    } finally {
+      setDownloading(null)
+      setBusy(false)
+    }
+  }
+
   const remove = async (kind: ListKind) => {
-    const pack = await studyPack()
     if (!pack) return
     await deleteWordList(pack.code, kind)
     refresh()
@@ -182,42 +214,97 @@ function WordLists() {
     <div class="panel">
       <strong>Word lists</strong>
       <div class="muted small" style={{ marginBottom: 6 }}>
-        Optional, and supplied by you — the extension bundles none.
+        Optional. None ships with the extension, but the ones below download on demand.
       </div>
 
-      {LISTS.map(({ kind, label, blurb }) => {
-        const loaded = meta[kind]
-        return (
-          <div class="row" key={kind}>
-            <div class="grow">
-              <strong>{label}</strong>
-              <div class="muted small">
-                {loaded
-                  ? `${loaded.name} — ${loaded.count.toLocaleString()} words, added ${new Date(loaded.uploadedAt).toLocaleDateString()}`
-                  : blurb}
+      {/* Gated on the pack rather than rendered around it. Every label here is
+          the language's — 'HSK levels' or 'JLPT levels' — so without one there
+          is nothing to head the rows with, and a row headed by an empty string
+          reads as a bug rather than as the missing dictionary it is. */}
+      {!pack && (
+        <>
+          <p class="small muted">
+            No dictionary installed yet, so there is no language to file a list under.
+          </p>
+          <button onClick={() => navigate('/setup')}>Manage dictionaries</button>
+        </>
+      )}
+
+      {pack &&
+        LISTS.map(({ kind, blurb }) => {
+          const loaded = meta[kind]
+          const sources = sourcesFor(pack.code, kind)
+          return (
+            <div class="row" key={kind}>
+              <div class="grow">
+                <strong>{labelFor(kind, pack)}</strong>
+                <div class="muted small">
+                  {loaded
+                    ? `${loaded.name} — ${loaded.count.toLocaleString()} words, added ${new Date(loaded.uploadedAt).toLocaleDateString()}`
+                    : blurb(pack)}
+                </div>
+                {!loaded &&
+                  sources.map((source) => (
+                    <div class="source" key={source.id}>
+                      <div class="muted small">{source.blurb}</div>
+                      <p class="hint small">{source.attribution}</p>
+                      {downloading?.id === source.id ? (
+                        <div
+                          class="bar"
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={downloading.progress.total ?? 0}
+                          aria-valuenow={downloading.progress.loaded}
+                          aria-label="Downloading"
+                        >
+                          <i
+                            style={{
+                              width: downloading.progress.total
+                                ? `${Math.min(100, (downloading.progress.loaded / downloading.progress.total) * 100)}%`
+                                : '100%',
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          class="primary"
+                          disabled={busy}
+                          onClick={() => void download(source)}
+                        >
+                          Install {source.label}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                {/* Said rather than left blank: an empty space reads as a bug,
+                    and the upload input is the answer to the question it raises. */}
+                {!loaded && sources.length === 0 && (
+                  <div class="muted small">
+                    Nothing to download for {pack.name} yet — upload your own file below.
+                  </div>
+                )}
               </div>
+              {loaded ? (
+                // Replacing goes through Delete, so "one list at a time" is
+                // something you do rather than something you have to infer.
+                <button disabled={busy} onClick={() => void remove(kind)}>
+                  Delete
+                </button>
+              ) : (
+                <input
+                  type="file"
+                  accept=".txt,.tsv,.csv,.json,text/plain,application/json"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0]
+                    if (file) void onFile(kind, file)
+                    e.currentTarget.value = ''
+                  }}
+                />
+              )}
             </div>
-            {loaded ? (
-              // Replacing goes through Delete, so "one list at a time" is
-              // something you do rather than something you have to infer.
-              <button disabled={busy} onClick={() => void remove(kind)}>
-                Delete
-              </button>
-            ) : (
-              <input
-                type="file"
-                accept=".txt,.tsv,.csv,.json,text/plain,application/json"
-                disabled={busy}
-                onChange={(e) => {
-                  const file = e.currentTarget.files?.[0]
-                  if (file) void onFile(kind, file)
-                  e.currentTarget.value = ''
-                }}
-              />
-            )}
-          </div>
-        )
-      })}
+          )
+        })}
 
       {error && <p class="small verdict no">{error}</p>}
 
@@ -231,7 +318,7 @@ function WordLists() {
           <p class="line-zh">{pending.list.sample.join('、')}…</p>
           <p class="small muted">
             {pending.kind === 'frequency'
-              ? 'Those should be among the commonest words in Chinese. If they are not, the file is not sorted by frequency.'
+              ? `Those should be among the commonest words in ${pack?.name ?? 'the language you study'}. If they are not, the file is not sorted by frequency.`
               : 'Levels are read from the file as given.'}
           </p>
           <div class="toolbar">
