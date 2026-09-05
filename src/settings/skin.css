@@ -1,0 +1,326 @@
+/* How the shared settings markup is drawn, plus the control base both extension
+ * pages sit on.
+ *
+ * controls.tsx and SectionRail.tsx are rendered by the popup and by the app, and
+ * their headers say the markup is identical in both. What was not true until now
+ * is the second half of that sentence: the popup had no `button`, `input` or
+ * `:focus-visible` rule at all, so every control it rendered had to restate its
+ * own background, border and colour, and anything it did not know about — the
+ * `.ghost` button in sections.tsx, the `.panel` on the rail — came out as an
+ * unstyled Chrome default. Two dozen rules existed twice, drifting.
+ *
+ * So the paint lives here once and the two hosts differ only in the density
+ * tokens declared in src/shared/tokens.css: --rail-w, --row-y, --r-ctl, --lip,
+ * --grow-min, --range-w, --url-w. If a difference between the popup and the app
+ * cannot be expressed as one of those, it probably belongs in the host's own
+ * stylesheet rather than as an override of a rule here.
+ *
+ * `.settings-group` is deliberately absent. In the app a group is a bordered
+ * panel with a title inside it; in the popup it has no box and its heading is
+ * the rule that divides one group from the next. That is two designs, not one
+ * design with two densities, so each host keeps its own.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+/* Surfaces ------------------------------------------------------------------ */
+
+.panel {
+  padding: 16px 18px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+.panel + .panel {
+  margin-top: 12px;
+}
+
+/* Controls ------------------------------------------------------------------ */
+
+button {
+  font: 500 var(--btn-size) var(--display);
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-bottom: var(--lip) solid var(--edge-lit);
+  border-radius: var(--r-ctl);
+  padding: var(--btn-pad);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    transform 0.06s,
+    border-color 0.12s;
+}
+button:hover:not(:disabled) {
+  background: var(--raised-hot);
+}
+
+/* Pressing something ought to move it. The face drops by exactly what the lip
+   loses, so the outer edge stays put — which is why both are tokens and the
+   distance is the difference between them. A host that sets them equal (the
+   popup) gets a flat control that does not move, with no override needed. */
+button:active:not(:disabled) {
+  transform: translateY(calc(var(--lip) - var(--lip-sunk)));
+  border-bottom-width: var(--lip-sunk);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--action);
+  color: var(--action-ink);
+  border-color: var(--action);
+  border-bottom-color: var(--action-deep);
+}
+button.primary:hover:not(:disabled) {
+  background: var(--action-hot);
+}
+
+button.big {
+  font-size: 17px;
+  padding: 14px 34px;
+  border-radius: var(--r);
+}
+
+button.ghost {
+  background: none;
+  border: 1px solid var(--edge);
+  border-bottom-width: 1px;
+  color: var(--text-3);
+  padding: 6px 12px;
+  font-size: 13px;
+}
+button.ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--edge-lit);
+}
+button.ghost:active:not(:disabled) {
+  transform: none;
+}
+
+button.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font: 13px var(--body);
+  text-decoration: underline;
+  padding: 6px;
+  margin-top: 12px;
+}
+button.link-btn:hover {
+  color: var(--text);
+  background: none;
+}
+button.link-btn:active {
+  transform: none;
+}
+
+.icon-btn {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+button.on {
+  color: var(--right);
+  border-color: var(--right-deep);
+}
+
+/* A row you press, not a link you follow: no underline, and none of the
+   standalone spacing `.link-btn` carries. */
+.row-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin: 0;
+  font: inherit;
+  color: var(--text-2);
+  text-align: left;
+  min-width: 0;
+
+  &:hover:not(:disabled) {
+    background: none;
+    color: var(--text);
+  }
+  &:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+input[type='search'],
+input[type='text'] {
+  font: inherit;
+  color: inherit;
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-ctl);
+  padding: 9px 12px;
+  width: 100%;
+}
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+/* Settings rows -------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--row-y) 0;
+  border-bottom: 1px solid var(--edge);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+.grow {
+  flex: 1;
+  min-width: var(--grow-min);
+}
+
+.settings-group select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-ctl);
+  font: inherit;
+  font-size: 13px;
+  max-width: 60%;
+}
+/* Both controls take the action colour rather than the browser's blue, which is
+   the one hue on this page that belongs to nothing else in the palette. */
+.settings-group input[type='range'] {
+  width: var(--range-w);
+  flex: none;
+  accent-color: var(--action);
+}
+/* An address, not a search box: `input[type=text]` is full-width by default and
+   would push the label off the row. */
+.settings-group input.url {
+  width: var(--url-w);
+  flex: none;
+}
+.settings-group input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--action);
+}
+.settings-group .toolbar {
+  margin: 12px 0 0;
+}
+
+.value {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.hint {
+  color: var(--text-3);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+/* Still legible, still there, and not reachable until the thing above it is on. */
+.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.divider {
+  border: 0;
+  border-top: 1px solid var(--edge);
+  margin: 12px 0 0;
+}
+
+/* The model server: an address to type, two shortcuts for the runners most
+   people have, and a button that asks Chrome for permission to reach it. */
+.presets {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 2px;
+}
+.presets .preset {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.connect {
+  width: 100%;
+  margin-top: 12px;
+}
+select.model {
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-ctl);
+  font: inherit;
+  font-size: 12px;
+}
+
+.status {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  background: var(--inset);
+  font-size: 12px;
+}
+.status-ok {
+  color: var(--right);
+}
+.status-bad {
+  color: var(--warn);
+}
+.status-busy {
+  color: var(--text-3);
+}
+
+/* Section rail --------------------------------------------------------------- */
+
+/* Data, Settings and the popup are a rail beside a pane, the shape
+   `.chat-layout` already uses. Narrower than the chat list because these are
+   four short labels rather than sentences, and the panes hold sliders that want
+   the room. */
+.section-layout {
+  display: grid;
+  grid-template-columns: var(--rail-w) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.section-rail {
+  padding: 8px 10px;
+  position: sticky;
+  top: 16px;
+}
+.section-row {
+  padding: 2px 0;
+  border-bottom: none;
+
+  & .row-btn {
+    padding: 8px 10px;
+    border-radius: var(--r-ctl);
+    color: var(--text-3);
+    font: 500 13px var(--display);
+    text-align: left;
+    transition: color 0.15s;
+  }
+  & .row-btn:hover {
+    color: var(--text);
+  }
+  &.on .row-btn {
+    color: var(--text);
+    background: var(--inset);
+  }
+}

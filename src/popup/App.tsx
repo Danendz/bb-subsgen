@@ -355,7 +355,7 @@ export function App() {
             : "You haven't set up a language to study yet."}
         </p>
         <button
-          class="open-app"
+          class="primary open-app"
           onClick={() =>
             void chrome.tabs.create({
               url: chrome.runtime.getURL('src/app/index.html') + '#/setup',
@@ -374,7 +374,7 @@ export function App() {
         <h1>bb-subsgen</h1>
 
         <button
-          class="open-app"
+          class="primary open-app"
           onClick={() =>
             void chrome.tabs.create({ url: chrome.runtime.getURL('src/app/index.html') })
           }
