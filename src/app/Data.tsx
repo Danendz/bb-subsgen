@@ -24,6 +24,8 @@ import { LlmLog } from './LlmLog'
 import { listSnapshots, type Snapshot } from '../flashcards/snapshot'
 import { cacheSize, clearCache } from '../background/llm-cache'
 import { clearTranscripts, transcriptSize } from '../background/transcript-cache'
+import { SectionRail, type RailItem } from '../settings/SectionRail'
+import { navigate } from './hooks'
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10)
@@ -348,7 +350,15 @@ interface Pending {
   conflicts: Conflict[]
 }
 
-export function Data() {
+/**
+ * Getting the deck out and putting it back, and the questions that only arise
+ * while putting it back.
+ *
+ * The conflict panel and the message belong to this component rather than to the
+ * tab: they are answers to something the import asked, and an import is the only
+ * thing that can ask it.
+ */
+function Backup() {
   const [pending, setPending] = useState<Pending | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -401,16 +411,8 @@ export function Data() {
     }
   }
 
-  const clearEverything = async () => {
-    if (!confirm('Delete every card, review and count? This cannot be undone.')) return
-    await restore(emptyBackup())
-    setMessage('Everything cleared.')
-  }
-
   return (
     <>
-      <WordLists />
-
       <div class="panel">
         <div class="row">
           <div class="grow">
@@ -424,8 +426,6 @@ export function Data() {
           <button onClick={() => void download()}>Download</button>
         </div>
       </div>
-
-      <DeckSnapshots />
 
       <div class="panel">
         <div class="row">
@@ -488,7 +488,28 @@ export function Data() {
       )}
 
       {message && <div class="panel small">{message}</div>}
+    </>
+  )
+}
 
+/**
+ * The nuclear option, with its own message.
+ *
+ * It reports separately from the import above because the two now render in
+ * different sections of the tab — a shared message string would announce
+ * "Everything cleared." into a pane the user is no longer looking at.
+ */
+function ClearEverything() {
+  const [message, setMessage] = useState('')
+
+  const clearEverything = async () => {
+    if (!confirm('Delete every card, review and count? This cannot be undone.')) return
+    await restore(emptyBackup())
+    setMessage('Everything cleared.')
+  }
+
+  return (
+    <>
       <div class="panel">
         <div class="row">
           <div class="grow">
@@ -502,9 +523,58 @@ export function Data() {
         </div>
       </div>
 
-      <TranslationCache />
-      <Transcripts />
-      <LlmLog />
+      {message && <div class="panel small">{message}</div>}
     </>
+  )
+}
+
+/**
+ * The rail, and with it the `#/data/<slug>` routes. Resolved in App.tsx, like
+ * `/videos/:id`, which is why the slugs and not the labels are the tuple.
+ */
+export const DATA_SLUGS = ['backup', 'word-lists', 'storage', 'diagnostics'] as const
+
+export type DataSection = (typeof DATA_SLUGS)[number]
+
+const SECTIONS: readonly RailItem<DataSection>[] = [
+  { slug: 'backup', label: 'Backup' },
+  { slug: 'word-lists', label: 'Word lists' },
+  { slug: 'storage', label: 'Storage' },
+  { slug: 'diagnostics', label: 'Diagnostics' },
+]
+
+export function Data({ section }: { section: DataSection }) {
+  return (
+    <div class="section-layout">
+      <SectionRail
+        items={SECTIONS}
+        active={section}
+        onSelect={(slug) => navigate(`/data/${slug}`)}
+      />
+
+      <div class="section-pane">
+        {section === 'backup' && (
+          <>
+            <Backup />
+            <DeckSnapshots />
+          </>
+        )}
+
+        {section === 'word-lists' && <WordLists />}
+
+        {/* Clear-everything stays above the two caches, as it was before the
+            sections: the panels below cost GPU time to rebuild, this one costs
+            history that cannot be rebuilt at all, and the order is what says so. */}
+        {section === 'storage' && (
+          <>
+            <ClearEverything />
+            <TranslationCache />
+            <Transcripts />
+          </>
+        )}
+
+        {section === 'diagnostics' && <LlmLog />}
+      </div>
+    </div>
   )
 }

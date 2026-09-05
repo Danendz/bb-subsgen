@@ -5,6 +5,12 @@
 // (src/settings/). What is local to this file is what needs the current tab —
 // how much of this video you can follow, whether the overlay found subtitles,
 // and the reader switch for the site you are actually on.
+//
+// The layout now draws that line rather than only describing it: the tab-bound
+// half is pinned above a section rail, and the settings groups sit in the pane
+// beside it. Which section is open is local state, so every open starts at the
+// same place — the popup is opened to glance at this video far more often than
+// to change a setting, and a remembered section would hide the glance.
 
 import { useEffect, useState } from 'preact/hooks'
 import {
@@ -14,6 +20,7 @@ import {
   readerEnabledFor,
 } from '../shared/reader-sites'
 import { Hint, Section, Toggle } from '../settings/controls'
+import { SectionRail, type RailItem } from '../settings/SectionRail'
 import {
   LanguageSection,
   LocalModelSection,
@@ -261,8 +268,23 @@ function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: s
   )
 }
 
+/**
+ * The same four sections the settings tab rails, minus Dictionaries — managing a
+ * dictionary is a download and a wizard, neither of which belongs in a window
+ * that closes when you look away.
+ */
+type PopupSection = 'general' | 'studying' | 'language' | 'models'
+
+const SECTIONS: readonly RailItem<PopupSection>[] = [
+  { slug: 'general', label: 'General' },
+  { slug: 'studying', label: 'Studying' },
+  { slug: 'language', label: 'Language' },
+  { slug: 'models', label: 'Local models' },
+]
+
 export function App() {
   const { settings, loaded, update } = useSettings()
+  const [section, setSection] = useState<PopupSection>('general')
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
   const [tab, setTab] = useState<chrome.tabs.Tab | undefined>()
   const [coverage, setCoverage] = useState<{ tokens: number; types: string } | null>(null)
@@ -342,63 +364,88 @@ export function App() {
 
   return (
     <div class="app">
-      <h1>bb-subsgen</h1>
+      <div class="pinned">
+        <h1>bb-subsgen</h1>
 
-      <button
-        class="open-app"
-        onClick={() =>
-          void chrome.tabs.create({ url: chrome.runtime.getURL('src/app/index.html') })
-        }
-      >
-        Open flashcards
-      </button>
+        <button
+          class="open-app"
+          onClick={() =>
+            void chrome.tabs.create({ url: chrome.runtime.getURL('src/app/index.html') })
+          }
+        >
+          Open flashcards
+        </button>
 
-      {coverage && (
-        <p class="coverage">
-          You know <strong>{Math.round(coverage.tokens * 100)}%</strong> of what is said here —{' '}
-          {coverage.types}.
-          {coverage.tokens >= 0.95
-            ? ' Comfortable.'
-            : coverage.tokens >= 0.9
-              ? ' A stretch.'
-              : ' Hard going.'}
-        </p>
-      )}
-
-      <StudyingSection settings={settings} update={update} />
-      <LanguageSection settings={settings} update={update} />
-      <LocalModelSection settings={settings} update={update} />
-      <SpeechSection settings={settings} update={update} />
-
-      <Section title="Page reader">
-        {origin ? (
-          <>
-            <Toggle
-              label={hostLabel(origin)}
-              checked={readerOn}
-              onChange={(v) => void toggleReader(v)}
-            />
-            <div class={readerOn ? '' : 'disabled'}>
-              <ReaderOptions settings={settings} update={update} />
-            </div>
-            <Hint>
-              Hold {modifierLabel(settings)} and point at a word; click it for characters. Select
-              Chinese text for a phrase card.
-            </Hint>
-          </>
-        ) : (
-          <Hint>The reader can't run on this page.</Hint>
+        {coverage && (
+          <p class="coverage">
+            You know <strong>{Math.round(coverage.tokens * 100)}%</strong> of what is said here —{' '}
+            {coverage.types}.
+            {coverage.tokens >= 0.95
+              ? ' Comfortable.'
+              : coverage.tokens >= 0.9
+                ? ' A stretch.'
+                : ' Hard going.'}
+          </p>
         )}
-      </Section>
 
-      <Section title="Bilibili subtitles">
         <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
         <AsrProgress tabId={tab?.id} videoId={videoId} />
         <PassProgress tabId={tab?.id} />
-        <SubtitlesSection settings={settings} update={update} />
-      </Section>
 
-      <Hint>Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.</Hint>
+        {origin ? (
+          <Toggle
+            label={`Reader on ${hostLabel(origin)}`}
+            checked={readerOn}
+            onChange={(v) => void toggleReader(v)}
+          />
+        ) : (
+          <Hint>The reader can't run on this page.</Hint>
+        )}
+      </div>
+
+      <div class="section-layout">
+        <SectionRail items={SECTIONS} active={section} onSelect={setSection} />
+
+        <div class="section-pane">
+          {section === 'general' && (
+            <>
+              <Section title="Page reader">
+                {origin ? (
+                  <>
+                    <div class={readerOn ? '' : 'disabled'}>
+                      <ReaderOptions settings={settings} update={update} />
+                    </div>
+                    <Hint>
+                      Hold {modifierLabel(settings)} and point at a word; click it for characters.
+                      Select Chinese text for a phrase card.
+                    </Hint>
+                  </>
+                ) : (
+                  <Hint>The reader can't run on this page.</Hint>
+                )}
+              </Section>
+
+              <Section title="Subtitles">
+                <SubtitlesSection settings={settings} update={update} />
+                <Hint>
+                  Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.
+                </Hint>
+              </Section>
+            </>
+          )}
+
+          {section === 'studying' && <StudyingSection settings={settings} update={update} />}
+
+          {section === 'language' && <LanguageSection settings={settings} update={update} />}
+
+          {section === 'models' && (
+            <>
+              <LocalModelSection settings={settings} update={update} />
+              <SpeechSection settings={settings} update={update} />
+            </>
+          )}
+        </div>
+      </div>
 
       <p class="attribution">
         Dictionary data from{' '}

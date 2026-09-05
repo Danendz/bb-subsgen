@@ -1,12 +1,13 @@
-import { Data } from './Data'
+import { Data, DATA_SLUGS } from './Data'
 import { Dictionary } from './Dictionary'
 import { Overview } from './Overview'
 import { Review } from './Review'
-import { Settings } from './Settings'
+import { Settings, SETTINGS_SLUGS } from './Settings'
 import { SetupWizard } from './SetupWizard'
 import { Videos } from './Videos'
 import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
+import { sectionOf } from './section-route'
 
 const TABS = [
   { route: '/', label: 'Overview' },
@@ -20,7 +21,7 @@ const TABS = [
 
 function Nav({ route }: { route: string }) {
   return (
-    <nav>
+    <nav class="tabs">
       {TABS.map((tab) => (
         <a
           key={tab.route}
@@ -62,10 +63,10 @@ export function App() {
 
       {route === '/setup' ? (
         <SetupWizard />
-      ) : route === '/settings' ? (
-        <Settings />
-      ) : route === '/data' ? (
-        <Data />
+      ) : route.startsWith('/settings') ? (
+        <Settings section={sectionOf(route, '/settings', SETTINGS_SLUGS)} />
+      ) : route.startsWith('/data') ? (
+        <Data section={sectionOf(route, '/data', DATA_SLUGS)} />
       ) : route === '/review' ? (
         <Review />
       ) : route.startsWith('/chat') ? (

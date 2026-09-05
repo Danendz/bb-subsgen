@@ -1,9 +1,19 @@
 * {
   box-sizing: border-box;
 }
+/* Swapping sections changes the popup's height, so a scrollbar appears on a tall
+   pane and goes again on a short one — and every control under it shifts sideways
+   by the scrollbar's width each time. Reserving the gutter costs nothing where
+   scrollbars are overlays and stops the jump where they are not. */
+html {
+  scrollbar-gutter: stable;
+}
 body {
   margin: 0;
-  width: 300px;
+  /* A 120px rail plus a ~340px pane. Wider than the 300px this was, so every row
+     below gets more room than it had rather than less — the rail is paid for by
+     the window, not by the controls. */
+  width: 460px;
   font:
     13px -apple-system,
     'Segoe UI',
@@ -18,10 +28,9 @@ h1 {
   font-size: 15px;
   margin: 0 0 10px;
 }
-/* Section headers double as the dividers between the groups, so the panel reads
-   as "what I'm reading / where / the player" without extra rules. The groups
-   themselves are laid out by src/settings/, which the flashcards app renders
-   too — only these skins differ between the two. */
+/* Section headers double as the dividers between the groups within a pane. The
+   groups themselves are laid out by src/settings/, which the flashcards app
+   renders too — only these skins differ between the two. */
 .settings-group > h2 {
   font-size: 11px;
   font-weight: 600;
@@ -32,11 +41,54 @@ h1 {
   padding-top: 10px;
   border-top: 1px solid #33333a;
 }
-.app > .settings-group:first-of-type > h2 {
-  margin-top: 10px;
+/* The first group in a pane has the pinned block's rule above it already. */
+.section-pane > .settings-group:first-of-type > h2 {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
-/* Deliberately no `min-width: 0`: at 300px the labels are the part that must
-   not be crushed, so a long option name shrinks the control instead. */
+
+/* The tab-bound half, above the rail: what this video is and whether the reader
+   is on here. Ruled off so it reads as the state of the page rather than as one
+   more group of settings. */
+.pinned {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #33333a;
+}
+
+/* The same rail the flashcards app renders, skinned for a window this size: no
+   panel border, because the pinned block above already provides the only rule
+   the popup needs. */
+.section-layout {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.section-row {
+  padding: 0;
+}
+.section-row .row-btn {
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #8a8a95;
+  font: 500 12px inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.section-row .row-btn:hover {
+  color: #eee;
+}
+.section-row.on .row-btn {
+  color: #eee;
+  background: #2a2a30;
+}
+/* Deliberately no `min-width: 0`: in a ~340px pane the labels are still the part
+   that must not be crushed, so a long option name shrinks the control instead. */
 .grow {
   flex: 1;
 }
