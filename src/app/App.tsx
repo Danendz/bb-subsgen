@@ -8,18 +8,22 @@ import { Videos } from './Videos'
 import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
 import { sectionOf } from './section-route'
+import { useT } from '../i18n/useT'
+import type { MessageKey } from '../i18n/keys'
 
-const TABS = [
-  { route: '/', label: 'Overview' },
-  { route: '/review', label: 'Review' },
-  { route: '/chat', label: 'Chat' },
-  { route: '/dictionary', label: 'Dictionary' },
-  { route: '/videos', label: 'Videos' },
-  { route: '/data', label: 'Data' },
-  { route: '/settings', label: 'Settings' },
+const TABS: ReadonlyArray<{ route: string; label: MessageKey }> = [
+  { route: '/', label: 'app.tab.overview' },
+  { route: '/review', label: 'app.tab.review' },
+  { route: '/chat', label: 'app.tab.chat' },
+  { route: '/dictionary', label: 'app.tab.dictionary' },
+  { route: '/videos', label: 'app.tab.videos' },
+  { route: '/data', label: 'app.tab.data' },
+  { route: '/settings', label: 'app.tab.settings' },
 ]
 
 function Nav({ route }: { route: string }) {
+  const { t } = useT()
+
   return (
     <nav class="tabs">
       {TABS.map((tab) => (
@@ -42,7 +46,7 @@ function Nav({ route }: { route: string }) {
             navigate(tab.route)
           }}
         >
-          {tab.label}
+          {t(tab.label)}
         </a>
       ))}
     </nav>
@@ -51,13 +55,17 @@ function Nav({ route }: { route: string }) {
 
 export function App() {
   const route = useRoute()
+  const { t, ready } = useT()
   const video = /^\/videos\/(.+)$/.exec(route)
   const chat = /^\/chat\/(.+)$/.exec(route)
 
+  // Nothing renders until the saved language is known — see `useT`.
+  if (!ready) return null
+
   return (
     <div class="shell">
-      <h1>Flashcards</h1>
-      <p class="subtitle">Everything bb-subsgen has collected while you were reading.</p>
+      <h1>{t('app.title')}</h1>
+      <p class="subtitle">{t('app.subtitle')}</p>
 
       <Nav route={route} />
 

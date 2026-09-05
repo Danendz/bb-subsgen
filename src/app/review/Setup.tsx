@@ -9,6 +9,9 @@ import type { StudyInclude, StudyMode } from '../../flashcards/types'
 import { MAX_SESSION_SIZE, MIN_SESSION_SIZE } from '../../shared/settings'
 import type { DictSource } from '../../dict/sources'
 import { Flag } from '../flags'
+import { useT } from '../../i18n/useT'
+import type { Translate } from '../../i18n/t'
+import type { MessageKey } from '../../i18n/keys'
 
 export interface SessionSetup {
   /**
@@ -24,36 +27,42 @@ export interface SessionSetup {
   studySessionSize: number
 }
 
-const MODES: ReadonlyArray<{ value: StudyMode; label: string; hint: string }> = [
-  { value: 'mixed', label: 'Mixed', hint: 'A different angle each sitting' },
-  { value: 'remember', label: 'Remembering', hint: 'Recall it, then say how it went' },
-  { value: 'type', label: 'Typing', hint: 'Build it from the meaning' },
-  { value: 'audio', label: 'Listening', hint: 'Build it from the sound' },
+// Keys rather than strings: these tables are module-level and `t` is only
+// available once a component is rendering.
+const MODES: ReadonlyArray<{ value: StudyMode; label: MessageKey; hint: MessageKey }> = [
+  { value: 'mixed', label: 'setup.mode.mixed', hint: 'setup.mode.mixedHint' },
+  { value: 'remember', label: 'setup.mode.remember', hint: 'setup.mode.rememberHint' },
+  { value: 'type', label: 'setup.mode.type', hint: 'setup.mode.typeHint' },
+  { value: 'audio', label: 'setup.mode.audio', hint: 'setup.mode.audioHint' },
 ]
 
-const INCLUDES: ReadonlyArray<{ value: StudyInclude; label: string }> = [
-  { value: 'both', label: 'Everything' },
-  { value: 'words', label: 'Words only' },
-  { value: 'sentences', label: 'Lines only' },
-  { value: 'grammar', label: 'Grammar only' },
+const INCLUDES: ReadonlyArray<{ value: StudyInclude; label: MessageKey }> = [
+  { value: 'both', label: 'setup.include.both' },
+  { value: 'words', label: 'setup.include.words' },
+  { value: 'sentences', label: 'setup.include.sentences' },
+  { value: 'grammar', label: 'setup.include.grammar' },
 ]
 
-const MODE_LABEL: Record<StudyMode, string> = {
-  mixed: 'Mixed',
-  remember: 'Remembering',
-  type: 'Typing',
-  audio: 'Listening',
+const MODE_KEY: Record<StudyMode, MessageKey> = {
+  mixed: 'setup.mode.mixed',
+  remember: 'setup.mode.remember',
+  type: 'setup.mode.type',
+  audio: 'setup.mode.audio',
 }
 
-const INCLUDE_LABEL: Record<StudyInclude, string> = {
-  both: 'words + lines + grammar',
-  words: 'words only',
-  sentences: 'lines only',
-  grammar: 'grammar only',
+const INCLUDE_KEY: Record<StudyInclude, MessageKey> = {
+  both: 'setup.summary.both',
+  words: 'setup.summary.words',
+  sentences: 'setup.summary.sentences',
+  grammar: 'setup.summary.grammar',
 }
 
-export function setupSummary(setup: SessionSetup): string {
-  return `${MODE_LABEL[setup.studyMode]} · ${INCLUDE_LABEL[setup.studyInclude]} · ${setup.studySessionSize} cards`
+export function setupSummary(setup: SessionSetup, t: Translate): string {
+  return t('setup.summary', {
+    mode: t(MODE_KEY[setup.studyMode]),
+    include: t(INCLUDE_KEY[setup.studyInclude]),
+    count: setup.studySessionSize,
+  })
 }
 
 export interface SetupProps {
@@ -72,6 +81,8 @@ export interface SetupProps {
 }
 
 export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
+  const { t } = useT()
+
   return (
     <div class="setup">
       {/*
@@ -80,7 +91,7 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
       */}
       {languages.length > 1 && (
         <fieldset class="setup-group">
-          <legend>Which language</legend>
+          <legend>{t('setup.language')}</legend>
           <div class="choices row">
             {languages.map((source) => (
               <button
@@ -99,7 +110,7 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
       )}
 
       <fieldset class="setup-group">
-        <legend>How you are asked</legend>
+        <legend>{t('setup.howAsked')}</legend>
         <div class="choices">
           {MODES.map((mode) => {
             // Listening is the one mode the machine can veto: without a
@@ -112,12 +123,12 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
                 class={`choice ${setup.studyMode === mode.value ? 'on' : ''}`}
                 aria-pressed={setup.studyMode === mode.value}
                 disabled={unavailable}
-                title={unavailable ? 'No Mandarin voice is installed on this computer' : undefined}
+                title={unavailable ? t('setup.mode.noVoiceTitle') : undefined}
                 onClick={() => onChange({ studyMode: mode.value })}
               >
-                <span class="choice-label">{mode.label}</span>
+                <span class="choice-label">{t(mode.label)}</span>
                 <span class="choice-hint">
-                  {unavailable ? 'No Mandarin voice installed' : mode.hint}
+                  {unavailable ? t('setup.mode.noVoiceHint') : t(mode.hint)}
                 </span>
               </button>
             )
@@ -126,7 +137,7 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
       </fieldset>
 
       <fieldset class="setup-group">
-        <legend>What is included</legend>
+        <legend>{t('setup.whatIncluded')}</legend>
         <div class="choices row">
           {INCLUDES.map((option) => (
             <button
@@ -136,7 +147,7 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
               aria-pressed={setup.studyInclude === option.value}
               onClick={() => onChange({ studyInclude: option.value })}
             >
-              <span class="choice-label">{option.label}</span>
+              <span class="choice-label">{t(option.label)}</span>
             </button>
           ))}
         </div>
@@ -144,7 +155,7 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
 
       <fieldset class="setup-group">
         <legend>
-          Session length <span class="size-readout">{setup.studySessionSize}</span>
+          {t('setup.length')} <span class="size-readout">{setup.studySessionSize}</span>
         </legend>
         <input
           type="range"
@@ -153,13 +164,10 @@ export function Setup({ setup, canSpeak, languages, onChange }: SetupProps) {
           max={MAX_SESSION_SIZE}
           step={5}
           value={setup.studySessionSize}
-          aria-label="Cards per session"
+          aria-label={t('setup.lengthAria')}
           onInput={(e) => onChange({ studySessionSize: Number(e.currentTarget.value) })}
         />
-        <p class="setup-note small muted">
-          Counted as distinct cards. One you get wrong comes back before the session ends without
-          making it longer.
-        </p>
+        <p class="setup-note small muted">{t('setup.lengthNote')}</p>
       </fieldset>
     </div>
   )

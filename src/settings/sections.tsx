@@ -28,18 +28,22 @@ import { normalizeHelperUrl } from '../youtube/site'
 import { ASR_PRESETS } from '../llm/asr'
 import { log } from '../llm/log'
 import { Hint, ModelSelect, Section, Select, Slider, Toggle, useVoices } from './controls'
+import { useT } from '../i18n/useT'
+import { Rich } from '../i18n/Rich'
+import type { Translate } from '../i18n/t'
 
 export interface SectionProps {
   settings: Settings
   update: (patch: Partial<Settings>) => void
 }
 
-const LAYOUTS: ReadonlyArray<{ code: TranslationLayout; label: string }> = [
-  { code: 'inline', label: 'Same card' },
-  { code: 'card', label: 'Separate card' },
+const layouts = (t: Translate): ReadonlyArray<{ code: TranslationLayout; label: string }> => [
+  { code: 'inline', label: t('settings.subtitles.layoutInline') },
+  { code: 'card', label: t('settings.subtitles.layoutCard') },
 ]
 
 export function StudyingSection({ settings, update }: SectionProps) {
+  const { t } = useT()
   const voices = useVoices()
 
   // Derived rather than stored: an intake of zero already means "no lines", so
@@ -48,14 +52,14 @@ export function StudyingSection({ settings, update }: SectionProps) {
   const studyLines = settings.newSentencesPerDay > 0
 
   return (
-    <Section title="Studying">
+    <Section title={t('settings.studying.title')}>
       <Toggle
-        label="Quiz mode (Alt+Q)"
+        label={t('settings.studying.quizMode')}
         checked={settings.quizMode}
         onChange={(v) => update({ quizMode: v })}
       />
       <Toggle
-        label="Study whole lines"
+        label={t('settings.studying.wholeLines')}
         checked={studyLines}
         onChange={(on) =>
           update({ newSentencesPerDay: on ? DEFAULT_SETTINGS.newSentencesPerDay : 0 })
@@ -63,7 +67,7 @@ export function StudyingSection({ settings, update }: SectionProps) {
       />
       {studyLines && (
         <Slider
-          label="New lines / day"
+          label={t('settings.studying.newLines')}
           value={settings.newSentencesPerDay}
           min={1}
           max={20}
@@ -71,33 +75,29 @@ export function StudyingSection({ settings, update }: SectionProps) {
         />
       )}
       <Hint>
-        Quiz mode holds back readings and translations until you hover. Every word you collect is
-        studiable straight away.{' '}
-        {studyLines
-          ? 'Whole lines are let in a few a day, easiest first.'
-          : 'Lines are still collected while you read — turn this on whenever you want them.'}
+        {t('settings.studying.hint')}{' '}
+        {studyLines ? t('settings.studying.hintLinesOn') : t('settings.studying.hintLinesOff')}
       </Hint>
 
       <label class="row">
-        <span class="grow">Card voice</span>
+        <span class="grow">{t('settings.studying.voice')}</span>
         <select
           value={settings.speechVoice}
           onChange={(e) => update({ speechVoice: e.currentTarget.value })}
         >
-          <option value="">Automatic (best available)</option>
+          <option value="">{t('settings.studying.voiceAuto')}</option>
           {voices.map((voice) => (
             <option key={voice.name} value={voice.name}>
-              {voice.name}
-              {isRemote(voice) ? ' — networked' : ''}
+              {isRemote(voice)
+                ? t('settings.studying.voiceNetworked', { name: voice.name })
+                : voice.name}
             </option>
           ))}
         </select>
       </label>
-      {voices.length === 0 && (
-        <Hint>No Chinese voice found on this computer, so cards cannot be spoken.</Hint>
-      )}
+      {voices.length === 0 && <Hint>{t('settings.studying.noVoice')}</Hint>}
       <Slider
-        label="Voice speed"
+        label={t('settings.studying.voiceSpeed')}
         value={settings.speechRate}
         min={MIN_SPEECH_RATE}
         max={MAX_SPEECH_RATE}
@@ -108,12 +108,9 @@ export function StudyingSection({ settings, update }: SectionProps) {
         onChange={(v) => update({ speechRate: Math.round(v * 20) / 20 })}
       />
       <button class="ghost" onClick={() => speak('你好，今天天气很好。')}>
-        Test voice
+        {t('settings.studying.testVoice')}
       </button>
-      <Hint>
-        Networked voices sound best but are synthesised by Google, so the card text leaves your
-        computer and they go quiet offline — a local voice takes over when that happens.
-      </Hint>
+      <Hint>{t('settings.studying.voiceHint')}</Hint>
     </Section>
   )
 }
@@ -148,29 +145,25 @@ function useOnDeviceSupport(lang: TranslationLang): boolean | null {
 }
 
 export function LanguageSection({ settings, update }: SectionProps) {
+  const { t } = useT()
   const onDevice = useOnDeviceSupport(settings.translationLang)
 
   return (
-    <Section title="Language">
+    <Section title={t('settings.language.title')}>
       <Select
-        label="Translate to"
+        label={t('settings.language.translateTo')}
         value={settings.translationLang}
         options={TRANSLATION_LANGS}
         onChange={(v: TranslationLang) => update({ translationLang: v })}
       />
-      {onDevice === false && (
-        <Hint>
-          Chrome has no on-device translator for this pair, so lines are translated by your local
-          model instead. Slower, and nothing is translated while the model is off.
-        </Hint>
-      )}
+      {onDevice === false && <Hint>{t('settings.language.noOnDevice')}</Hint>}
       <Toggle
-        label="Tone colors"
+        label={t('settings.language.toneColors')}
         checked={settings.showToneColors}
         onChange={(v) => update({ showToneColors: v })}
       />
       <Toggle
-        label="Show traditional in definitions"
+        label={t('settings.language.traditional')}
         checked={settings.useTraditional}
         onChange={(v) => update({ useTraditional: v })}
       />
@@ -186,22 +179,20 @@ export function LanguageSection({ settings, update }: SectionProps) {
  * and the model pickers below have nothing to offer until it answers.
  */
 export function LocalModelSection({ settings, update }: SectionProps) {
+  const { t } = useT()
   const [models, setModels] = useState<string[]>([])
   const [draft, setDraft] = useState(settings.llmBaseUrl)
   const [status, setStatus] = useState<{ tone: string; message: string } | null>(null)
 
   const refreshModels = async (baseUrl: string) => {
-    setStatus({ tone: 'busy', message: 'Connecting…' })
+    setStatus({ tone: 'busy', message: t('settings.connecting') })
     try {
       const found = await listModels({ baseUrl, log })
       setModels(found)
       setStatus(
         found.length
-          ? {
-              tone: 'ok',
-              message: `Connected — ${found.length} model${found.length === 1 ? '' : 's'}.`,
-            }
-          : { tone: 'bad', message: 'Connected, but the server has no models loaded.' },
+          ? { tone: 'ok', message: t('settings.connectedModels', { count: found.length }) }
+          : { tone: 'bad', message: t('settings.llm.noModels') },
       )
     } catch (e) {
       setModels([])
@@ -228,19 +219,16 @@ export function LocalModelSection({ settings, update }: SectionProps) {
     update({ llmBaseUrl: baseUrl })
 
     if (!(await requestLlmPermission(baseUrl))) {
-      setStatus({
-        tone: 'bad',
-        message: 'Chrome needs permission to reach that address before the model can be used.',
-      })
+      setStatus({ tone: 'bad', message: t('settings.llm.needsPermission') })
       return
     }
     await refreshModels(baseUrl)
   }
 
   return (
-    <Section title="Local model">
+    <Section title={t('settings.llm.title')}>
       <Toggle
-        label="Enabled"
+        label={t('settings.enabled')}
         checked={settings.llmEnabled}
         onChange={(v) => update({ llmEnabled: v })}
       />
@@ -262,7 +250,7 @@ export function LocalModelSection({ settings, update }: SectionProps) {
         </div>
 
         <label class="row">
-          <span class="grow">Server</span>
+          <span class="grow">{t('settings.server')}</span>
           <input
             class="url"
             type="text"
@@ -280,12 +268,12 @@ export function LocalModelSection({ settings, update }: SectionProps) {
         </label>
 
         <button class="connect" onClick={() => void connect()}>
-          Connect
+          {t('settings.connect')}
         </button>
         {status && <p class={`status status-${status.tone}`}>{status.message}</p>}
 
         <ModelSelect
-          label="Chat model"
+          label={t('settings.llm.chatModel')}
           value={settings.llmChatModel}
           models={models}
           onChange={(v) => update({ llmChatModel: v })}
@@ -294,13 +282,13 @@ export function LocalModelSection({ settings, update }: SectionProps) {
         <hr class="divider" />
 
         <Toggle
-          label="Translate subtitles"
+          label={t('settings.llm.translateSubtitles')}
           checked={settings.llmTranslationEnabled}
           onChange={(v) => update({ llmTranslationEnabled: v })}
         />
         <div class={settings.llmTranslationEnabled ? '' : 'disabled'}>
           <ModelSelect
-            label="Translation model"
+            label={t('settings.llm.translationModel')}
             value={settings.llmTranslationModel}
             models={models}
             onChange={(v) => update({ llmTranslationModel: v })}
@@ -308,17 +296,12 @@ export function LocalModelSection({ settings, update }: SectionProps) {
         </div>
 
         <Toggle
-          label="Verbose logging"
+          label={t('settings.llm.verboseLog')}
           checked={settings.llmVerboseLog}
           onChange={(v) => update({ llmVerboseLog: v })}
         />
 
-        <Hint>
-          Explanations and chat use the chat model, and only when you ask for them. Subtitle
-          translation runs in the background on the translation model and takes over from Chrome's
-          translator once it is far enough ahead — pick something fast for it. The debug log is on
-          the flashcards Data tab.
-        </Hint>
+        <Hint>{t('settings.llm.hint')}</Hint>
       </div>
     </Section>
   )
@@ -332,6 +315,7 @@ export function LocalModelSection({ settings, update }: SectionProps) {
  * neither transcribes audio. The two are related only in both being local.
  */
 export function SpeechSection({ settings, update }: SectionProps) {
+  const { t } = useT()
   const [models, setModels] = useState<string[]>([])
   const [draft, setDraft] = useState(settings.asrBaseUrl)
   const [status, setStatus] = useState<{ tone: string; message: string } | null>(null)
@@ -353,39 +337,43 @@ export function SpeechSection({ settings, update }: SectionProps) {
     update({ ytdlpBaseUrl: baseUrl })
 
     if (!(await requestLlmPermission(baseUrl))) {
-      setHelperStatus({
-        tone: 'bad',
-        message: 'Chrome needs permission to reach that address before it can be used.',
-      })
+      setHelperStatus({ tone: 'bad', message: t('settings.asr.needsPermission') })
       return
     }
 
-    setHelperStatus({ tone: 'busy', message: 'Connecting…' })
+    setHelperStatus({ tone: 'busy', message: t('settings.connecting') })
     try {
       const resp = await fetch(`${baseUrl}/health`)
       setHelperStatus(
         resp.ok
-          ? { tone: 'ok', message: 'Connected.' }
-          : { tone: 'bad', message: `The helper answered ${resp.status}.` },
+          ? { tone: 'ok', message: t('settings.connected') }
+          : {
+              tone: 'bad',
+              // A status code is a number that is not a quantity: interpolated
+              // as one it would read "404" in English and "4 04" in French.
+              message: t('settings.asr.helperAnswered', { status: String(resp.status) }),
+            },
       )
     } catch (e) {
       setHelperStatus({
         tone: 'bad',
-        message: `Could not reach it: ${e instanceof Error ? e.message : String(e)}`,
+        message: t('settings.asr.unreachable', {
+          error: e instanceof Error ? e.message : String(e),
+        }),
       })
     }
   }
 
   const probe = async (baseUrl: string) => {
-    setStatus({ tone: 'busy', message: 'Connecting…' })
+    setStatus({ tone: 'busy', message: t('settings.connecting') })
     try {
       const found = await listModels({ baseUrl, log })
       setModels(found)
       setStatus({
         tone: 'ok',
         message: found.length
-          ? `Connected — ${found.length} model${found.length === 1 ? '' : 's'}.`
-          : 'Connected.',
+          ? t('settings.connectedModels', { count: found.length })
+          : t('settings.connected'),
       })
     } catch (e) {
       setModels([])
@@ -396,11 +384,7 @@ export function SpeechSection({ settings, update }: SectionProps) {
       const answered = e instanceof LlmError && e.status !== undefined
       setStatus(
         answered
-          ? {
-              tone: 'ok',
-              message:
-                'Reachable. This server lists no models — type the name it was started with.',
-            }
+          ? { tone: 'ok', message: t('settings.asr.noModelList') }
           : { tone: 'bad', message: e instanceof Error ? e.message : String(e) },
       )
     }
@@ -423,19 +407,16 @@ export function SpeechSection({ settings, update }: SectionProps) {
     update({ asrBaseUrl: baseUrl })
 
     if (!(await requestLlmPermission(baseUrl))) {
-      setStatus({
-        tone: 'bad',
-        message: 'Chrome needs permission to reach that address before it can be used.',
-      })
+      setStatus({ tone: 'bad', message: t('settings.asr.needsPermission') })
       return
     }
     await probe(baseUrl)
   }
 
   return (
-    <Section title="Speech to text">
+    <Section title={t('settings.asr.title')}>
       <Toggle
-        label="Transcribe videos with no subtitles"
+        label={t('settings.asr.enable')}
         checked={settings.asrEnabled}
         onChange={(v) => update({ asrEnabled: v })}
       />
@@ -457,7 +438,7 @@ export function SpeechSection({ settings, update }: SectionProps) {
         </div>
 
         <label class="row">
-          <span class="grow">Server</span>
+          <span class="grow">{t('settings.server')}</span>
           <input
             class="url"
             type="text"
@@ -473,7 +454,7 @@ export function SpeechSection({ settings, update }: SectionProps) {
         </label>
 
         <button class="connect" onClick={() => void connect()}>
-          Connect
+          {t('settings.connect')}
         </button>
         {status && <p class={`status status-${status.tone}`}>{status.message}</p>}
 
@@ -481,7 +462,7 @@ export function SpeechSection({ settings, update }: SectionProps) {
             usually started with one model already loaded, and the name it
             answers to is whatever the command line said. */}
         <label class="row">
-          <span class="grow">Model</span>
+          <span class="grow">{t('settings.asr.model')}</span>
           <input
             class="url"
             type="text"
@@ -498,10 +479,10 @@ export function SpeechSection({ settings, update }: SectionProps) {
         </label>
 
         <Hint>
-          Most of bangumi ships without subtitles, and this transcribes the audio so those episodes
-          can still be read. It runs once per episode and the result is cached, so a rewatch costs
-          nothing. Start a server with <code>tools/asr-server.sh</code> in the extension's
-          repository — it is a separate program from the chat model above.
+          <Rich
+            text={t('settings.asr.hint')}
+            slots={{ script: <code>tools/asr-server.sh</code> }}
+          />
         </Hint>
 
         {/* A second address, and unavoidably so. Bilibili hands out a plain URL
@@ -509,7 +490,7 @@ export function SpeechSection({ settings, update }: SectionProps) {
             site the audio has to come from a local helper that knows how to ask.
             Leaving this empty simply means YouTube is not transcribed. */}
         <label class="row">
-          <span class="grow">YouTube audio helper</span>
+          <span class="grow">{t('settings.asr.helper')}</span>
           <input
             class="url"
             type="text"
@@ -525,16 +506,20 @@ export function SpeechSection({ settings, update }: SectionProps) {
         </label>
 
         <button class="connect" onClick={() => void connectHelper()}>
-          Connect
+          {t('settings.connect')}
         </button>
         {helperStatus && <p class={`status status-${helperStatus.tone}`}>{helperStatus.message}</p>}
 
         <Hint>
-          Only needed for YouTube. It serves a video's audio to the extension, because YouTube no
-          longer publishes an address the browser can fetch one from. Run it with{' '}
-          <code>npm run ytdlp</code> in the extension's repository, or <code>npm run services</code>{' '}
-          to start it alongside the speech server above. Needs <code>yt-dlp</code> and{' '}
-          <code>ffmpeg</code> installed.
+          <Rich
+            text={t('settings.asr.helperHint')}
+            slots={{
+              ytdlp: <code>npm run ytdlp</code>,
+              services: <code>npm run services</code>,
+              ytdlpBin: <code>yt-dlp</code>,
+              ffmpeg: <code>ffmpeg</code>,
+            }}
+          />
         </Hint>
       </div>
     </Section>
@@ -549,16 +534,18 @@ export function SpeechSection({ settings, update }: SectionProps) {
  * no tab to read an origin off.
  */
 export function ReaderOptions({ settings, update }: SectionProps) {
+  const { t } = useT()
+
   return (
     <>
       <Select
-        label="Hold key"
+        label={t('settings.reader.holdKey')}
         value={settings.readerModifier}
         options={READER_MODIFIERS}
         onChange={(v: ReaderModifier) => update({ readerModifier: v })}
       />
       <Toggle
-        label="Translate the sentence"
+        label={t('settings.reader.translateSentence')}
         checked={settings.readerSentenceTranslation}
         onChange={(v) => update({ readerSentenceTranslation: v })}
       />
@@ -571,19 +558,25 @@ export function modifierLabel(settings: Settings): string {
 }
 
 export function SubtitlesSection({ settings, update }: SectionProps) {
+  const { t } = useT()
+
   return (
     <>
-      <Toggle label="Enabled" checked={settings.enabled} onChange={(v) => update({ enabled: v })} />
+      <Toggle
+        label={t('settings.enabled')}
+        checked={settings.enabled}
+        onChange={(v) => update({ enabled: v })}
+      />
 
       <div class={settings.enabled ? '' : 'disabled'}>
         <Toggle
-          label="Show pinyin"
+          label={t('settings.subtitles.showPinyin')}
           checked={settings.showPinyin}
           onChange={(v) => update({ showPinyin: v })}
         />
 
         <Slider
-          label="Font size"
+          label={t('settings.subtitles.fontSize')}
           value={settings.fontSize}
           min={18}
           max={48}
@@ -591,7 +584,7 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
           onChange={(v) => update({ fontSize: v })}
         />
         <Slider
-          label="Word spacing"
+          label={t('settings.subtitles.wordSpacing')}
           value={settings.wordSpacing}
           min={0}
           max={24}
@@ -599,7 +592,7 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
           onChange={(v) => update({ wordSpacing: v })}
         />
         <Slider
-          label="Backdrop opacity"
+          label={t('settings.subtitles.backdrop')}
           value={settings.backdropOpacity}
           min={0}
           max={100}
@@ -608,7 +601,7 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
         />
 
         <Slider
-          label="Height"
+          label={t('settings.subtitles.height')}
           value={settings.positionPercent}
           min={0}
           max={85}
@@ -616,7 +609,7 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
           onChange={(v) => update({ positionPercent: v })}
         />
         <Toggle
-          label="Lift above player controls"
+          label={t('settings.subtitles.lift')}
           checked={settings.liftAboveControls}
           onChange={(v) => update({ liftAboveControls: v })}
         />
@@ -624,14 +617,14 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
         <hr class="divider" />
 
         <Toggle
-          label="Translation"
+          label={t('settings.subtitles.translation')}
           checked={settings.showTranslation}
           onChange={(v) => update({ showTranslation: v })}
         />
 
         <div class={settings.showTranslation ? '' : 'disabled'}>
           <Slider
-            label="Translation size"
+            label={t('settings.subtitles.translationSize')}
             value={settings.translationFontSize}
             min={10}
             max={32}
@@ -639,9 +632,9 @@ export function SubtitlesSection({ settings, update }: SectionProps) {
             onChange={(v) => update({ translationFontSize: v })}
           />
           <Select
-            label="Translation layout"
+            label={t('settings.subtitles.translationLayout')}
             value={settings.translationLayout}
-            options={LAYOUTS}
+            options={layouts(t)}
             onChange={(v: TranslationLayout) => update({ translationLayout: v })}
           />
         </div>

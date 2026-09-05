@@ -10,6 +10,7 @@ code.** A follow-up commit is a commit that does not happen.
 |---|---|
 | add or change a `bb-subsgen:*` message | `messaging.md` |
 | add a directory under `src/`, or a new surface | `architecture.md` |
+| add a user-facing string to the app, popup or settings | `src/i18n/en.ts`, and the five other locales — the compiler will tell you |
 | add, rename or remove an npm script | `CLAUDE.md` |
 | bump an IndexedDB `VERSION`, or add a database | `architecture.md` |
 | add an LLM preset, endpoint, or prompt rule | `llm-and-asr.md` |

@@ -29,6 +29,9 @@ import { Line } from './Line'
 import { dominantTone, Pinyin } from '../pinyin'
 import { ChatDrawer } from '../chat/ChatDrawer'
 import { explainQuestion, openExplainChat } from '../chat/explain'
+import { useT } from '../../i18n/useT'
+import { Rich } from '../../i18n/Rich'
+import type { Translate } from '../../i18n/t'
 
 /** Rewind, so the jump-back lands before the line rather than on top of it. */
 const REWIND_S = 10
@@ -121,6 +124,7 @@ export function Session({
   mode,
   onFinish,
 }: SessionProps) {
+  const { t } = useT()
   const [queue, setQueue] = useState<Item[]>(initial)
   // Held as state because failing a practice card takes it out: it has lapsed,
   // so it is owed now, and the retry it earns inside this sitting has to count
@@ -380,19 +384,22 @@ export function Session({
 
     setOpening(true)
     try {
-      const chatId = await openExplainChat({
-        line: context.text,
-        // A sentence or grammar card is a question about the whole line; only a
-        // word card has a word to single out.
-        ...(current.kind === 'word' ? { target: current.text } : {}),
-        ...(context.videoId !== undefined ? { videoId: context.videoId } : {}),
-        ...(context.start !== undefined ? { start: context.start } : {}),
-        ...(context.title !== undefined ? { sourceTitle: context.title } : {}),
-        itemId: current.id,
-      })
+      const chatId = await openExplainChat(
+        {
+          line: context.text,
+          // A sentence or grammar card is a question about the whole line; only a
+          // word card has a word to single out.
+          ...(current.kind === 'word' ? { target: current.text } : {}),
+          ...(context.videoId !== undefined ? { videoId: context.videoId } : {}),
+          ...(context.start !== undefined ? { start: context.start } : {}),
+          ...(context.title !== undefined ? { sourceTitle: context.title } : {}),
+          itemId: current.id,
+        },
+        t,
+      )
       setExplaining({
         chatId,
-        question: explainQuestion(current.kind === 'word' ? current.text : undefined),
+        question: explainQuestion(t, current.kind === 'word' ? current.text : undefined),
       })
     } catch (e) {
       console.warn('[bb-subsgen] could not open an explanation', e)
@@ -467,21 +474,21 @@ export function Session({
   if (!current || !card) {
     return (
       <div class="panel done">
-        <p class="done-title">Session complete</p>
+        <p class="done-title">{t('session.complete')}</p>
         <ToneBar tones={tones} total={total} />
         <div class="summary">
           <span>
-            <b>{total}</b> cards
+            <Rich text={t('session.summary.total')} slots={{ n: <b>{total}</b> }} />
           </span>
           <span>
-            <b>{right}</b> right first time
+            <Rich text={t('session.summary.right')} slots={{ n: <b>{right}</b> }} />
           </span>
           <span>
-            <b>{best}</b> best run
+            <Rich text={t('session.summary.best')} slots={{ n: <b>{best}</b> }} />
           </span>
         </div>
         <button class="primary" onClick={onFinish}>
-          Done
+          {t('review.done')}
         </button>
       </div>
     )
@@ -498,11 +505,11 @@ export function Session({
     <>
       <div class="hud">
         <button class="ghost" onClick={onFinish}>
-          End session
+          {t('session.end')}
         </button>
         <ToneBar tones={tones} total={total} />
         <span class={`combo ${combo >= 3 ? 'hot' : ''}`}>
-          {combo >= 3 ? `${combo} in a row` : `${right} / ${total}`}
+          {combo >= 3 ? t('session.combo', { count: combo }) : t('session.score', { right, total })}
         </span>
       </div>
 
@@ -510,7 +517,7 @@ export function Session({
           graded, and colouring it red in that gap prejudges an answer the user
           has not given yet. */}
       <div class={`panel card ${outcome ? (outcome.right ? 'right' : 'wrong') : ''}`}>
-        <p class="task">{taskLabel(exercise.cue, current.kind, exercise.response)}</p>
+        <p class="task">{taskLabel(exercise.cue, current.kind, exercise.response, t)}</p>
 
         {exercise.cue === 'pattern' ? (
           <div class="prompt">
@@ -525,12 +532,12 @@ export function Session({
         ) : exercise.cue === 'audio' ? (
           <div class="prompt">
             <button class="speak big" onClick={() => speak(current.text)}>
-              <span aria-hidden="true">♪</span> Play again
+              <span aria-hidden="true">♪</span> {t('session.playAgain')}
             </button>
           </div>
         ) : exercise.cue === 'gloss' ? (
           <div class="prompt">
-            <p class="gloss-prompt">{gloss || '(no definition)'}</p>
+            <p class="gloss-prompt">{gloss || t('session.noDefinitionShort')}</p>
           </div>
         ) : exercise.cue === 'translation' ? (
           <div class="prompt">
@@ -549,7 +556,7 @@ export function Session({
               />
             </p>
             <button class="speak" onClick={() => speak(current.text)}>
-              <span aria-hidden="true">♪</span> Play again
+              <span aria-hidden="true">♪</span> {t('session.playAgain')}
             </button>
           </div>
         ) : (
@@ -588,7 +595,7 @@ export function Session({
             type="text"
             class="answer-input"
             value={typed}
-            placeholder="Type the line…"
+            placeholder={t('session.typeLine')}
             disabled={checked}
             onInput={(e) => setTyped(e.currentTarget.value)}
           />
@@ -600,7 +607,7 @@ export function Session({
             type="text"
             class="answer-input"
             value={typed}
-            placeholder="Type the characters…"
+            placeholder={t('session.typeChars')}
             disabled={checked}
             onInput={(e) => setTyped(e.currentTarget.value)}
           />
@@ -608,7 +615,7 @@ export function Session({
 
         {exercise.response === 'tiles' && !checked && (
           <button class="link-btn" onClick={() => setTypingEscape((on) => !on)}>
-            {typingEscape ? 'Use the word bank' : 'Type it instead'}
+            {typingEscape ? t('session.useBank') : t('session.typeInstead')}
           </button>
         )}
 
@@ -620,10 +627,10 @@ export function Session({
             {outcome && exercise.response !== 'reveal' && (
               <p class={`verdict ${outcome.right ? 'ok' : 'no'}`}>
                 {outcome.right
-                  ? 'Correct'
+                  ? t('session.correct')
                   : attempt
-                    ? `Not quite — you put ${attempt}`
-                    : 'Not quite'}
+                    ? t('session.notQuiteWith', { attempt })
+                    : t('session.notQuite')}
               </p>
             )}
 
@@ -672,7 +679,9 @@ export function Session({
             {/* Same rule as the characters above: the meaning is worth showing
                 unless the meaning was the question. */}
             {current.kind === 'word'
-              ? exercise.cue !== 'gloss' && <p class="meaning">{gloss || 'No definition found'}</p>
+              ? exercise.cue !== 'gloss' && (
+                  <p class="meaning">{gloss || t('session.noDefinition')}</p>
+                )
               : current.kind === 'sentence'
                 ? exercise.cue !== 'translation' &&
                   translation && <p class="meaning">{translation}</p>
@@ -683,7 +692,7 @@ export function Session({
                 on the question side this would give the answer away. */}
             {patterns.length > 0 && (
               <div class="structure">
-                <p class="structure-label">Structure</p>
+                <p class="structure-label">{t('session.structure')}</p>
                 {patterns.map((pattern) => (
                   <div class="pattern" key={pattern.id}>
                     <p class="pattern-head">
@@ -701,7 +710,7 @@ export function Session({
                 nonsense — so it offers its example instead, or nothing. */}
             {canSpeak() && spokenText && (
               <button class="speak" onClick={() => speak(spokenText)}>
-                <span aria-hidden="true">♪</span> Listen
+                <span aria-hidden="true">♪</span> {t('session.listen')}
               </button>
             )}
 
@@ -734,9 +743,11 @@ export function Session({
             {context && contextUrl(context) && (
               <p class="small">
                 <a href={contextUrl(context)!} target="_blank" rel="noreferrer">
-                  Watch it again from {timestamp(Math.max(0, (context.start ?? 0) - REWIND_S))}
+                  {t('session.watchAgain', {
+                    time: timestamp(Math.max(0, (context.start ?? 0) - REWIND_S)),
+                  })}
                 </a>{' '}
-                <span class="muted">— translations stay hidden</span>
+                <span class="muted">{t('session.translationsHidden')}</span>
               </p>
             )}
 
@@ -745,16 +756,14 @@ export function Session({
                 was said — and a homophone it got wrong is indistinguishable from
                 a word you simply do not know yet, which is precisely the
                 confusion worth heading off before you try to learn it. */}
-            {context?.source === 'asr' && (
-              <p class="small muted">Transcribed from the audio — this line may be misheard.</p>
-            )}
+            {context?.source === 'asr' && <p class="small muted">{t('session.asrWarning')}</p>}
 
             {/* Only offered when a model is actually configured: a button that
                 explains why it cannot work is worse than no button. */}
             {llmReady && context?.text && (
               <p class="small">
                 <button class="link-btn" disabled={opening} onClick={() => void explain()}>
-                  {opening ? 'Reading the scene…' : 'Explain this line'}
+                  {opening ? t('embed.reading') : t('session.explain')}
                 </button>
               </p>
             )}
@@ -765,20 +774,20 @@ export function Session({
       <div class="actions">
         {!checked ? (
           <button class="primary" disabled={!answered} onClick={check}>
-            {exercise.response === 'reveal' ? 'Show answer' : 'Check'}
+            {exercise.response === 'reveal' ? t('session.showAnswer') : t('session.check')}
           </button>
         ) : exercise.response === 'reveal' && !outcome ? (
           <>
             <button class="wrong-btn" onClick={() => void settle(false).then(advance)}>
-              I didn’t know it
+              {t('session.didntKnow')}
             </button>
             <button class="right-btn" onClick={() => void settle(true).then(advance)}>
-              I knew it
+              {t('session.knewIt')}
             </button>
           </>
         ) : (
           <button class="primary" onClick={advance}>
-            Continue
+            {t('session.continue')}
           </button>
         )}
       </div>
@@ -795,15 +804,15 @@ export function Session({
   )
 }
 
-function taskLabel(cue: string, kind: Item['kind'], response: string): string {
+function taskLabel(cue: string, kind: Item['kind'], response: string, t: Translate): string {
   if (cue === 'pattern') {
-    return response === 'tiles' ? 'Build this line using the shape' : 'What does this shape do?'
+    return t(response === 'tiles' ? 'task.pattern.tiles' : 'task.pattern.reveal')
   }
-  if (cue === 'audio') return kind === 'word' ? 'Type what you hear' : 'Build what you hear'
-  if (cue === 'gloss') return 'Type the characters'
-  if (cue === 'translation') return 'Build this line in Chinese'
-  if (cue === 'cloze') return 'Which word is missing?'
-  return kind === 'word' ? 'What does this mean?' : 'What does this line mean?'
+  if (cue === 'audio') return t(kind === 'word' ? 'task.audio.word' : 'task.audio.line')
+  if (cue === 'gloss') return t('task.gloss')
+  if (cue === 'translation') return t('task.translation')
+  if (cue === 'cloze') return t('task.cloze')
+  return t(kind === 'word' ? 'task.meaning.word' : 'task.meaning.line')
 }
 
 /**
@@ -815,6 +824,8 @@ function taskLabel(cue: string, kind: Item['kind'], response: string): string {
  * number of answers.
  */
 function ToneBar({ tones, total }: { tones: number[]; total: number }) {
+  const { t } = useT()
+
   return (
     <div
       class="tonebar"
@@ -822,7 +833,7 @@ function ToneBar({ tones, total }: { tones: number[]; total: number }) {
       aria-valuenow={tones.length}
       aria-valuemin={0}
       aria-valuemax={total}
-      aria-label="Cards settled"
+      aria-label={t('session.cardsSettled')}
     >
       {Array.from({ length: total }, (_, i) => (
         <span key={i} class={`seg ${i < tones.length ? `t${tones[i]}` : ''}`} />
@@ -849,13 +860,14 @@ function Mastery({
   due: number
   counted: boolean
 }) {
+  const { t } = useT()
   const days = Math.round((due - Date.now()) / DAY_MS)
   const when =
     to === MAX_LEVEL && counted
-      ? 'Mastered'
+      ? t('session.mastered')
       : days < 1
-        ? 'Back in a few minutes'
-        : `${counted ? 'Back' : 'Still due'} in ${days} day${days === 1 ? '' : 's'}`
+        ? t('session.backSoon')
+        : t(counted ? 'session.backIn' : 'session.stillDueIn', { count: days })
 
   return (
     <div class={`mastery ${to > from ? 'up' : to < from ? 'down' : ''}`}>
@@ -863,7 +875,7 @@ function Mastery({
       <span class="small muted">
         {/* Said plainly, because a card that gives no feedback about why it
             didn't move invites the question of whether the answer registered. */}
-        {counted ? when : `Practice · ${when}`}
+        {counted ? when : t('session.practice', { when })}
       </span>
     </div>
   )

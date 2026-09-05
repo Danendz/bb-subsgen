@@ -9,6 +9,7 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { listVoices } from '../shared/speak'
+import { useT } from '../i18n/useT'
 
 export function Section({ title, children }: { title: string; children: ComponentChildren }) {
   return (
@@ -129,13 +130,14 @@ export function ModelSelect({
   models: string[]
   onChange: (v: string) => void
 }) {
+  const { t } = useT()
   const options = Array.from(new Set([value, ...models].filter(Boolean)))
 
   return (
     <label class="row">
       <span class="grow">{label}</span>
       <select class="model" value={value} onChange={(e) => onChange(e.currentTarget.value)}>
-        <option value="">Not set</option>
+        <option value="">{t('controls.notSet')}</option>
         {options.map((id) => (
           <option key={id} value={id}>
             {id}

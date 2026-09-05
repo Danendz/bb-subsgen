@@ -43,12 +43,17 @@ goes back to the site's own setting.
 
 ## The language you read it in
 
-One setting in Settings → Language, and everything learner-facing follows it: the
-translated subtitle line, the sentence translation under a selection, the chat tutor's
-replies, and the definitions on the hover card. English, Russian, Spanish, French, German
-and Portuguese.
+One setting in Settings → Language, and everything follows it: the translated subtitle
+line, the sentence translation under a selection, the chat tutor's replies, the definitions
+on the hover card, and the extension's own screens — the flashcards app, the popup and
+Settings itself. English, Russian, Spanish, French, German and Portuguese.
 
-Two things about it are worth knowing.
+The screens follow this setting rather than your browser's language on purpose. Chrome's
+own extension localisation resolves against the browser's UI locale, which is the wrong
+question: someone reading Chinese subtitles in Spanish wants the app in Spanish whether or
+not their browser is set to it.
+
+Three things about it are worth knowing.
 
 **Definitions are translated, not sourced.** CC-CEDICT and JMdict ship English and nothing
 else, so a Spanish definition is the English one put through a translator, once per word,
@@ -62,6 +67,15 @@ which Settings says plainly when it happens. There the local model does the subt
 lines instead — slower, and nothing is translated while the model is off. The dictionary
 definitions are unaffected, because those are translated out of English, which Chrome is
 much better at.
+
+**The screens are drafted, not reviewed.** English and Russian aside, the interface
+strings were written by the author rather than by a native speaker. Corrections are
+welcome: every string lives in one file per language under `src/i18n/`, and a locale that
+is missing one will not compile.
+
+Two surfaces stay in place: the subtitle overlay and the page reader's hover card. Both are
+drawn over somebody else's page and carry almost no wording of their own — the readings and
+the definitions in them already follow the setting.
 
 Cards keep the language they were captured in. Switch target and a card captured under the
 old one re-translates itself the first time you review it; if that cannot be done, it keeps

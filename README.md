@@ -23,8 +23,9 @@ offline.
   a property of that site, so a Japanese blog and a Chinese one can both be open.
   [More](docs/reader.md#which-language-a-page-is-read-in)
 - **Six languages to read it in** — English, Russian, Spanish, French, German and
-  Portuguese. Subtitle translations, the chat tutor and the dictionary definitions all
-  follow the one setting. [More](docs/reader.md#the-language-you-read-it-in)
+  Portuguese. Subtitle translations, the chat tutor, the dictionary definitions *and the
+  extension's own screens* all follow the one setting.
+  [More](docs/reader.md#the-language-you-read-it-in)
 - **Videos with no subtitles** — transcribed from the audio.
   *Needs a local speech server* — [see docs](docs/local-models.md)
 - **Chat tutor and better translation** — ask about a line you didn't get.

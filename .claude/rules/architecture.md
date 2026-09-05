@@ -211,3 +211,34 @@ reload. Routing is hash-based, via `useRoute()` / `navigate()` in `src/app/hooks
 default there. In UI, go through `useSettings()` in `src/settings/useSettings.ts`, which
 reconciles optimistic local edits against storage echoes — writing to `chrome.storage`
 directly from a component reintroduces the flicker that hook exists to remove.
+
+## `src/i18n/`
+
+The UI's own strings, in the six languages of `TranslationLang`. **Not `chrome.i18n`** — that
+resolves against the *browser's* UI locale and cannot be pointed at a setting, and the whole
+point here is that the app speaks whatever `translationLang` says.
+
+`en.ts` is authored and `keys.ts` derives `MessageKey` from it, so every other locale is a
+`Record<MessageKey, Message>` and **a string left out of one is a compile error**. A `Message`
+is a bare string or a set of plural forms picked with `Intl.PluralRules`; five of the six
+targets inflect after a number and `n === 1 ? '' : 's'` cannot express 1 карточка / 2 карточки /
+5 карточек.
+
+**Components read `useT()`, never `useSettings()` for the language.** That hook keeps one
+`chrome.storage` listener for the whole page: a `useSettings()` per component would open thirty
+subscriptions on open and flash English while they landed. The roots — `App.tsx`, `Embed.tsx`,
+`popup/App.tsx` — gate on its `ready` for that same reason, and it is `useT` that writes
+`document.documentElement.lang`.
+
+**A module that renders prose outside a component takes `t: Translate` as a parameter.**
+`src/llm/progress.ts`, `src/flashcards/wordlist.ts`'s `errorMessage` and `mastery.tsx`'s
+`masteryTitle` all do; their tests bind English with `translateIn('en')`. A message with
+markup in the middle of it — a `<code>`, a link — goes through `Rich` rather than being split
+into a before-key and an after-key, because where the markup lands in the clause is not the
+same in every language.
+
+**Out of scope, deliberately:** `src/content/` and `src/reader/`. Those are imperative DOM in a
+shadow root over somebody else's video and carry almost no chrome. The log *entries* the model
+pipeline writes are out too — they are diagnostics that get pasted into bug reports, and the
+service worker that writes most of them has no `document` to read a locale from. The `LlmLog`
+screen around them is translated.

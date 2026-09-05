@@ -39,6 +39,14 @@ other clause.
 `LANGUAGE_NAME` and `LANGUAGE_RULES` both live in `src/llm/languages.ts` — one table, imported
 by `prompts.ts` and `batch.ts` alike. They were a copy each and had drifted.
 
+**Prompts are English; `explainQuestion` is the one exception.** Everything else in
+`prompts.ts` is an instruction to the model and stays in English, where the small quantized
+models this targets are strongest. `explainQuestion` is not only sent — it is rendered in the
+transcript as the *user's own* opening message, and an English question a Spanish reader never
+typed is exactly the defect `src/i18n/` exists to remove. It therefore takes a `Translate` and
+reads from the locale table. The system prompt already names the answer language, so nothing
+depends on the model inferring it from the question.
+
 A rule set carries its own one-line `reminder`, repeated next to the lines in `batchUser`.
 That is a field rather than a literal at the call site because the literal was gendered and
 was emitted for *any* language that had rules at all: German has rules, marks no gender on its

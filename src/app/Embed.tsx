@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { CLOSE_EXPLAIN } from '../content/explain-drawer'
 import { ChatPanel } from './chat/ChatPanel'
 import { explainQuestion, openExplainChat } from './chat/explain'
+import { useT } from '../i18n/useT'
 
 function close(): void {
   // A bare signal with no data in it, so the wildcard target costs nothing —
@@ -21,6 +22,7 @@ function close(): void {
 }
 
 export function Embed() {
+  const { t, ready } = useT()
   const params = new URLSearchParams(location.search)
   const line = params.get('line') ?? ''
   const word = params.get('word') ?? undefined
@@ -37,19 +39,22 @@ export function Embed() {
     started.current = true
 
     if (!line) {
-      setFailed('There was no line to explain.')
+      setFailed(t('embed.noLine'))
       return
     }
 
-    void openExplainChat({
-      line,
-      ...(word !== undefined ? { target: word } : {}),
-      ...(videoId !== undefined ? { videoId } : {}),
-      ...(start !== null ? { start: Number(start) } : {}),
-      ...(sourceTitle !== undefined ? { sourceTitle } : {}),
-    }).then(setChatId, (e: unknown) => {
+    void openExplainChat(
+      {
+        line,
+        ...(word !== undefined ? { target: word } : {}),
+        ...(videoId !== undefined ? { videoId } : {}),
+        ...(start !== null ? { start: Number(start) } : {}),
+        ...(sourceTitle !== undefined ? { sourceTitle } : {}),
+      },
+      t,
+    ).then(setChatId, (e: unknown) => {
       console.warn('[bb-subsgen] could not open an explanation', e)
-      setFailed('Could not start that conversation. The model log in Data has the details.')
+      setFailed(t('embed.failed'))
     })
   }, [line])
 
@@ -63,19 +68,22 @@ export function Embed() {
     return () => removeEventListener('keydown', onKey)
   }, [])
 
+  // Same gate as the app root: nothing renders before the language is known.
+  if (!ready) return null
+
   return (
     <div class="embed">
       <header class="drawer-head">
-        <strong class="grow">Explain</strong>
+        <strong class="grow">{t('embed.title')}</strong>
         <a
           class="small"
           href={chatId ? `#/chat/${chatId}` : '#/chat'}
           target="_blank"
           rel="noreferrer"
         >
-          Open in flashcards
+          {t('embed.openInApp')}
         </a>
-        <button class="ghost icon-btn" onClick={close} aria-label="Close">
+        <button class="ghost icon-btn" onClick={close} aria-label={t('embed.close')}>
           ✕
         </button>
       </header>
@@ -83,9 +91,9 @@ export function Embed() {
       {failed ? (
         <p class="panel small">{failed}</p>
       ) : chatId ? (
-        <ChatPanel chatId={chatId} autoAsk={explainQuestion(word)} />
+        <ChatPanel chatId={chatId} autoAsk={explainQuestion(t, word)} />
       ) : (
-        <p class="panel muted small">Reading the scene…</p>
+        <p class="panel muted small">{t('embed.reading')}</p>
       )}
     </div>
   )

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks'
 import type { ChatContext, ChatMessage } from '../../chat/types'
 import { renderable, type Span } from './markdown'
 import { useChat, useModels } from './useChat'
+import { useT } from '../../i18n/useT'
 
 function Spans({ spans }: { spans: Span[] }) {
   return (
@@ -39,13 +40,16 @@ function Bubble({ role, content }: { role: ChatMessage['role']; content: string 
  * not require opening the debug log.
  */
 function Passage({ context }: { context: ChatContext }) {
+  const { t } = useT()
   const lines = context.before.length + context.after.length + 1
 
   return (
     <details class="passage">
       <summary class="muted small">
-        Context sent — {lines} line{lines === 1 ? '' : 's'}
-        {context.sourceTitle ? ` from ${context.sourceTitle}` : ''}
+        {[
+          t('chat.context', { count: lines }),
+          ...(context.sourceTitle ? [t('chat.contextFrom', { title: context.sourceTitle })] : []),
+        ].join(' ')}
       </summary>
       <div class="passage-lines">
         {context.before.map((line, i) => (
@@ -85,6 +89,7 @@ export interface ChatPanelProps {
  * them, not in how a conversation behaves.
  */
 export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
+  const { t } = useT()
   const { chat, messages, streaming, busy, error, send, stop, chooseModel } = useChat(chatId, {
     ...(onChanged ? { onChanged } : {}),
   })
@@ -113,7 +118,7 @@ export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
     void send(text)
   }
 
-  if (!chat) return <div class="panel muted small">No conversation selected.</div>
+  if (!chat) return <div class="panel muted small">{t('chat.none')}</div>
 
   const options = Array.from(new Set([chat.model, ...models].filter(Boolean)))
   // The empty assistant row is written before the request, so it is already in
@@ -137,7 +142,7 @@ export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
         </select>
         {busy && (
           <button class="ghost icon-btn" onClick={stop}>
-            Stop
+            {t('chat.stop')}
           </button>
         )}
       </div>
@@ -160,7 +165,7 @@ export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
             ) : (
               // A local 27B can sit silent for fifteen seconds before its first
               // token; without this the panel looks like it did nothing.
-              <p class="muted small">Thinking…</p>
+              <p class="muted small">{t('chat.thinking')}</p>
             )}
           </div>
         )}
@@ -173,7 +178,7 @@ export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
         <textarea
           ref={input}
           rows={2}
-          placeholder="Ask about this line, or anything else…"
+          placeholder={t('chat.placeholder')}
           onKeyDown={(e) => {
             // Enter sends, Shift+Enter breaks the line — what every chat does.
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -183,7 +188,7 @@ export function ChatPanel({ chatId, autoAsk, onChanged }: ChatPanelProps) {
           }}
         />
         <button class="primary" disabled={busy} onClick={submit}>
-          Send
+          {t('chat.send')}
         </button>
       </div>
     </div>

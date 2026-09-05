@@ -50,15 +50,19 @@ import { parseVideoIdFromUrl } from '../bilibili/resolve'
 import { dictStatus } from '../shared/dict-client'
 import { installedSources } from '../dict/sources'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
+import { useT } from '../i18n/useT'
+import { Rich } from '../i18n/Rich'
+import type { Translate } from '../i18n/t'
+import type { MessageKey } from '../i18n/keys'
 
 type TabStatus = Status | 'no-video'
 
-const STATUS_LABEL: Record<TabStatus, string> = {
-  loading: 'Loading subtitles…',
-  'no-track': 'No subtitle track on this video.',
-  active: 'Active on this video.',
-  'no-video': 'Open a Bilibili or YouTube video for subtitles.',
-  'no-dictionary': 'No dictionary installed for this language.',
+const STATUS_KEY: Record<TabStatus, MessageKey> = {
+  loading: 'popup.status.loading',
+  'no-track': 'popup.status.noTrack',
+  active: 'popup.status.active',
+  'no-video': 'popup.status.noVideo',
+  'no-dictionary': 'popup.status.noDictionary',
 }
 
 async function currentTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -86,7 +90,10 @@ async function fetchTabStatus(tabId: number | undefined): Promise<TabStatus> {
  * video is watchable. Below ~90% comprehension falls apart; above ~95% you can
  * follow along and infer the rest.
  */
-async function coverageFor(videoId: string): Promise<{ tokens: number; types: string } | null> {
+async function coverageFor(
+  videoId: string,
+  t: Translate,
+): Promise<{ tokens: number; types: string } | null> {
   const db = await flashcardsDb()
   const lang = resolveStudyLang(await loadSettings())
   const [items, counts] = await Promise.all([listItems(db, lang), videoWords(db, videoId, lang)])
@@ -97,7 +104,10 @@ async function coverageFor(videoId: string): Promise<{ tokens: number; types: st
   const coverage = coverageOf(counts, knownSetOf(items))
   return {
     tokens: fraction(coverage.knownTokens, coverage.totalTokens),
-    types: `${coverage.knownTypes} of ${coverage.totalTypes} words`,
+    types: t('popup.coverageTypes', {
+      known: coverage.knownTypes,
+      total: coverage.totalTypes,
+    }),
   }
 }
 
@@ -126,6 +136,7 @@ async function fetchPassStatus(tabId: number | undefined): Promise<PassStatus | 
  * enough while costing nothing measurable.
  */
 function PassProgress({ tabId }: { tabId: number | undefined }) {
+  const { t } = useT()
   const [status, setStatus] = useState<PassStatus | null>(null)
 
   useEffect(() => {
@@ -147,7 +158,7 @@ function PassProgress({ tabId }: { tabId: number | undefined }) {
   // worker, so this is also what "done" looks like.
   if (!status) return null
 
-  const view = passProgressView(status)
+  const view = passProgressView(status, t)
   return (
     <div class="pass-progress">
       <div class="pass-progress-head">
@@ -208,6 +219,7 @@ async function fetchTranscriptStatus(tabId: number | undefined): Promise<Transcr
  * cannot: the notice dismissed, the tab in the background, the video fullscreen.
  */
 function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: string | null }) {
+  const { t } = useT()
   const [status, setStatus] = useState<TranscriptStatus | null>(null)
   const [retrying, setRetrying] = useState(false)
 
@@ -233,7 +245,7 @@ function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: s
 
   if (!status || !isCurrentVideo(status, videoId)) return null
 
-  const view = transcriptProgressView(status)
+  const view = transcriptProgressView(status, t)
   return (
     <div class={`pass-progress asr-progress${view.stopped ? ' stopped' : ''}`}>
       <div class="pass-progress-head">
@@ -262,7 +274,7 @@ function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: s
             void chrome.runtime.sendMessage({ type: 'bb-subsgen:asr-retry', tabId })
           }}
         >
-          {retrying ? 'Retrying…' : 'Retry the missing parts'}
+          {retrying ? t('popup.retrying') : t('popup.retry')}
         </button>
       )}
     </div>
@@ -276,14 +288,15 @@ function AsrProgress({ tabId, videoId }: { tabId: number | undefined; videoId: s
  */
 type PopupSection = 'general' | 'studying' | 'language' | 'models'
 
-const SECTIONS: readonly RailItem<PopupSection>[] = [
-  { slug: 'general', label: 'General' },
-  { slug: 'studying', label: 'Studying' },
-  { slug: 'language', label: 'Language' },
-  { slug: 'models', label: 'Local models' },
+const sections = (t: Translate): readonly RailItem<PopupSection>[] => [
+  { slug: 'general', label: t('settings.rail.general') },
+  { slug: 'studying', label: t('settings.studying.title') },
+  { slug: 'language', label: t('settings.language.title') },
+  { slug: 'models', label: t('settings.rail.models') },
 ]
 
 export function App() {
+  const { t, ready } = useT()
   const { settings, loaded, update } = useSettings()
   const [section, setSection] = useState<PopupSection>('general')
   const [tabStatus, setTabStatus] = useState<TabStatus>('loading')
@@ -306,14 +319,15 @@ export function App() {
   }, [settings.enabledLanguages.join(',')])
 
   useEffect(() => {
-    currentTab().then((t) => {
-      setTab(t)
-      fetchTabStatus(t?.id).then(setTabStatus)
+    // Named rather than `t`: this file's `t` is the translator.
+    currentTab().then((active) => {
+      setTab(active)
+      fetchTabStatus(active?.id).then(setTabStatus)
 
-      const id = parseVideoIdFromUrl(t?.url ?? '')
+      const id = parseVideoIdFromUrl(active?.url ?? '')
       setVideoId(id)
       if (id) {
-        coverageFor(id).then(setCoverage, (e: unknown) =>
+        coverageFor(id, t).then(setCoverage, (e: unknown) =>
           console.warn('[bb-subsgen] coverage failed', e),
         )
       }
@@ -343,16 +357,16 @@ export function App() {
     }
   }
 
-  if (!loaded) return null
+  // Also waits on the language: the popup's whole chrome is translated, and a
+  // frame of English before the real locale lands is what `ready` prevents.
+  if (!loaded || !ready) return null
 
   if (needsSetup) {
     return (
       <div class="app">
         <h1>bb-subsgen</h1>
         <p>
-          {settings.enabledLanguages.length
-            ? 'A language you study has no dictionary installed yet.'
-            : "You haven't set up a language to study yet."}
+          {settings.enabledLanguages.length ? t('popup.needsDictionary') : t('popup.noLanguage')}
         </p>
         <button
           class="primary open-app"
@@ -362,7 +376,7 @@ export function App() {
             })
           }
         >
-          Go to setup
+          {t('popup.goToSetup')}
         </button>
       </div>
     )
@@ -379,63 +393,69 @@ export function App() {
             void chrome.tabs.create({ url: chrome.runtime.getURL('src/app/index.html') })
           }
         >
-          Open flashcards
+          {t('popup.openApp')}
         </button>
 
         {coverage && (
           <p class="coverage">
-            You know <strong>{Math.round(coverage.tokens * 100)}%</strong> of what is said here —{' '}
-            {coverage.types}.
-            {coverage.tokens >= 0.95
-              ? ' Comfortable.'
-              : coverage.tokens >= 0.9
-                ? ' A stretch.'
-                : ' Hard going.'}
+            <Rich
+              text={t('popup.coverage')}
+              slots={{
+                percent: (
+                  <strong>
+                    {t('popup.coveragePercent', { percent: Math.round(coverage.tokens * 100) })}
+                  </strong>
+                ),
+                types: coverage.types,
+              }}
+            />{' '}
+            {t(
+              coverage.tokens >= 0.95
+                ? 'popup.verdict.comfortable'
+                : coverage.tokens >= 0.9
+                  ? 'popup.verdict.stretch'
+                  : 'popup.verdict.hard',
+            )}
           </p>
         )}
 
-        <p class={`status status-${tabStatus}`}>{STATUS_LABEL[tabStatus]}</p>
+        <p class={`status status-${tabStatus}`}>{t(STATUS_KEY[tabStatus])}</p>
         <AsrProgress tabId={tab?.id} videoId={videoId} />
         <PassProgress tabId={tab?.id} />
 
         {origin ? (
           <Toggle
-            label={`Reader on ${hostLabel(origin)}`}
+            label={t('popup.readerOn', { host: hostLabel(origin) })}
             checked={readerOn}
             onChange={(v) => void toggleReader(v)}
           />
         ) : (
-          <Hint>The reader can't run on this page.</Hint>
+          <Hint>{t('popup.readerUnavailable')}</Hint>
         )}
       </div>
 
       <div class="section-layout">
-        <SectionRail items={SECTIONS} active={section} onSelect={setSection} />
+        <SectionRail items={sections(t)} active={section} onSelect={setSection} />
 
         <div class="section-pane">
           {section === 'general' && (
             <>
-              <Section title="Page reader">
+              <Section title={t('settings.pageReader.title')}>
                 {origin ? (
                   <>
                     <div class={readerOn ? '' : 'disabled'}>
                       <ReaderOptions settings={settings} update={update} />
                     </div>
-                    <Hint>
-                      Hold {modifierLabel(settings)} and point at a word; click it for characters.
-                      Select Chinese text for a phrase card.
-                    </Hint>
+                    <Hint>{t('settings.pageReader.hint', { key: modifierLabel(settings) })}</Hint>
                   </>
                 ) : (
-                  <Hint>The reader can't run on this page.</Hint>
+                  <Hint>{t('popup.readerUnavailable')}</Hint>
                 )}
               </Section>
 
-              <Section title="Subtitles">
+              <Section title={t('settings.subtitles.title')}>
                 <SubtitlesSection settings={settings} update={update} />
-                <Hint>
-                  Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.
-                </Hint>
+                <Hint>{t('settings.subtitles.hint')}</Hint>
               </Section>
             </>
           )}

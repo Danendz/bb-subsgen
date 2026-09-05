@@ -7,6 +7,7 @@
 
 import { LADDER, levelOf, MAX_LEVEL } from '../flashcards/scheduler'
 import type { Item } from '../flashcards/types'
+import type { Translate } from '../i18n/t'
 
 /**
  * The rung to draw for a card.
@@ -18,12 +19,21 @@ export function masteryOf(item: Pick<Item, 'state' | 'interval' | 'level'>): num
   return item.state === 'known' ? MAX_LEVEL : levelOf(item)
 }
 
-export function masteryTitle(item: Pick<Item, 'state' | 'interval' | 'level'>): string {
-  if (item.state === 'known') return 'Known — you marked this one yourself'
+/**
+ * `t` is passed rather than pulled from `useT`, because this is called from
+ * `title` attributes and other non-component positions where a hook cannot run.
+ */
+export function masteryTitle(
+  item: Pick<Item, 'state' | 'interval' | 'level'>,
+  t: Translate,
+): string {
+  if (item.state === 'known') return t('mastery.known')
   const level = levelOf(item)
-  if (level === MAX_LEVEL) return `Mastered — ${MAX_LEVEL} of ${MAX_LEVEL}`
+  if (level === MAX_LEVEL) return t('mastery.mastered', { level: MAX_LEVEL, max: MAX_LEVEL })
   const days = LADDER[level]
-  return `${level} of ${MAX_LEVEL} · ${days === 0 ? 'still learning' : `next in ${days} day${days === 1 ? '' : 's'}`}`
+  return days === 0
+    ? t('mastery.learning', { level, max: MAX_LEVEL })
+    : t('mastery.next', { level, max: MAX_LEVEL, count: days })
 }
 
 export interface PipsProps {

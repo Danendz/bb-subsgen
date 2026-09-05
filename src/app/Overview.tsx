@@ -3,21 +3,26 @@ import { flashcardsDb } from '../flashcards/db'
 import { deckCounts, hskProgress, knownSetOf, listItems, listRanks } from '../flashcards/queries'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
 import { useAsync } from './hooks'
+import { useT } from '../i18n/useT'
+import { Rich } from '../i18n/Rich'
 
 function pct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0
 }
 
 function Stat({ n, label }: { n: number; label: string }) {
+  const { lang } = useT()
+
   return (
     <div class="panel stat">
-      <span class="n">{n.toLocaleString()}</span>
+      <span class="n">{n.toLocaleString(lang)}</span>
       <span class="label">{label}</span>
     </div>
   )
 }
 
 export function Overview() {
+  const { t, lang } = useT()
   const load = useCallback(async () => {
     const db = await flashcardsDb()
     const lang = resolveStudyLang(await loadSettings())
@@ -26,8 +31,8 @@ export function Overview() {
   }, [])
   const { data, loading } = useAsync(load)
 
-  if (loading) return <p class="muted">Loading…</p>
-  if (!data) return <p class="muted">Nothing to show yet.</p>
+  if (loading) return <p class="muted">{t('common.loading')}</p>
+  if (!data) return <p class="muted">{t('overview.nothingToShow')}</p>
 
   const { items, ranks } = data
   const counts = deckCounts(items)
@@ -37,11 +42,8 @@ export function Overview() {
   if (!items.length) {
     return (
       <div class="empty">
-        <p>Nothing collected yet.</p>
-        <p class="small">
-          Watch a subtitled Bilibili video, or hold the reader key on a page you have enabled, and
-          the words you look up will land here.
-        </p>
+        <p>{t('overview.emptyTitle')}</p>
+        <p class="small">{t('overview.emptyBody')}</p>
       </div>
     )
   }
@@ -58,21 +60,23 @@ export function Overview() {
   return (
     <>
       <div class="stats">
-        <Stat n={counts.words} label="words collected" />
-        <Stat n={counts.known} label="words known" />
-        <Stat n={counts.sentences} label="sentences" />
-        <Stat n={counts.grammar} label="patterns" />
-        <Stat n={counts.pool} label="waiting" />
+        <Stat n={counts.words} label={t('overview.stat.words')} />
+        <Stat n={counts.known} label={t('overview.stat.known')} />
+        <Stat n={counts.sentences} label={t('overview.stat.sentences')} />
+        <Stat n={counts.grammar} label={t('overview.stat.grammar')} />
+        <Stat n={counts.pool} label={t('overview.stat.pool')} />
       </div>
 
       {ranked.length > 0 && (
         <div class="panel">
           <div class="row">
             <div class="grow">
-              <strong>Discovered</strong>{' '}
+              <strong>{t('overview.discovered')}</strong>{' '}
               <span class="muted small">
-                {discovered.length.toLocaleString()} of the {ranked.length.toLocaleString()} most
-                common words
+                {t('overview.discoveredOf', {
+                  found: discovered.length,
+                  total: ranked.length,
+                })}
               </span>
             </div>
             <span class="muted">{pct(discovered.length, ranked.length)}%</span>
@@ -85,15 +89,15 @@ export function Overview() {
 
       {hsk.length > 0 && (
         <div class="panel">
-          <strong>HSK</strong>
+          <strong>{t('overview.hsk')}</strong>
           {hsk.map((level) => (
             <div class="hsk-row" key={level.level}>
-              <span class="small">HSK {level.level}</span>
+              <span class="small">{t('overview.hskLevel', { level: level.level })}</span>
               <div class={`bar ${level.known === level.total ? 'good' : ''}`}>
                 <i style={{ width: `${pct(level.known, level.total)}%` }} />
               </div>
               <span class="muted small">
-                {level.known} / {level.total}
+                {level.known.toLocaleString(lang)} / {level.total.toLocaleString(lang)}
               </span>
             </div>
           ))}
@@ -102,9 +106,10 @@ export function Overview() {
 
       {!ranks.length && (
         <div class="panel muted small">
-          No word list loaded, so new cards are introduced in the order you found them and there is
-          no denominator to measure progress against. Load one from <a href="#/data">Data</a> — it
-          explains where to get one.
+          <Rich
+            text={t('overview.noWordList')}
+            slots={{ data: <a href="#/data">{t('app.tab.data')}</a> }}
+          />
         </div>
       )}
     </>

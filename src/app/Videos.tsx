@@ -9,6 +9,8 @@ import { Pinyin } from './pinyin'
 import type { Video, VideoWord } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { canSpeak, speak } from '../shared/speak'
+import { useT } from '../i18n/useT'
+import type { MessageKey } from '../i18n/keys'
 
 /** Senses per word in the list. The row is one line tall; a third would clip. */
 const SENSES = 2
@@ -21,13 +23,14 @@ const SENSES = 2
  * along and infer the rest. The distinct-word figure is always far lower and
  * would call a perfectly watchable video hopeless.
  */
-function verdict(tokenCoverage: number): { label: string; tone: string } {
-  if (tokenCoverage >= 0.95) return { label: 'comfortable', tone: 'good' }
-  if (tokenCoverage >= 0.9) return { label: 'a stretch', tone: 'warn' }
-  return { label: 'hard going', tone: '' }
+function verdict(tokenCoverage: number): { label: MessageKey; tone: string } {
+  if (tokenCoverage >= 0.95) return { label: 'videos.verdict.comfortable', tone: 'good' }
+  if (tokenCoverage >= 0.9) return { label: 'videos.verdict.stretch', tone: 'warn' }
+  return { label: 'videos.verdict.hard', tone: '' }
 }
 
 function CoverageBar({ coverage }: { coverage: Coverage }) {
+  const { t } = useT()
   const tokens = fraction(coverage.knownTokens, coverage.totalTokens)
   const { label, tone } = verdict(tokens)
   return (
@@ -36,14 +39,19 @@ function CoverageBar({ coverage }: { coverage: Coverage }) {
         <i style={{ width: `${Math.round(tokens * 100)}%` }} />
       </div>
       <div class="muted small">
-        {Math.round(tokens * 100)}% of what is said — {label}. You know {coverage.knownTypes} of{' '}
-        {coverage.totalTypes} distinct words here.
+        {t('videos.coverage', {
+          percent: Math.round(tokens * 100),
+          verdict: t(label),
+          known: coverage.knownTypes,
+          total: coverage.totalTypes,
+        })}
       </div>
     </>
   )
 }
 
 function VideoList() {
+  const { t } = useT()
   const load = useCallback(async () => {
     const db = await flashcardsDb()
     const lang = resolveStudyLang(await loadSettings())
@@ -66,12 +74,12 @@ function VideoList() {
   }, [])
   const { data, loading } = useAsync(load)
 
-  if (loading) return <p class="muted">Loading…</p>
+  if (loading) return <p class="muted">{t('common.loading')}</p>
   if (!data?.videos.length) {
     return (
       <div class="empty">
-        <p>No videos yet.</p>
-        <p class="small">Watch a Bilibili video with a subtitle track and it will show up here.</p>
+        <p>{t('videos.emptyTitle')}</p>
+        <p class="small">{t('videos.emptyBody')}</p>
       </div>
     )
   }
@@ -96,7 +104,7 @@ function VideoList() {
               <CoverageBar coverage={data.coverage.get(video.videoId)!} />
             </div>
           </div>
-          <span class="muted small">{video.lines} lines</span>
+          <span class="muted small">{t('videos.lines', { count: video.lines })}</span>
         </div>
       ))}
     </div>
@@ -104,6 +112,7 @@ function VideoList() {
 }
 
 function VideoDetail({ videoId }: { videoId: string }) {
+  const { t } = useT()
   const [limit, setLimit] = useState(80)
 
   const load = useCallback(async () => {
@@ -134,18 +143,18 @@ function VideoDetail({ videoId }: { videoId: string }) {
   }, [page.map((w) => w.headword).join(' ')])
   const { data: defs } = useAsync(loadDefs)
 
-  if (loading) return <p class="muted">Loading…</p>
-  if (!data?.video) return <p class="muted">That video isn't in your history.</p>
+  if (loading) return <p class="muted">{t('common.loading')}</p>
+  if (!data?.video) return <p class="muted">{t('videos.unknown')}</p>
 
   const coverage = coverageOf(data.words, data.known)
 
   return (
     <>
       <div class="toolbar">
-        <button onClick={() => navigate('/videos')}>← Videos</button>
+        <button onClick={() => navigate('/videos')}>{t('videos.back')}</button>
         <div class="grow" />
         <a href={data.video.url} target="_blank" rel="noreferrer">
-          Open on Bilibili
+          {t('videos.openOnBilibili')}
         </a>
       </div>
 
@@ -170,13 +179,17 @@ function VideoDetail({ videoId }: { videoId: string }) {
                   .map((sense) => sense.gloss)
                   .join('; ') ?? ''}
               </span>
-              <span class="muted small">{word.count}×</span>
+              <span class="muted small">{t('videos.times', { count: word.count })}</span>
               {canSpeak() && (
-                <button class="icon-btn" title="Speak" onClick={() => speak(word.headword)}>
+                <button
+                  class="icon-btn"
+                  title={t('videos.speak')}
+                  onClick={() => speak(word.headword)}
+                >
                   ♪
                 </button>
               )}
-              {data.known.has(word.headword) && <span class="tag known">known</span>}
+              {data.known.has(word.headword) && <span class="tag known">{t('videos.known')}</span>}
             </div>
           )
         })}
@@ -185,7 +198,7 @@ function VideoDetail({ videoId }: { videoId: string }) {
       {data.words.length > page.length && (
         <p>
           <button onClick={() => setLimit((n) => n + 80)}>
-            Show more ({data.words.length - page.length} left)
+            {t('videos.showMore', { count: data.words.length - page.length })}
           </button>
         </p>
       )}

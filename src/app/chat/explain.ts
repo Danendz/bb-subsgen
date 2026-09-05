@@ -27,6 +27,7 @@ import { explainQuestion } from '../../llm/prompts'
 import { newRequestId } from '../../llm/types'
 import { lookupDefs } from '../../shared/dict-client'
 import { loadSettings, resolveStudyLang } from '../../shared/settings'
+import type { Translate } from '../../i18n/t'
 
 /**
  * Tracks already fetched this page load.
@@ -162,12 +163,15 @@ export async function buildExplainContext(req: ExplainRequest): Promise<ChatCont
 }
 
 /** Creates the conversation and returns its id, ready to open. */
-export async function openExplainChat(req: ExplainRequest): Promise<string> {
+export async function openExplainChat(req: ExplainRequest, t: Translate): Promise<string> {
   const [settings, context] = await Promise.all([loadSettings(), buildExplainContext(req)])
 
   const chat = await createChat({
     model: settings.llmChatModel,
-    title: req.target ? `Explain 「${req.target}」` : 'Explain a line',
+    // Named in the reader's language at creation, and then frozen: the title is
+    // stored on the row, so a later change of target leaves old conversations
+    // titled as they were, the same way a captured translation is left alone.
+    title: req.target ? t('explain.chatTitle', { word: req.target }) : t('explain.chatTitleLine'),
     ...(req.itemId !== undefined ? { itemId: req.itemId } : {}),
     context,
   })

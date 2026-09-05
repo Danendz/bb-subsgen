@@ -4,13 +4,15 @@ import { loadSettings } from '../../shared/settings'
 import { navigate, useAsync } from '../hooks'
 import { ChatPanel } from './ChatPanel'
 import { useModels } from './useChat'
+import { useT } from '../../i18n/useT'
+import type { Locale } from '../../i18n/useT'
 
-function when(at: number): string {
+function when(at: number, { t, lang }: Locale): string {
   const days = Math.floor((Date.now() - at) / 86_400_000)
-  if (days === 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 7) return `${days} days ago`
-  return new Date(at).toLocaleDateString()
+  if (days === 0) return t('chat.when.today')
+  if (days === 1) return t('chat.when.yesterday')
+  if (days < 7) return t('chat.when.daysAgo', { count: days })
+  return new Date(at).toLocaleDateString(lang)
 }
 
 /**
@@ -20,6 +22,8 @@ function when(at: number): string {
  * to — which is what the explain drawer's "open full width" does.
  */
 export function Chat({ chatId }: { chatId?: string }) {
+  const locale = useT()
+  const { t } = locale
   const [nonce, setNonce] = useState(0)
   const models = useModels()
 
@@ -36,7 +40,7 @@ export function Chat({ chatId }: { chatId?: string }) {
   }
 
   const remove = async (id: string) => {
-    if (!confirm('Delete this conversation?')) return
+    if (!confirm(t('chat.deleteConfirm'))) return
     await deleteChat(id)
     if (id === chatId) navigate('/chat')
     reload()
@@ -47,23 +51,20 @@ export function Chat({ chatId }: { chatId?: string }) {
       <div class="panel chat-list">
         <div class="toolbar">
           <button class="primary grow" onClick={() => void startChat()}>
-            New chat
+            {t('chat.new')}
           </button>
         </div>
 
-        {chats?.length === 0 && (
-          <p class="muted small">
-            Nothing yet. Start one here, or press Explain on a card while reviewing.
-          </p>
-        )}
+        {chats?.length === 0 && <p class="muted small">{t('chat.empty')}</p>}
 
         {chats?.map((chat) => (
           <div class={`row chat-row ${chat.id === chatId ? 'on' : ''}`} key={chat.id}>
             <button class="row-btn grow" onClick={() => navigate(`/chat/${chat.id}`)}>
               <span class="chat-title">{chat.title}</span>
               <span class="muted small">
-                {when(chat.updatedAt)}
-                {chat.context ? ' · from a card' : ''}
+                {[when(chat.updatedAt, locale), ...(chat.context ? [t('chat.fromCard')] : [])].join(
+                  ' \u00b7 ',
+                )}
               </span>
             </button>
             <button class="ghost icon-btn" onClick={() => void remove(chat.id)}>
@@ -78,10 +79,8 @@ export function Chat({ chatId }: { chatId?: string }) {
           <ChatPanel chatId={chatId} onChanged={reload} />
         ) : (
           <div class="empty">
-            <p>Pick a conversation, or start a new one.</p>
-            <p class="muted small">
-              Explanations opened from a card while reviewing land here too.
-            </p>
+            <p>{t('chat.pick')}</p>
+            <p class="muted small">{t('chat.pickHint')}</p>
           </div>
         )}
       </div>
