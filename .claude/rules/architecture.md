@@ -31,6 +31,35 @@ The page reader modifies no page markup — it uses `caretPositionFromPoint` and
 Highlight API. Anything that would insert or rewrite nodes in the host page is the wrong
 approach.
 
+## Where a colour comes from
+
+Plain CSS, no preprocessor and no utility framework — deliberately, because `src/settings/`
+renders the same markup into the popup and into the app and only the stylesheets differ. Tailwind
+or CSS modules would put the styling in the component and take that away.
+
+Three files, and a new value belongs in exactly one of them:
+
+- **`src/shared/tokens.css`** — the palette, the type stacks, the radii, and the density tokens
+  (`--rail-w`, `--row-y`, `--r-ctl`, `--lip`/`--lip-sunk`, `--btn-size`/`--btn-pad`, `--grow-min`,
+  `--range-w`, `--url-w`). Every extension page imports it. A hardcoded hex in a page stylesheet
+  is a bug waiting for the second page to disagree.
+- **`src/settings/skin.css`** — the control base (`button`, inputs, `:focus-visible`, `.panel`)
+  and the shared settings rows. Imported by both pages.
+- **`src/popup/style.css` / `src/app/style.css`** — only what that page alone renders.
+
+**A popup/app difference is a token, not an override.** The two hosts differ in density, and the
+tokens above are the whole list of ways they are allowed to. If a difference cannot be expressed
+as one of them it is a different design rather than a different density — `.settings-group` is
+the standing example, a titled panel on the page and a bare divider in the popup — and it belongs
+in the page's own stylesheet, not as an override of a rule in `skin.css`.
+
+Chromium-only, so native CSS nesting is available and used. `@layer` is not; the tokens are meant
+to prevent the override fights it exists to arbitrate.
+
+None of this reaches `src/content/` or `src/reader/`. Their styles are template literals adopted
+into a shadow root, and they draw over somebody else's moving video, where a near-neutral scrim
+is the right answer and a warm surface palette is not. The tones are what they share.
+
 ## Stored data
 
 Five IndexedDB databases, separated by how bad it is to lose them:

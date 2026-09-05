@@ -1,6 +1,20 @@
-* {
-  box-sizing: border-box;
-}
+/* The popup's skin.
+ *
+ * The palette, the controls and the settings rows are shared with the flashcards
+ * app — src/shared/tokens.css and src/settings/skin.css — because the two render
+ * several of the same components and used to paint them twice, in two unrelated
+ * colour sets. What is left here is what a 460px panel needs and a full page does
+ * not: the density tokens on `body`, the group heading that acts as a divider
+ * rather than a title, and the four blocks the popup alone renders.
+ *
+ * The panel does not take the app's depth. A page can afford a button that sinks
+ * when you press it; at this size the same lip reads as a toy, so `--lip` and
+ * `--lip-sunk` are set equal and the press is flat.
+ */
+
+@import '../shared/tokens.css';
+@import '../settings/skin.css';
+
 /* Swapping sections changes the popup's height, so a scrollbar appears on a tall
    pane and goes again on a short one — and every control under it shifts sideways
    by the scrollbar's width each time. Reserving the gutter costs nothing where
@@ -8,38 +22,53 @@
 html {
   scrollbar-gutter: stable;
 }
+
 body {
-  margin: 0;
   /* A 120px rail plus a ~340px pane. Wider than the 300px this was, so every row
      below gets more room than it had rather than less — the rail is paid for by
      the window, not by the controls. */
   width: 460px;
-  font:
-    13px -apple-system,
-    'Segoe UI',
-    sans-serif;
-  color: #eee;
-  background: #1b1b1f;
+
+  --rail-w: 120px;
+  --row-y: 6px;
+  --r-ctl: 4px;
+  --btn-size: 13px;
+  --btn-pad: 6px 10px;
+  /* Equal: a flat control that does not travel when pressed. */
+  --lip: 1px;
+  --lip-sunk: 1px;
+  /* In a ~340px pane the label is the part that must not be crushed, so a long
+     option name shrinks the control instead of ellipsising itself. */
+  --grow-min: auto;
+  --range-w: 130px;
+  --url-w: 150px;
+
+  margin: 0;
+  font: 13px/1.5 var(--body);
+  color: var(--text);
+  background: var(--ink);
 }
 .app {
   padding: 14px 16px;
 }
 h1 {
-  font-size: 15px;
+  font: 600 15px var(--display);
   margin: 0 0 10px;
 }
+
 /* Section headers double as the dividers between the groups within a pane. The
    groups themselves are laid out by src/settings/, which the flashcards app
-   renders too — only these skins differ between the two. */
+   renders as a titled panel — this is the other half of the difference
+   src/app/style.css records against `.settings-group`. */
 .settings-group > h2 {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #8a8a95;
+  color: var(--text-3);
   margin: 16px 0 2px;
   padding-top: 10px;
-  border-top: 1px solid #33333a;
+  border-top: 1px solid var(--edge);
 }
 /* The first group in a pane has the pinned block's rule above it already. */
 .section-pane > .settings-group:first-of-type > h2 {
@@ -54,191 +83,68 @@ h1 {
 .pinned {
   padding-bottom: 10px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #33333a;
+  border-bottom: 1px solid var(--edge);
 }
 
-/* The same rail the flashcards app renders, skinned for a window this size: no
-   panel border, because the pinned block above already provides the only rule
-   the popup needs. */
-.section-layout {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 12px;
-  align-items: start;
-}
-.section-row {
+/* The rail loses the panel it wears on the app: the pinned block above already
+   provides the only rule the popup needs, and there is nothing to stick to in a
+   window this short. */
+.section-rail {
   padding: 0;
-}
-.section-row .row-btn {
-  width: 100%;
-  padding: 7px 8px;
   border: none;
-  border-radius: 4px;
   background: none;
-  color: #8a8a95;
-  font: 500 12px inherit;
-  text-align: left;
-  cursor: pointer;
+  position: static;
 }
-.section-row .row-btn:hover {
-  color: #eee;
-}
-.section-row.on .row-btn {
-  color: #eee;
-  background: #2a2a30;
-}
-/* Deliberately no `min-width: 0`: in a ~340px pane the labels are still the part
-   that must not be crushed, so a long option name shrinks the control instead. */
-.grow {
-  flex: 1;
-}
-.row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 0;
-}
+
 .row > span {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.value {
-  color: #9aa;
-  font-variant-numeric: tabular-nums;
-}
-input[type='range'] {
-  width: 130px;
-}
-select {
-  background: #2a2a30;
-  color: #eee;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 2px 4px;
-  /* Voice names run to half a sentence ("Microsoft Yaoyao - Chinese (Simplified,
-     PRC)"); without this the picker pushes its own label off the row. */
+/* Voice names run to half a sentence ("Microsoft Yaoyao - Chinese (Simplified,
+   PRC)"); without this the picker pushes its own label off the row. */
+.settings-group select {
   max-width: 170px;
 }
-.disabled {
-  opacity: 0.4;
-  pointer-events: none;
+/* Model ids run long ("qwen/qwen3-8b-instruct"). */
+select.model {
+  max-width: 165px;
 }
-.divider {
-  border: 0;
-  border-top: 1px solid #33333a;
-  margin: 10px 0 4px;
+
+.status-active {
+  color: var(--right);
 }
-.status {
-  margin: 0 0 10px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  background: #2a2a30;
-}
-.status-active,
-.status-ok {
-  color: #7ee787;
-}
+/* Nothing to read yet, and something you could act on — a track to transcribe, a
+   dictionary to install. Amber rather than red: none of these is a failure. */
 .status-no-track,
-.status-bad {
-  color: #e3b341;
+.status-no-video,
+.status-no-dictionary {
+  color: var(--warn);
 }
-.status-not-bilibili,
-.status-loading,
-.status-busy {
-  color: #999;
+.status-loading {
+  color: var(--text-3);
 }
-.hint {
-  color: #999;
-  font-size: 11px;
-  margin-top: 12px;
-}
+
 .attribution {
-  color: #777;
+  color: var(--text-3);
   font-size: 10px;
   margin-top: 8px;
 }
-.attribution a {
-  color: #8ab4f8;
-}
 
-/* The flashcards app is a full page, not a panel — this is the way in. */
+/* The flashcards app is a full page, not a panel — this is the way in, and the
+   one action in the window, which is what earns it the action colour. */
 .open-app {
   display: block;
   width: 100%;
   margin: 4px 0 2px;
-  padding: 8px 10px;
-  font: inherit;
-  color: #fff;
-  background: #2f5fb3;
-  border: 1px solid #3a6cc4;
-  border-radius: 7px;
-  cursor: pointer;
-}
-.open-app:hover {
-  background: #3568c4;
-}
-
-/* The model server: an address to type, two shortcuts for the runners most
-   people have, and a button that asks Chrome for permission to reach it. */
-.presets {
-  display: flex;
-  gap: 6px;
-  padding: 6px 0 2px;
-}
-.preset {
-  flex: 1;
-  padding: 4px 6px;
-  font: inherit;
-  font-size: 11px;
-  color: #ccc;
-  background: #2a2a30;
-  border: 1px solid #444;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.preset:hover {
-  background: #33333c;
-  color: #eee;
-}
-input.url {
-  width: 150px;
-  padding: 3px 5px;
-  font: inherit;
-  font-size: 12px;
-  color: #eee;
-  background: #2a2a30;
-  border: 1px solid #444;
-  border-radius: 4px;
-}
-/* Model ids run long ("qwen/qwen3-8b-instruct"), and the popup is 300px wide. */
-select.model {
-  max-width: 165px;
-}
-.connect {
-  display: block;
-  width: 100%;
-  margin: 8px 0 6px;
-  padding: 6px 10px;
-  font: inherit;
-  color: #eee;
-  background: #2a2a30;
-  border: 1px solid #4a4a55;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.connect:hover {
-  background: #33333c;
 }
 
 /* Whether this video is worth 30 minutes, before you spend them. */
 .coverage {
   margin: 10px 0 0;
   padding: 8px 10px;
-  border-radius: 8px;
-  background: #23252c;
+  border-radius: var(--r-sm);
+  background: var(--raised);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -248,8 +154,8 @@ select.model {
 .pass-progress {
   margin: 0 0 10px;
   padding: 8px 10px;
-  border-radius: 4px;
-  background: #2a2a30;
+  border-radius: var(--r-ctl);
+  background: var(--inset);
 }
 .pass-progress-head {
   display: flex;
@@ -257,7 +163,7 @@ select.model {
   align-items: baseline;
   gap: 8px;
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-2);
 }
 /* Model ids are long and a four-digit line count is wide, so on a narrow popup
    one of the two has to give. It is this one: the count is the part being
@@ -273,7 +179,7 @@ select.model {
 /* The count is the part you re-read on every poll, so it holds still: tabular
    figures stop the digits shuffling sideways as the number climbs. */
 .pass-progress-count {
-  color: #999;
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -281,13 +187,15 @@ select.model {
   margin-top: 6px;
   height: 4px;
   border-radius: 2px;
-  background: #3a3a44;
+  background: var(--edge);
   overflow: hidden;
 }
 .pass-progress-fill {
   height: 100%;
   border-radius: 2px;
-  background: #8ab4f8;
+  /* A reading of how far along it is, not something to press — so it takes the
+     tone the rest of the product uses for information, not the action pink. */
+  background: var(--link);
   /* Matches the poll interval, so the bar slides between samples rather than
      stepping once a second. */
   transition: width 1s linear;
@@ -299,31 +207,22 @@ select.model {
    translation on screen, while a transcription that fails leaves no subtitles
    at all, so it has to be said and it has to be actionable. */
 .asr-progress.stopped {
-  background: #3a2626;
-  color: #f0c9c4;
+  background: color-mix(in srgb, var(--wrong) 14%, var(--inset));
+  color: var(--wrong);
 }
 .asr-progress-error {
   margin: 6px 0 0;
   font-size: 11px;
   line-height: 1.4;
-  color: #e0b0aa;
+  color: var(--wrong);
 }
 .asr-retry {
   margin-top: 8px;
   width: 100%;
-  padding: 5px 10px;
-  border-radius: 4px;
-  border: 1px solid #5a4040;
-  background: #4a3030;
-  color: #f0c9c4;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  color: var(--wrong);
+  background: color-mix(in srgb, var(--wrong) 20%, var(--inset));
+  border-color: color-mix(in srgb, var(--wrong) 34%, var(--inset));
 }
-.asr-retry:hover {
-  background: #5a3838;
-}
-.asr-retry:disabled {
-  opacity: 0.6;
-  cursor: default;
+.asr-retry:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--wrong) 30%, var(--inset));
 }

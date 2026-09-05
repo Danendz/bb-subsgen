@@ -1,0 +1,106 @@
+/* The visual language, shared by every extension page.
+ *
+ * This block used to live at the top of src/app/style.css, which meant the
+ * popup — the same product, rendering several of the same components — had no
+ * access to it and grew a second palette by hand. It is here so that there is
+ * one set of values and both pages import it.
+ *
+ * The palette is the Mandarin tone palette. Those five colours are already in
+ * this codebase — src/lang/reading.ts, the MDBG convention the subtitle overlay
+ * colours pinyin with — and the stylesheet had been reaching for three of them
+ * by hand for its verdicts and links without ever saying so. Naming them here
+ * makes that deliberate: colour means tone, the app and the overlay cannot
+ * drift apart, and a learner reads the same signal in both places.
+ *
+ * The one colour from outside that system is Bilibili's pink, reserved for the
+ * action you take. It is the only thing on screen that is not either a tone or
+ * a surface, which is what makes it read as "press this".
+ *
+ * Not shared with src/content/ or src/reader/, and not by oversight. Those draw
+ * over somebody else's moving video and need a near-neutral scrim to stay
+ * legible against arbitrary imagery; a warm purple would be unifying two
+ * surfaces that are solving different problems. What they do share is the part
+ * that carries meaning — the tones.
+ */
+
+@font-face {
+  font-family: 'Fredoka';
+  src: url('/fonts/fredoka-latin.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Declares the page as already dark. Without this Chrome's auto dark mode
+     rewrites every colour it thinks is too light — it was turning the action
+     pink into a muddy crimson — and form controls render in the light theme. */
+  color-scheme: dark;
+
+  /* Tones. Identical to TONE_COLORS in src/lang/reading.ts — change both or neither. */
+  --tone-1: #ff8a8a; /* flat   */
+  --tone-2: #ffc46b; /* rising */
+  --tone-3: #7ee0a8; /* dipping */
+  --tone-4: #8ab6ff; /* falling */
+  --tone-5: #c3c8d0; /* neutral */
+
+  /* Meaning, drawn from the tones rather than invented alongside them. */
+  --right: var(--tone-3);
+  --wrong: var(--tone-1);
+  --warn: var(--tone-2);
+  --link: var(--tone-4);
+  /* Deep enough to read as an edge against --raised rather than as a glow. */
+  --right-deep: #2f5a44;
+
+  /* Action. */
+  --action: #fb7299;
+  --action-deep: #b84a70;
+  --action-hot: #fc85a7;
+  --action-ink: #24101a;
+
+  /* Surfaces: warm ink, with enough distance between them to read as depth. */
+  --ink: #17131d;
+  --raised: #221c2b;
+  --raised-hot: #291f33;
+  --inset: #1b1624;
+  --edge: #332a40;
+  --edge-lit: #4c3e5e;
+
+  --text: #f3eefa;
+  --text-2: #c8bed6;
+  --text-3: #9285a6;
+
+  --r-sm: 8px;
+  --r: 14px;
+  --pill: 999px;
+  /* The radius of a control specifically. A full page can afford 8px corners on
+     a 40px-tall button; the popup packs the same controls at half the height,
+     where 8px reads as a lozenge. Split out so the popup can tighten only this. */
+  --r-ctl: var(--r-sm);
+
+  /* Depth on a pressable thing: the bottom border at rest, and while pressed.
+     The difference between them is exactly how far the face travels, so the
+     outer edge stays put — see `button:active` in src/settings/skin.css. Set
+     both equal for a flat control that does not move. */
+  --lip: 4px;
+  --lip-sunk: 2px;
+
+  /* Density. The same settings markup renders as a full-page panel and as a
+     popup row, and these are the whole difference between the two. Defaults are
+     the page's; src/popup/style.css tightens them. */
+  --rail-w: 180px;
+  --row-y: 10px;
+  --btn-size: 14px;
+  --btn-pad: 8px 14px;
+  --range-w: 200px;
+  --url-w: 220px;
+  /* What a row's label is allowed to shrink to. `0` lets a long option name keep
+     its control at full width and ellipsise the label instead, which is right on
+     a page. The popup sets `auto`: in its narrow pane the label is the part that
+     must not be crushed, so the control gives way. */
+  --grow-min: 0;
+
+  --display: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --hanzi: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
