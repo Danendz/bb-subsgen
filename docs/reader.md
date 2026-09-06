@@ -90,5 +90,18 @@ card per ending.
 
 Furigana lands over the kanji it reads, and nothing is drawn over the kana.
 
+Two things are not there yet, and the app says so where you would look for them — a
+**Coming soon** badge in Settings › Language and on the wizard's Japanese card:
+
+- **Grammar patterns.** Hover cards and review explain the words in a line but not the
+  structures around them; the pattern table for Japanese has not been written.
+- **On-device translation.** Chrome's built-in translator is wired up for Chinese only,
+  so Japanese lines are translated by your local model instead — slower, and nothing is
+  translated while the model is off.
+
+Everything else — lookups, furigana, deinflection, the deck — works today. Nothing that
+Japanese will never have is badged: there is no tone to colour and no second script to
+switch to, so those rows are simply not shown.
+
 *(The alignment and the deinflection table live in `src/lang/ja/`; each module says why
 it works the way it does.)*

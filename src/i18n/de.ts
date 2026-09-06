@@ -17,6 +17,7 @@ export const de: Messages = {
 
   'filter.studying': 'Ich lerne',
   'filter.all': 'Alle Sprachen',
+  'filter.notInstalled': '{language} \u2014 nicht installiert',
 
   'controls.notSet': 'Nicht gesetzt',
   'controls.sections': 'Bereiche',
@@ -58,6 +59,17 @@ export const de: Messages = {
     'Chrome hat für dieses Sprachpaar keinen Übersetzer auf dem Gerät, deshalb übersetzt dein lokales Modell die Zeilen. Das ist langsamer, und solange das Modell aus ist, wird nichts übersetzt.',
   'settings.language.toneColors': 'Tonfarben',
   'settings.language.traditional': 'Langzeichen in Definitionen zeigen',
+
+  comingSoon: 'Demnächst',
+  'comingSoon.summary': 'Noch in Arbeit für {language}: {missing}.',
+  'gap.patterns.row': 'Grammatikmuster ({language})',
+  'gap.patterns.title':
+    'Für {language} gibt es noch keine Grammatiktabelle, daher erklären Hover-Karten und Wiederholungen die Wörter, aber nicht die Strukturen darum herum.',
+  'gap.patterns.noun': 'Grammatikmuster',
+  'gap.onDevice.row': 'Übersetzung auf dem Gerät ({language})',
+  'gap.onDevice.title':
+    'Chromes eingebauter Übersetzer ist nur für Chinesisch angebunden, daher übersetzt dein lokales Modell die Zeilen auf {language}.',
+  'gap.onDevice.noun': 'die Übersetzung auf dem Gerät',
 
   'settings.llm.title': 'Lokales Modell',
   'settings.llm.noModels': 'Verbunden, aber auf dem Server ist kein Modell geladen.',

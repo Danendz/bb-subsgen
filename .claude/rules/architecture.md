@@ -107,6 +107,15 @@ and `ja/segment.ts` is a plain longest match, because the two languages are hard
 places. That is the interface working, not being worked around. What is *not* allowed is
 widening `Entry` or `Tag` so that one language's fields ride on every language's shape.
 
+**A capability flag hides a control; `comingSoon` badges one.** `displaysTones`,
+`usesTraditional`, `speechSample` and `voiceLang` say what a language *is*, and a row they
+do not apply to is not rendered at all — kana carry no tone, so there is no tone switch to
+show switched off. `LanguagePack.comingSoon` is the other case: work that is planned and has
+not shipped, listed as named `Gap`s and turned into prose by `src/lang/gaps.ts`. The two must
+not be swapped. A hidden row for planned work leaves the reader hunting for a setting that
+was never there; a badge on something the language will never have is a promise with a timer
+on it, which is why pitch accent is hidden and Japanese grammar patterns are badged.
+
 **Nothing outside a language's directory imports a module from inside it.** That is the point
 of the directory: an import of `zh/segment` from `reader/` is a Chinese assumption that
 compiles cleanly and is invisible from the file it sits in. The exceptions are the surfaces

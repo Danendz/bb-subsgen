@@ -35,6 +35,11 @@ export const japanesePack: LanguagePack = {
   usesTraditional: false,
   speechSample: '今日はいい天気です。',
   voiceLang: 'ja-JP',
+  // Both are planned and neither has shipped: #14 owes Japanese a grammar
+  // table, and the subtitle and reader translators are still created zh→target
+  // (`src/content/translator-pool.ts`), so a Japanese line reaches the local
+  // model rather than Chrome's on-device pair.
+  comingSoon: ['patterns', 'onDeviceTranslation'],
 
   inScript: isJapanese,
   containsScript: (text) => Array.from(text).some(isJapanese),

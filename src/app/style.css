@@ -182,14 +182,6 @@ nav.tabs a.on {
   margin: 0 0 6px;
 }
 
-.tag {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: var(--pill);
-  background: var(--inset);
-  color: var(--text-3);
-  font: 500 11px var(--display);
-}
 .tag.known {
   color: var(--right);
 }

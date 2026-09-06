@@ -28,6 +28,8 @@ import { listModels, LlmError, LLM_PRESETS, normalizeBaseUrl } from '../llm/clie
 import { normalizeHelperUrl } from '../youtube/site'
 import { ASR_PRESETS } from '../llm/asr'
 import { log } from '../llm/log'
+import { gapExplanation, gapRow } from '../lang/gaps'
+import { ComingSoon } from './ComingSoon'
 import { Hint, ModelSelect, Section, Select, Slider, Toggle, useVoices } from './controls'
 import { useT } from '../i18n/useT'
 import { Rich } from '../i18n/Rich'
@@ -195,6 +197,20 @@ export function LanguageSection({ settings, update }: SectionProps) {
           checked={settings.useTraditional}
           onChange={(v) => update({ useTraditional: v })}
         />
+      )}
+      {/*
+        A row with nothing to switch, on purpose: the point is that the setting
+        you went looking for is not here yet, which an absent row cannot say.
+        Only for work that is planned — what a language will never have is
+        hidden by the flags above.
+      */}
+      {packs.flatMap((pack) =>
+        pack.comingSoon.map((gap) => (
+          <div class="row" key={`${pack.code}:${gap}`}>
+            <span class="grow">{gapRow(pack, gap, t)}</span>
+            <ComingSoon title={gapExplanation(pack, gap, t)} />
+          </div>
+        )),
       )}
     </Section>
   )

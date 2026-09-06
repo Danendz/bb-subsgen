@@ -21,6 +21,7 @@ const fakePack = (): LanguagePack => ({
   usesTraditional: false,
   speechSample: '',
   voiceLang: 'xx',
+  comingSoon: [],
   inScript: () => true,
   containsScript: () => true,
   load: () => {

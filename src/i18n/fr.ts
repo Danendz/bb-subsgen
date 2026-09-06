@@ -15,6 +15,7 @@ export const fr: Messages = {
 
   'filter.studying': 'J’étudie',
   'filter.all': 'Toutes les langues',
+  'filter.notInstalled': '{language} \u2014 non installé',
 
   'controls.notSet': 'Non défini',
   'controls.sections': 'Sections',
@@ -56,6 +57,17 @@ export const fr: Messages = {
     'Chrome n’a pas de traducteur intégré pour cette paire : les phrases sont donc traduites par votre modèle local. C’est plus lent, et rien n’est traduit quand le modèle est éteint.',
   'settings.language.toneColors': 'Couleurs des tons',
   'settings.language.traditional': 'Afficher les traditionnels dans les définitions',
+
+  comingSoon: 'Bientôt disponible',
+  'comingSoon.summary': 'Encore en cours pour {language} : {missing}.',
+  'gap.patterns.row': 'Structures grammaticales ({language})',
+  'gap.patterns.title':
+    "Aucune table de grammaire n'existe encore pour {language}, donc les cartes au survol et les révisions expliquent les mots mais pas les structures autour.",
+  'gap.patterns.noun': 'les structures grammaticales',
+  'gap.onDevice.row': "Traduction sur l'appareil ({language})",
+  'gap.onDevice.title':
+    "Le traducteur intégré de Chrome n'est branché que pour le chinois, donc les lignes en {language} sont traduites par votre modèle local.",
+  'gap.onDevice.noun': "la traduction sur l'appareil",
 
   'settings.llm.title': 'Modèle local',
   'settings.llm.noModels': 'Connecté, mais le serveur n’a chargé aucun modèle.',

@@ -95,7 +95,8 @@ export function Select<T extends string>({
 }: {
   label: string
   value: T
-  options: ReadonlyArray<{ code: T; label: string }>
+  /** `disabled` is an option worth naming and not worth offering — see LanguageFilter. */
+  options: ReadonlyArray<{ code: T; label: string; disabled?: boolean }>
   onChange: (v: T) => void
 }) {
   return (
@@ -103,7 +104,7 @@ export function Select<T extends string>({
       <span class="grow">{label}</span>
       <select value={value} onChange={(e) => onChange(e.currentTarget.value as T)}>
         {options.map((option) => (
-          <option key={option.code} value={option.code}>
+          <option key={option.code} value={option.code} disabled={option.disabled}>
             {option.label}
           </option>
         ))}

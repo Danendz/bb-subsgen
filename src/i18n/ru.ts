@@ -15,6 +15,7 @@ export const ru: Messages = {
 
   'filter.studying': 'Изучаю',
   'filter.all': 'Все языки',
+  'filter.notInstalled': '{language} \u2014 не установлен',
 
   'controls.notSet': 'Не задано',
   'controls.sections': 'Разделы',
@@ -58,6 +59,17 @@ export const ru: Messages = {
     'У Chrome нет встроенного переводчика для этой пары, поэтому строки переводит ваша локальная модель. Это медленнее, и без неё перевода не будет.',
   'settings.language.toneColors': 'Цвета тонов',
   'settings.language.traditional': 'Показывать традиционные в определениях',
+
+  comingSoon: 'Скоро',
+  'comingSoon.summary': 'Ещё в работе для {language}: {missing}.',
+  'gap.patterns.row': 'Грамматические конструкции ({language})',
+  'gap.patterns.title':
+    'Таблицы грамматики для {language} пока нет, поэтому карточки при наведении и повторение объясняют слова, но не конструкции вокруг них.',
+  'gap.patterns.noun': 'грамматические конструкции',
+  'gap.onDevice.row': 'Перевод на устройстве ({language})',
+  'gap.onDevice.title':
+    'Встроенный переводчик Chrome подключён только для китайского, поэтому строки на {language} переводит ваша локальная модель.',
+  'gap.onDevice.noun': 'перевод на устройстве',
 
   'settings.llm.title': 'Локальная модель',
   'settings.llm.noModels': 'Подключено, но на сервере не загружено ни одной модели.',

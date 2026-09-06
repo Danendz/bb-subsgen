@@ -21,7 +21,8 @@ offline.
 - **Two languages, per site** — Chinese from CC-CEDICT, Japanese from JMdict, with
   conjugations resolved back to the dictionary form. Which language a site is read in is
   a property of that site, so a Japanese blog and a Chinese one can both be open.
-  [More](docs/reader.md#which-language-a-page-is-read-in)
+  Japanese is still missing grammar patterns and on-device translation, and says so where
+  you would look for them. [More](docs/reader.md#which-language-a-page-is-read-in)
 - **Six languages to read it in** — English, Russian, Spanish, French, German and
   Portuguese. Subtitle translations, the chat tutor, the dictionary definitions *and the
   extension's own screens* all follow the one setting.

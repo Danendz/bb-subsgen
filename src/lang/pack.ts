@@ -189,6 +189,15 @@ export interface Entry {
   tags: Tag[]
 }
 
+/**
+ * A capability a language is going to get and has not got yet.
+ *
+ * Named states rather than free text so that the badge, its tooltip and the
+ * settings row it sits on all come out of one table (`src/lang/gaps.ts`), and
+ * so that shipping one of them is a compile error at every place that lists it.
+ */
+export type Gap = 'patterns' | 'onDeviceTranslation'
+
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
   readonly code: string
@@ -236,6 +245,18 @@ export interface LanguagePack {
    * against, so the voice chosen in Settings is one that can read the deck.
    */
   readonly voiceLang: string
+  /**
+   * What this language is going to have and does not have yet.
+   *
+   * Read by the "Coming soon" badge in Settings and on the wizard's language
+   * card, so a language that is half-built says so instead of reading as
+   * finished. Only for work that is actually planned: something a language will
+   * never have is hidden by the flags above, because a badge on it would be a
+   * promise nobody intends to keep. That is also why this is a list here rather
+   * than derived from `patterns` being empty — `findPatterns` documents an
+   * empty table as a valid answer, not as a gap.
+   */
+  readonly comingSoon: readonly Gap[]
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean

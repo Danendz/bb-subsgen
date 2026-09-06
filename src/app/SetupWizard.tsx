@@ -19,6 +19,9 @@ import { dictDb, getMetaIn, type DictMeta } from '../dict/store'
 import { installDictionary, type InstallProgress } from '../dict/install'
 import { navigate } from './hooks'
 import { Flag } from './flags'
+import { gapSummary } from '../lang/gaps'
+import { packFor } from '../lang/packs'
+import { ComingSoon } from '../settings/ComingSoon'
 import { useT } from '../i18n/useT'
 
 const SOURCES = Object.values(DICT_SOURCES)
@@ -73,7 +76,7 @@ function LanguagePicker({
   enabled: string[]
   onToggle: (lang: string, on: boolean) => void
 }) {
-  const { t } = useT()
+  const { t, lang } = useT()
 
   return (
     <div class="wizard-picker">
@@ -82,6 +85,11 @@ function LanguagePicker({
       <div class="choices row">
         {SOURCES.map((source) => {
           const on = enabled.includes(source.lang)
+          // Badged, not disabled: the parts of Japanese that work are most of
+          // it, and a card you cannot press would leave a Japanese learner
+          // nothing to install.
+          const pack = packFor(source.lang)
+          const soon = pack ? gapSummary(pack, t, lang) : ''
           return (
             <button
               key={source.lang}
@@ -92,6 +100,7 @@ function LanguagePicker({
             >
               <Flag lang={source.lang} />
               <span class="choice-label">{source.langName}</span>
+              {soon && <ComingSoon title={soon} />}
             </button>
           )
         })}

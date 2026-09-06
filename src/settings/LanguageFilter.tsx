@@ -11,11 +11,16 @@
 // the settings rows, which then render for any installed language rather than
 // for one.
 //
+// Lists every language the wizard was told about, not only the downloaded ones:
+// one you ticked and never installed is offered disabled, because dropping it
+// would leave the wizard as the only place that mentions the missing download,
+// and offering it live would empty every lookup on the page.
+//
 // Asks the worker for the installed set rather than opening the dictionary
 // database, so the popup keeps paying a message instead of a store.
 
 import { useEffect, useState } from 'preact/hooks'
-import { installedSources } from '../dict/sources'
+import { enabledSources } from '../dict/sources'
 import { dictStatus } from '../shared/dict-client'
 import { Select } from './controls'
 import { useSettings } from './useSettings'
@@ -36,7 +41,7 @@ export function LanguageFilter() {
 
   if (!loaded || !installed) return null
 
-  const languages = installedSources(settings.enabledLanguages, installed)
+  const languages = enabledSources(settings.enabledLanguages)
   // Hidden below two, the same rule the pickers this replaces followed: a
   // control whose only options are All and the language you are already in is
   // one more thing on the screen and no choice at all.
@@ -49,7 +54,17 @@ export function LanguageFilter() {
         value={settings.studyLang}
         options={[
           { code: '', label: t('filter.all') },
-          ...languages.map((source) => ({ code: source.lang, label: source.langName })),
+          // A language chosen in the wizard and never downloaded is listed and
+          // not selectable: switching to it would empty every lookup on the
+          // page, and dropping it from the list instead would leave the only
+          // sign that the download is still owed inside the wizard.
+          ...languages.map((source) => ({
+            code: source.lang,
+            label: installed.has(source.lang)
+              ? source.langName
+              : t('filter.notInstalled', { language: source.langName }),
+            disabled: !installed.has(source.lang),
+          })),
         ]}
         onChange={(v) => update({ studyLang: v })}
       />

@@ -25,6 +25,7 @@ export const en = {
   // --- Language filter (src/settings/LanguageFilter.tsx) ---
   'filter.studying': 'Studying',
   'filter.all': 'All languages',
+  'filter.notInstalled': '{language} \u2014 not installed',
 
   // --- Shared controls (src/settings/controls.tsx, SectionRail.tsx) ---
   'controls.notSet': 'Not set',
@@ -69,6 +70,18 @@ export const en = {
     'Chrome has no on-device translator for this pair, so lines are translated by your local model instead. Slower, and nothing is translated while the model is off.',
   'settings.language.toneColors': 'Tone colors',
   'settings.language.traditional': 'Show traditional in definitions',
+
+  // --- Coming soon (src/settings/ComingSoon.tsx, src/lang/gaps.ts) ---
+  comingSoon: 'Coming soon',
+  'comingSoon.summary': 'Still being built for {language}: {missing}.',
+  'gap.patterns.row': '{language} grammar patterns',
+  'gap.patterns.title':
+    'No grammar table ships for {language} yet, so hover cards and review explain the words in a line but not the structures around them.',
+  'gap.patterns.noun': 'grammar patterns',
+  'gap.onDevice.row': '{language} on-device translation',
+  'gap.onDevice.title':
+    "Chrome's on-device translator is only wired up for Chinese, so {language} lines are translated by your local model instead.",
+  'gap.onDevice.noun': 'on-device translation',
 
   // --- Settings \u203a Local model ---
   'settings.llm.title': 'Local model',

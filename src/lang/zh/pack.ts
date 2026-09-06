@@ -31,6 +31,9 @@ export const chinesePack: LanguagePack = {
   usesTraditional: true,
   speechSample: '你好，今天天气很好。',
   voiceLang: 'zh-CN',
+  // Nothing outstanding: the grammar table ships and Chrome pairs zh→target
+  // on device.
+  comingSoon: [],
 
   inScript: isHan,
   containsScript: (text) => Array.from(text).some(isHan),

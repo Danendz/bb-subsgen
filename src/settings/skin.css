@@ -245,6 +245,23 @@ a:focus-visible {
   font-size: 12px;
   margin: 10px 0 0;
 }
+/* A pill of small caps for a word about the thing beside it. Here rather than in
+   the app's stylesheet because the popup badges the same unfinished controls the
+   app does; the app keeps the modifiers only it renders. */
+.tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--pill);
+  background: var(--inset);
+  color: var(--text-3);
+  font: 500 11px var(--display);
+}
+/* Unfinished, not broken — the warm tone the pool badge already uses for "on its
+   way", never the error red. */
+.tag.soon {
+  color: var(--warn);
+}
+
 /* Still legible, still there, and not reachable until the thing above it is on. */
 .disabled {
   opacity: 0.4;
