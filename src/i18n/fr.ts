@@ -13,6 +13,9 @@ export const fr: Messages = {
   'app.tab.data': 'Données',
   'app.tab.settings': 'Réglages',
 
+  'filter.studying': 'J’étudie',
+  'filter.all': 'Toutes les langues',
+
   'controls.notSet': 'Non défini',
   'controls.sections': 'Sections',
 
@@ -40,9 +43,10 @@ export const fr: Messages = {
   'settings.studying.voiceAuto': 'Automatique (la meilleure disponible)',
   'settings.studying.voiceNetworked': '{name} — en réseau',
   'settings.studying.noVoice':
-    'Aucune voix chinoise n’a été trouvée sur cet ordinateur : les cartes ne peuvent pas être lues à voix haute.',
+    'Aucune voix pour la langue que vous étudiez n’est installée sur cet ordinateur, les cartes ne peuvent donc pas être lues à voix haute.',
   'settings.studying.voiceSpeed': 'Vitesse de la voix',
   'settings.studying.testVoice': 'Tester la voix',
+  'settings.studying.testVoiceIn': 'Tester la voix en {language}',
   'settings.studying.voiceHint':
     'Les voix en réseau sonnent le mieux, mais elles sont synthétisées par Google : le texte de la carte quitte donc votre ordinateur, et elles se taisent hors connexion — une voix locale prend alors le relais.',
 
@@ -190,7 +194,6 @@ export const fr: Messages = {
   'wordlist.help.levels':
     'Une liste de niveaux demande une colonne de niveaux de 1 à 9 à côté des mots. Ils sont lus tels quels, sans renumérotation.',
 
-  'setup.language': 'Quelle langue',
   'setup.howAsked': 'Comment on vous interroge',
   'setup.whatIncluded': 'Ce qui est inclus',
   'setup.length': 'Durée de la séance',
@@ -205,8 +208,8 @@ export const fr: Messages = {
   'setup.mode.typeHint': 'Reconstruisez-le à partir du sens',
   'setup.mode.audio': 'Écoute',
   'setup.mode.audioHint': 'Reconstruisez-le à partir du son',
-  'setup.mode.noVoiceTitle': 'Aucune voix mandarine n’est installée sur cet ordinateur',
-  'setup.mode.noVoiceHint': 'Aucune voix mandarine installée',
+  'setup.mode.noVoiceTitle': 'Aucune voix pour cette langue n’est installée sur cet ordinateur',
+  'setup.mode.noVoiceHint': 'Aucune voix installée',
   'setup.include.both': 'Tout',
   'setup.include.words': 'Mots seulement',
   'setup.include.sentences': 'Phrases seulement',
@@ -338,7 +341,6 @@ export const fr: Messages = {
   'dict.filter.sentences': 'Phrases',
   'dict.noPack': 'Aucun pack de langue pour « {lang} ».',
   'dict.thisLanguage': 'cette langue',
-  'dict.study': 'Étudier {language}',
   'dict.search': 'Chercher parmi les mots que vous avez recueillis…',
   'dict.notCollected': 'Pas encore recueilli.',
   'dict.nothingHere': 'Rien ici pour l’instant.',

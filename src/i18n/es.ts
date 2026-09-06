@@ -13,6 +13,9 @@ export const es: Messages = {
   'app.tab.data': 'Datos',
   'app.tab.settings': 'Ajustes',
 
+  'filter.studying': 'Estudiando',
+  'filter.all': 'Todos los idiomas',
+
   'controls.notSet': 'Sin definir',
   'controls.sections': 'Secciones',
 
@@ -40,9 +43,10 @@ export const es: Messages = {
   'settings.studying.voiceAuto': 'Automática (la mejor disponible)',
   'settings.studying.voiceNetworked': '{name} — en red',
   'settings.studying.noVoice':
-    'No se ha encontrado ninguna voz china en este ordenador, así que las tarjetas no se pueden leer en voz alta.',
+    'No hay ninguna voz del idioma que estudias instalada en este ordenador, así que las tarjetas no se pueden leer en voz alta.',
   'settings.studying.voiceSpeed': 'Velocidad de la voz',
   'settings.studying.testVoice': 'Probar la voz',
+  'settings.studying.testVoiceIn': 'Probar la voz en {language}',
   'settings.studying.voiceHint':
     'Las voces en red suenan mejor, pero las sintetiza Google, de modo que el texto de la tarjeta sale de tu ordenador y enmudecen sin conexión: entonces toma el relevo una voz local.',
 
@@ -190,7 +194,6 @@ export const es: Messages = {
   'wordlist.help.levels':
     'Una lista de niveles necesita una columna de niveles del 1 al 9 junto a las palabras. Se leen tal cual, sin renumerar.',
 
-  'setup.language': 'Qué idioma',
   'setup.howAsked': 'Cómo se te pregunta',
   'setup.whatIncluded': 'Qué se incluye',
   'setup.length': 'Duración de la sesión',
@@ -205,8 +208,8 @@ export const es: Messages = {
   'setup.mode.typeHint': 'Constrúyelo a partir del significado',
   'setup.mode.audio': 'Escuchar',
   'setup.mode.audioHint': 'Constrúyelo a partir del sonido',
-  'setup.mode.noVoiceTitle': 'No hay ninguna voz de mandarín instalada en este ordenador',
-  'setup.mode.noVoiceHint': 'No hay voz de mandarín instalada',
+  'setup.mode.noVoiceTitle': 'No hay ninguna voz de este idioma instalada en este ordenador',
+  'setup.mode.noVoiceHint': 'No hay voz instalada',
   'setup.include.both': 'Todo',
   'setup.include.words': 'Solo palabras',
   'setup.include.sentences': 'Solo frases',
@@ -333,7 +336,6 @@ export const es: Messages = {
   'dict.filter.sentences': 'Frases',
   'dict.noPack': 'No hay paquete de idioma para «{lang}».',
   'dict.thisLanguage': 'este idioma',
-  'dict.study': 'Estudiar {language}',
   'dict.search': 'Buscar entre las palabras que has recogido…',
   'dict.notCollected': 'Todavía sin recoger.',
   'dict.nothingHere': 'Todavía no hay nada aquí.',

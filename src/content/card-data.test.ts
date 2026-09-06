@@ -18,6 +18,9 @@ const fakePack = (): LanguagePack => ({
   name: 'Test',
   levelsName: 'Level',
   displaysTones: false,
+  usesTraditional: false,
+  speechSample: '',
+  voiceLang: 'xx',
   inScript: () => true,
   containsScript: () => true,
   load: () => {

@@ -206,10 +206,36 @@ export interface LanguagePack {
   /**
    * Whether readings carry tone worth colouring.
    *
-   * Pinyin does and kana does not, so this is what will hide the tone controls
-   * for a language they mean nothing in rather than showing dead switches.
+   * Pinyin does and kana does not, so this hides the "Tone colors" switch in
+   * Settings › Language for a language it means nothing in rather than showing
+   * a dead control.
    */
   readonly displaysTones: boolean
+  /**
+   * Whether the script has a second form the reader can be shown instead.
+   *
+   * Gates "Show traditional in definitions" in Settings › Language. Chinese has
+   * traditional and simplified; Japanese has one written form and nothing to
+   * choose between, so the row is hidden rather than disabled — a control that
+   * can never apply is not a control.
+   */
+  readonly usesTraditional: boolean
+  /**
+   * A line for the "Test voice" button to say, or `''` if there is nothing to
+   * speak this language with.
+   *
+   * Here rather than in the settings component because the alternative is a
+   * hardcoded Chinese sentence, which is what this replaces — a Japanese-only
+   * learner pressed Test voice and heard 你好，今天天气很好。
+   */
+  readonly speechSample: string
+  /**
+   * The BCP-47 tag a voice has to speak for this language's cards.
+   *
+   * What `listVoices` filters the picker by and what `pickVoice` selects
+   * against, so the voice chosen in Settings is one that can read the deck.
+   */
+  readonly voiceLang: string
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean

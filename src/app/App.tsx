@@ -8,6 +8,7 @@ import { Videos } from './Videos'
 import { Chat } from './chat/Chat'
 import { navigate, useRoute } from './hooks'
 import { sectionOf } from './section-route'
+import { LanguageFilter } from '../settings/LanguageFilter'
 import { useT } from '../i18n/useT'
 import type { MessageKey } from '../i18n/keys'
 
@@ -66,6 +67,8 @@ export function App() {
     <div class="shell">
       <h1>{t('app.title')}</h1>
       <p class="subtitle">{t('app.subtitle')}</p>
+
+      <LanguageFilter />
 
       <Nav route={route} />
 

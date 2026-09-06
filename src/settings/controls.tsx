@@ -149,7 +149,7 @@ export function ModelSelect({
 }
 
 /**
- * The Chinese voices this browser has, best first.
+ * The voices this browser has for the languages in scope, best first.
  *
  * `getVoices()` comes back empty on the first call and fills in later. In a
  * popup that is the normal case rather than the edge one — the window is opened
@@ -157,13 +157,19 @@ export function ModelSelect({
  * in a page this short-lived, so listening alone leaves the picker empty. Hence
  * the poll as well, which stops as soon as anything arrives.
  */
-export function useVoices(): SpeechSynthesisVoice[] {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(listVoices)
+export function useVoices(voiceLangs: readonly string[]): SpeechSynthesisVoice[] {
+  // Joined rather than passed as an array: the caller derives it per render, so
+  // a new array every time would re-run the effect on every render.
+  const key = voiceLangs.join(' ')
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => listVoices(voiceLangs))
+  const found = voices.length > 0
 
   useEffect(() => {
-    if (voices.length > 0) return
+    const langs = key ? key.split(' ') : []
+    const refresh = () => setVoices(listVoices(langs))
+    refresh()
+    if (found) return
 
-    const refresh = () => setVoices(listVoices())
     speechSynthesis.addEventListener('voiceschanged', refresh)
     const timer = setInterval(refresh, 150)
 
@@ -171,7 +177,7 @@ export function useVoices(): SpeechSynthesisVoice[] {
       speechSynthesis.removeEventListener('voiceschanged', refresh)
       clearInterval(timer)
     }
-  }, [voices.length])
+  }, [key, found])
 
   return voices
 }

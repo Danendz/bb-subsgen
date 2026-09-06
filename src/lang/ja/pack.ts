@@ -30,6 +30,11 @@ export const japanesePack: LanguagePack = {
   // Pitch accent is not modelled and is not planned, so there is no tone to
   // colour and nothing for the tone controls to switch.
   displaysTones: false,
+  // One written form: there is no traditional/simplified choice to offer, so
+  // the row is hidden rather than shown switched off.
+  usesTraditional: false,
+  speechSample: '今日はいい天気です。',
+  voiceLang: 'ja-JP',
 
   inScript: isJapanese,
   containsScript: (text) => Array.from(text).some(isJapanese),

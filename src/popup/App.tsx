@@ -30,6 +30,7 @@ import {
   StudyingSection,
   SubtitlesSection,
 } from '../settings/sections'
+import { LanguageFilter } from '../settings/LanguageFilter'
 import { hostLabel } from '../settings/sites'
 import { useSettings } from '../settings/useSettings'
 import type {
@@ -395,6 +396,8 @@ export function App() {
         >
           {t('popup.openApp')}
         </button>
+
+        <LanguageFilter />
 
         {coverage && (
           <p class="coverage">

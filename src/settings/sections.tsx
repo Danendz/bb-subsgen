@@ -21,6 +21,7 @@ import {
   type TranslationLayout,
 } from '../shared/settings'
 import { isTranslatorSupported, translatorAvailability } from '../lang/translate'
+import { packsInScope } from '../lang/packs'
 import { isRemote, speak } from '../shared/speak'
 import { hasLlmPermission, requestLlmPermission } from '../shared/llm-permission'
 import { listModels, LlmError, LLM_PRESETS, normalizeBaseUrl } from '../llm/client'
@@ -44,7 +45,11 @@ const layouts = (t: Translate): ReadonlyArray<{ code: TranslationLayout; label: 
 
 export function StudyingSection({ settings, update }: SectionProps) {
   const { t } = useT()
-  const voices = useVoices()
+  // The language filter decides which controls mean anything here: a voice that
+  // cannot read the deck is not a choice, and there is no sample to test it on.
+  const packs = packsInScope(settings.studyLang, settings.enabledLanguages)
+  const voices = useVoices(packs.map((pack) => pack.voiceLang))
+  const samples = packs.map((pack) => pack.speechSample).filter(Boolean)
 
   // Derived rather than stored: an intake of zero already means "no lines", so
   // a separate flag would be a second source of truth that could disagree with
@@ -107,9 +112,25 @@ export function StudyingSection({ settings, update }: SectionProps) {
         // the label would otherwise read 0.8500000000000001.
         onChange={(v) => update({ speechRate: Math.round(v * 20) / 20 })}
       />
-      <button class="ghost" onClick={() => speak('你好，今天天气很好。')}>
-        {t('settings.studying.testVoice')}
-      </button>
+      {/*
+        One button per language in scope rather than one that guesses: under
+        **All** there is nothing to guess with, and the point of the button is to
+        hear the voice that will actually read the cards.
+      */}
+      {packs.map(
+        (pack) =>
+          pack.speechSample && (
+            <button
+              key={pack.code}
+              class="ghost"
+              onClick={() => speak(pack.speechSample, pack.voiceLang)}
+            >
+              {samples.length > 1
+                ? t('settings.studying.testVoiceIn', { language: pack.name })
+                : t('settings.studying.testVoice')}
+            </button>
+          ),
+      )}
       <Hint>{t('settings.studying.voiceHint')}</Hint>
     </Section>
   )
@@ -147,6 +168,10 @@ function useOnDeviceSupport(lang: TranslationLang): boolean | null {
 export function LanguageSection({ settings, update }: SectionProps) {
   const { t } = useT()
   const onDevice = useOnDeviceSupport(settings.translationLang)
+  // A row renders when any language in scope has something for it to switch:
+  // kana carries no tone and Japanese has no second script, so those two rows
+  // are hidden rather than shown dead. **All** brings them back for Chinese.
+  const packs = packsInScope(settings.studyLang, settings.enabledLanguages)
 
   return (
     <Section title={t('settings.language.title')}>
@@ -157,16 +182,20 @@ export function LanguageSection({ settings, update }: SectionProps) {
         onChange={(v: TranslationLang) => update({ translationLang: v })}
       />
       {onDevice === false && <Hint>{t('settings.language.noOnDevice')}</Hint>}
-      <Toggle
-        label={t('settings.language.toneColors')}
-        checked={settings.showToneColors}
-        onChange={(v) => update({ showToneColors: v })}
-      />
-      <Toggle
-        label={t('settings.language.traditional')}
-        checked={settings.useTraditional}
-        onChange={(v) => update({ useTraditional: v })}
-      />
+      {packs.some((pack) => pack.displaysTones) && (
+        <Toggle
+          label={t('settings.language.toneColors')}
+          checked={settings.showToneColors}
+          onChange={(v) => update({ showToneColors: v })}
+        />
+      )}
+      {packs.some((pack) => pack.usesTraditional) && (
+        <Toggle
+          label={t('settings.language.traditional')}
+          checked={settings.useTraditional}
+          onChange={(v) => update({ useTraditional: v })}
+        />
+      )}
     </Section>
   )
 }

@@ -220,7 +220,7 @@ export function Session({
       current.kind === 'sentence' ? chooseTarget(vocabularyIn(tokens), known, current.target) : null
 
     const exercise = exerciseFor(current, mode, {
-      canSpeak: canSpeak(),
+      canSpeak: canSpeak(words.pack.voiceLang),
       hasTranslation: Boolean(translation),
       hasTarget: Boolean(target),
     })
@@ -253,7 +253,7 @@ export function Session({
   // Speaking is the question on a listening card, so it has to happen on its own
   // rather than waiting for a button that would give the answer away.
   useEffect(() => {
-    if (card?.exercise.autoSpeak && current && !checked) speak(current.text)
+    if (card?.exercise.autoSpeak && current && !checked) speak(current.text, words.pack.voiceLang)
   }, [current?.id, card?.exercise.autoSpeak, checked])
 
   useEffect(() => {
@@ -531,7 +531,7 @@ export function Session({
           </div>
         ) : exercise.cue === 'audio' ? (
           <div class="prompt">
-            <button class="speak big" onClick={() => speak(current.text)}>
+            <button class="speak big" onClick={() => speak(current.text, words.pack.voiceLang)}>
               <span aria-hidden="true">♪</span> {t('session.playAgain')}
             </button>
           </div>
@@ -555,7 +555,7 @@ export function Session({
                 blank={target}
               />
             </p>
-            <button class="speak" onClick={() => speak(current.text)}>
+            <button class="speak" onClick={() => speak(current.text, words.pack.voiceLang)}>
               <span aria-hidden="true">♪</span> {t('session.playAgain')}
             </button>
           </div>
@@ -708,8 +708,8 @@ export function Session({
             {/* Speaks the Chinese that is actually on screen. A grammar card's
                 own text is a skeleton — reading "V + 得 + how" aloud would be
                 nonsense — so it offers its example instead, or nothing. */}
-            {canSpeak() && spokenText && (
-              <button class="speak" onClick={() => speak(spokenText)}>
+            {canSpeak(words.pack.voiceLang) && spokenText && (
+              <button class="speak" onClick={() => speak(spokenText, words.pack.voiceLang)}>
                 <span aria-hidden="true">♪</span> {t('session.listen')}
               </button>
             )}

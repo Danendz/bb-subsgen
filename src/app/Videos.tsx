@@ -180,11 +180,11 @@ function VideoDetail({ videoId }: { videoId: string }) {
                   .join('; ') ?? ''}
               </span>
               <span class="muted small">{t('videos.times', { count: word.count })}</span>
-              {canSpeak() && (
+              {canSpeak(data.pack?.voiceLang ?? '') && (
                 <button
                   class="icon-btn"
                   title={t('videos.speak')}
-                  onClick={() => speak(word.headword)}
+                  onClick={() => speak(word.headword, data.pack?.voiceLang ?? '')}
                 >
                   ♪
                 </button>

@@ -192,7 +192,8 @@ a:focus-visible {
   min-width: var(--grow-min);
 }
 
-.settings-group select {
+.settings-group select,
+.lang-filter select {
   padding: 6px 8px;
   color: var(--text);
   background: var(--inset);
@@ -222,6 +223,17 @@ a:focus-visible {
 }
 .settings-group .toolbar {
   margin: 12px 0 0;
+}
+
+/* The language filter (LanguageFilter.tsx), which is chrome rather than a
+   setting: it sits above the tabs on the page and in the popup's pinned block,
+   so it carries the rule the settings groups get from the panel around them. */
+.lang-filter {
+  margin: 0 0 14px;
+
+  & .row {
+    padding: 0 0 12px;
+  }
 }
 
 .value {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { pickVoice, type VoiceLike } from './speak'
+import { pickVoice, speaks, type VoiceLike } from './speak'
 
 /**
  * The Chinese voices Chrome actually reports on macOS, in the order it reports
@@ -35,17 +35,18 @@ const MACOS: VoiceLike[] = [
 ]
 
 const english: VoiceLike = { name: 'Samantha', lang: 'en-US', localService: true }
+const kyoko: VoiceLike = { name: 'Kyoko', lang: 'ja-JP', localService: true }
 
 describe('pickVoice', () => {
   test('takes the networked Google voice over anything installed locally', () => {
-    expect(pickVoice(MACOS)?.name).toBe('Google 普通话（中国大陆）')
+    expect(pickVoice(MACOS, 'zh-CN')?.name).toBe('Google 普通话（中国大陆）')
   })
 
   test('never picks a novelty voice while a real one exists', () => {
     // The regression this whole module was written for: `Eddy` is first in the
     // list and is a cartoon character voice.
     const local = MACOS.filter((v) => v.localService)
-    expect(pickVoice(local)?.name).toBe('Tingting')
+    expect(pickVoice(local, 'zh-CN')?.name).toBe('Tingting')
   })
 
   test('prefers Mandarin over Cantonese even when Cantonese sounds better', () => {
@@ -55,55 +56,84 @@ describe('pickVoice', () => {
       { name: 'Google 粤語（香港）', lang: 'zh-HK', localService: false },
       { name: 'Tingting', lang: 'zh-CN', localService: true },
     ]
-    expect(pickVoice(cantoneseAndTingting)?.name).toBe('Tingting')
+    expect(pickVoice(cantoneseAndTingting, 'zh-CN')?.name).toBe('Tingting')
   })
 
   test('falls back to Cantonese only when there is no Mandarin voice at all', () => {
     const onlyCantonese = [{ name: 'Sinji', lang: 'zh-HK', localService: true }]
-    expect(pickVoice(onlyCantonese)?.name).toBe('Sinji')
+    expect(pickVoice(onlyCantonese, 'zh-CN')?.name).toBe('Sinji')
   })
 
   test('mainland breaks the tie between two voices of equal quality', () => {
-    expect(pickVoice([...MACOS].reverse())?.name).toBe('Google 普通话（中国大陆）')
+    expect(pickVoice([...MACOS].reverse(), 'zh-CN')?.name).toBe('Google 普通话（中国大陆）')
   })
 
   test('honours a chosen voice outright, even a bad one', () => {
     // The user has heard both and picked. That is not a hint to weigh.
-    expect(pickVoice(MACOS, 'Eddy (Chinese (China mainland))')?.name).toBe(
+    expect(pickVoice(MACOS, 'zh-CN', 'Eddy (Chinese (China mainland))')?.name).toBe(
       'Eddy (Chinese (China mainland))',
     )
   })
 
   test('ignores a chosen voice that is not installed on this machine', () => {
     // Settings sync across computers; the voices do not.
-    expect(pickVoice(MACOS, 'Microsoft Huihui Desktop')?.name).toBe('Google 普通话（中国大陆）')
+    expect(pickVoice(MACOS, 'zh-CN', 'Microsoft Huihui Desktop')?.name).toBe(
+      'Google 普通话（中国大陆）',
+    )
   })
 
   test('skips voices that have already failed, which is the offline path', () => {
     const failed = new Set(['Google 普通话（中国大陆）', 'Google 國語（臺灣）'])
-    expect(pickVoice(MACOS, '', failed)?.name).toBe('Tingting')
+    expect(pickVoice(MACOS, 'zh-CN', '', failed)?.name).toBe('Tingting')
   })
 
   test('a chosen voice that has failed falls back rather than staying silent', () => {
     const failed = new Set(['Google 普通话（中国大陆）'])
-    expect(pickVoice(MACOS, 'Google 普通话（中国大陆）', failed)?.name).toBe('Google 國語（臺灣）')
+    expect(pickVoice(MACOS, 'zh-CN', 'Google 普通话（中国大陆）', failed)?.name).toBe(
+      'Google 國語（臺灣）',
+    )
   })
 
   test('a novelty voice is still better than no audio', () => {
     // canSpeak() returning false withdraws audio cards from the rotation, so
     // ranking these last is not the same as dropping them.
     const noveltyOnly = MACOS.filter((v) => v.name.startsWith('Eddy'))
-    expect(pickVoice(noveltyOnly)?.name).toBe('Eddy (Chinese (China mainland))')
+    expect(pickVoice(noveltyOnly, 'zh-CN')?.name).toBe('Eddy (Chinese (China mainland))')
   })
 
   test('gives up when the browser has no Chinese voice', () => {
-    expect(pickVoice([english])).toBeNull()
-    expect(pickVoice([])).toBeNull()
+    expect(pickVoice([english], 'zh-CN')).toBeNull()
+    expect(pickVoice([], 'zh-CN')).toBeNull()
+  })
+
+  // Card audio follows the deck: a Japanese deck on a machine with both
+  // installed must not be read out by the best Chinese voice on it.
+  test("never crosses languages, however good the other language's voices are", () => {
+    expect(pickVoice([...MACOS, kyoko], 'ja-JP')?.name).toBe('Kyoko')
+    expect(pickVoice([...MACOS, kyoko], 'zh-CN')?.name).toBe('Google 普通话（中国大陆）')
   })
 
   test('ignores non-Chinese voices rather than ranking them', () => {
     expect(
-      pickVoice([english, { name: 'Tingting', lang: 'zh-CN', localService: true }])?.name,
+      pickVoice([english, { name: 'Tingting', lang: 'zh-CN', localService: true }], 'zh-CN')?.name,
     ).toBe('Tingting')
+  })
+})
+
+describe('speaks', () => {
+  // The pair that made this a table rather than a prefix match: Cantonese has
+  // to be recognised as Chinese in order to be ranked last, not filtered out.
+  test('counts every tag the platforms label Mandarin and Cantonese with', () => {
+    for (const tag of ['zh-CN', 'cmn-Hans-CN', 'yue-HK'])
+      expect(speaks({ name: 'v', lang: tag, localService: true }, 'zh-CN')).toBe(true)
+  })
+
+  test('matches on the language, not the region it is spoken in', () => {
+    expect(speaks(kyoko, 'ja')).toBe(true)
+    expect(speaks(kyoko, 'ja-JP')).toBe(true)
+  })
+
+  test('a language nothing has resolved yet is spoken by nothing', () => {
+    expect(speaks(kyoko, '')).toBe(false)
   })
 })

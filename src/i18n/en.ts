@@ -22,6 +22,10 @@ export const en = {
   'app.tab.data': 'Data',
   'app.tab.settings': 'Settings',
 
+  // --- Language filter (src/settings/LanguageFilter.tsx) ---
+  'filter.studying': 'Studying',
+  'filter.all': 'All languages',
+
   // --- Shared controls (src/settings/controls.tsx, SectionRail.tsx) ---
   'controls.notSet': 'Not set',
   'controls.sections': 'Sections',
@@ -51,9 +55,10 @@ export const en = {
   'settings.studying.voiceAuto': 'Automatic (best available)',
   'settings.studying.voiceNetworked': '{name} \u2014 networked',
   'settings.studying.noVoice':
-    'No Chinese voice found on this computer, so cards cannot be spoken.',
+    'No voice for the language you are studying is installed on this computer, so cards cannot be spoken.',
   'settings.studying.voiceSpeed': 'Voice speed',
   'settings.studying.testVoice': 'Test voice',
+  'settings.studying.testVoiceIn': 'Test {language} voice',
   'settings.studying.voiceHint':
     'Networked voices sound best but are synthesised by Google, so the card text leaves your computer and they go quiet offline \u2014 a local voice takes over when that happens.',
 
@@ -210,7 +215,6 @@ export const en = {
     'A level list needs a column of levels from 1 to 9 alongside the words. Those are read as given, not renumbered.',
 
   // --- Session setup (src/app/review/Setup.tsx) ---
-  'setup.language': 'Which language',
   'setup.howAsked': 'How you are asked',
   'setup.whatIncluded': 'What is included',
   'setup.length': 'Session length',
@@ -225,8 +229,8 @@ export const en = {
   'setup.mode.typeHint': 'Build it from the meaning',
   'setup.mode.audio': 'Listening',
   'setup.mode.audioHint': 'Build it from the sound',
-  'setup.mode.noVoiceTitle': 'No Mandarin voice is installed on this computer',
-  'setup.mode.noVoiceHint': 'No Mandarin voice installed',
+  'setup.mode.noVoiceTitle': 'No voice for this language is installed on this computer',
+  'setup.mode.noVoiceHint': 'No voice installed',
   'setup.include.both': 'Everything',
   'setup.include.words': 'Words only',
   'setup.include.sentences': 'Lines only',
@@ -354,7 +358,6 @@ export const en = {
   'dict.filter.sentences': 'Sentences',
   'dict.noPack': 'No language pack for {lang}.',
   'dict.thisLanguage': 'this language',
-  'dict.study': 'Study {language}',
   'dict.search': 'Search the words you have collected\u2026',
   'dict.notCollected': 'Not collected yet.',
   'dict.nothingHere': 'Nothing here yet.',

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { PACKS } from './packs'
+import { PACKS, packsInScope } from './packs'
 import { DICT_SOURCES } from '../dict/sources'
 
 describe('PACKS', () => {
@@ -13,5 +13,29 @@ describe('PACKS', () => {
 
   test('a pack answers to the code it is filed under', () => {
     for (const [code, pack] of Object.entries(PACKS)) expect(pack.code).toBe(code)
+  })
+})
+
+describe('packsInScope', () => {
+  test('All is every enabled language, so a row survives on the one language that needs it', () => {
+    expect(packsInScope('', ['zh', 'ja']).map((pack) => pack.code)).toEqual(['zh', 'ja'])
+  })
+
+  test('one chosen language answers with itself alone', () => {
+    expect(packsInScope('ja', ['zh', 'ja']).map((pack) => pack.code)).toEqual(['ja'])
+  })
+
+  // A profile enabled before a pack was removed, or written by a newer version:
+  // the row it would have gated is simply not asked for.
+  test('drops a code no pack answers to rather than rendering against nothing', () => {
+    expect(packsInScope('', ['zh', 'kr']).map((pack) => pack.code)).toEqual(['zh'])
+  })
+
+  // Before the wizard has run. Narrowing to nothing would hide the tone and
+  // traditional rows from someone who has not yet chosen a language at all,
+  // which reads as a broken settings page rather than as a filter.
+  test('answers with every pack when nothing has been enabled yet', () => {
+    expect(packsInScope('', [])).toEqual(Object.values(PACKS))
+    expect(packsInScope('kr', [])).toEqual(Object.values(PACKS))
   })
 })

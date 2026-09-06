@@ -126,12 +126,15 @@ export interface Settings {
    * The language you are working in right now, e.g. `'zh'`.
    *
    * One setting rather than one per surface: it means "the language I am
-   * studying today", so switching it in the Dictionary tab moves Review with it
-   * instead of leaving two controls to disagree about which lexicon is loaded.
+   * studying today", so the one filter in the app header and the popup moves
+   * Review, the Dictionary and the settings rows together instead of leaving
+   * three controls to disagree about which lexicon is loaded.
    *
-   * Empty until something sets it — read it through `resolveStudyLang`, never
-   * directly, or a profile that has never touched the control reads no lexicon
-   * at all.
+   * `''` is **All**, and is also what a profile that has never touched the
+   * filter reads. The two are the same answer to different questions: a surface
+   * that needs exactly one language resolves it through `resolveStudyLang`,
+   * never from here, and one that can render several — the settings rows — asks
+   * `packsInScope`.
    */
   studyLang: string
   /** How the study session asks its questions. */
@@ -299,11 +302,12 @@ export const DEFAULT_SETTINGS: Settings = {
 /**
  * Which language a lookup should be answered in.
  *
- * `studyLang` is `''` until the control has been touched, and the language
- * controls stay hidden while only one dictionary is installed — so most
- * profiles never set it, and every caller has to fall back the same way or they
- * fall back differently. The final `'zh'` is for the window between installing
- * the extension and finishing the wizard, where nothing is enabled yet.
+ * `studyLang` is `''` for **All**, and is `''` anyway on the profiles that have
+ * never touched the filter — it stays hidden while only one dictionary is
+ * installed. Neither is an answer a lexicon can be loaded from, so every caller
+ * has to fall back the same way or they fall back differently. The final `'zh'`
+ * is for the window between installing the extension and finishing the wizard,
+ * where nothing is enabled yet.
  */
 export function resolveStudyLang(settings: Settings): string {
   return settings.studyLang || settings.enabledLanguages[0] || 'zh'

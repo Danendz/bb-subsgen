@@ -12,8 +12,7 @@ import { buildSession, queueCounts, type QueueSession } from '../flashcards/queu
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankKey, rankMap } from '../background/flashcards-store'
 import { packFor } from '../lang/packs'
-import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
-import { installedSources } from '../dict/sources'
+import { dictDb, getLexiconIn } from '../dict/store'
 import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
@@ -54,12 +53,10 @@ export function Review() {
     // Nothing to read the deck against until the settings land: reading it on
     // the defaults would load one lexicon and then immediately load another.
     if (!lang) return null
-    const dict = await dictDb()
     const db = await flashcardsDb()
-    const [items, words, installed, ranks, streak, exposures] = await Promise.all([
+    const [items, words, ranks, streak, exposures] = await Promise.all([
       listItems(db, lang),
       loadWords(lang),
-      getAllMeta(dict),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -68,7 +65,6 @@ export function Review() {
       items,
       words,
       lang,
-      installedLangs: new Set(Object.keys(installed)),
       ranks,
       streak,
       known: knownSetOf(items),
@@ -98,19 +94,6 @@ export function Review() {
     [data],
   )
 
-  /**
-   * Which languages the picker can offer: enabled, and actually installed.
-   *
-   * Out of `load` rather than in it, because it is the only thing there that
-   * reads a setting the load does not otherwise depend on — putting
-   * `enabledLanguages` in the dependency list would re-read the whole deck on
-   * every storage echo.
-   */
-  const languages = useMemo(
-    () => (data ? installedSources(settings.enabledLanguages, data.installedLangs) : []),
-    [data, settings.enabledLanguages],
-  )
-
   // The saved setup. No local copy laid over the top: `update` applies the
   // change to the hook's state before the write goes out, so the panel already
   // answers immediately.
@@ -118,10 +101,6 @@ export function Review() {
     () =>
       data
         ? {
-            // The resolved language, not the raw setting: with one dictionary
-            // installed nothing has ever written `studyLang`, and the control
-            // has to show that language as the one in use.
-            studyLang: data.lang,
             studyMode: settings.studyMode,
             studyInclude: settings.studyInclude,
             studySessionSize: settings.studySessionSize,
@@ -253,7 +232,7 @@ export function Review() {
         </div>
 
         {editing && (
-          <Setup setup={setup} canSpeak={canSpeak()} languages={languages} onChange={update} />
+          <Setup setup={setup} canSpeak={canSpeak(data.words.pack.voiceLang)} onChange={update} />
         )}
       </div>
 

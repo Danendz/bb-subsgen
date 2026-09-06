@@ -94,13 +94,26 @@ function baseName(name: string): string {
   return name.split(' (')[0].trim()
 }
 
-function isChinese(lang: string): boolean {
-  const tag = lang.toLowerCase()
-  return tag.startsWith('zh') || tag.startsWith('cmn') || tag.startsWith('yue')
+/**
+ * Tags a voice may carry for the language `voiceLang` names.
+ *
+ * A table rather than a prefix match because of Chinese: the platforms label
+ * Mandarin voices `zh` and `cmn`, and Cantonese `yue` — which has to be
+ * recognised here in order to be ranked last below, not filtered out. Every
+ * other language is its own primary subtag and needs no entry.
+ */
+const VOICE_TAGS: Record<string, readonly string[]> = { zh: ['zh', 'cmn', 'yue'] }
+
+/** Whether this voice could read the language at all. `''` matches nothing. */
+export function speaks(voice: VoiceLike, voiceLang: string): boolean {
+  const primary = voiceLang.toLowerCase().split('-')[0]
+  if (!primary) return false
+  const tag = voice.lang.toLowerCase()
+  return (VOICE_TAGS[primary] ?? [primary]).some((p) => tag === p || tag.startsWith(`${p}-`))
 }
 
 /**
- * Whether this voice speaks the language the cards are in.
+ * Whether this voice speaks the *dialect* the cards are in.
  *
  * `zh-HK` is Cantonese — a different spoken language, not an accent — and the
  * old `startsWith('zh')` fallback could select it. It has to lose to every
@@ -122,7 +135,13 @@ function tier(voice: VoiceLike): number {
   return 1
 }
 
-/** Mainland first, then Taiwan — a tie-break between voices of equal quality. */
+/**
+ * Mainland first, then Taiwan — a tie-break between voices of equal quality.
+ *
+ * Chinese-specific, like `isMandarin` above, and inert for every other language:
+ * a `ja-JP` voice scores zero here and is ranked on quality alone, which is the
+ * whole of what is known about it.
+ */
 function accent(lang: string): number {
   const tag = lang.toLowerCase()
   if (tag.startsWith('zh-cn') || tag.startsWith('zh-sg') || tag === 'zh') return 2
@@ -135,7 +154,7 @@ function score(voice: VoiceLike): number {
 }
 
 /**
- * The best Chinese voice available, or null if the browser has none.
+ * The best voice for `voiceLang`, or null if the browser has none.
  *
  * Pure, so the whole ranking can be tested against a real `getVoices()` dump
  * without a browser. `preferred` is a voice name the user chose and wins
@@ -144,10 +163,11 @@ function score(voice: VoiceLike): number {
  */
 export function pickVoice<T extends VoiceLike>(
   voices: readonly T[],
+  voiceLang: string,
   preferred = '',
   unusable: ReadonlySet<string> = new Set(),
 ): T | null {
-  const usable = voices.filter((v) => isChinese(v.lang) && !unusable.has(v.name))
+  const usable = voices.filter((v) => speaks(v, voiceLang) && !unusable.has(v.name))
   if (usable.length === 0) return null
 
   const chosen = preferred ? usable.find((v) => v.name === preferred) : undefined
@@ -156,10 +176,16 @@ export function pickVoice<T extends VoiceLike>(
   return usable.reduce((best, v) => (score(v) > score(best) ? v : best))
 }
 
-/** Every Chinese voice, best first — what the popup's picker lists. */
-export function listVoices(): SpeechSynthesisVoice[] {
+/**
+ * Every voice for these languages, best first — what the settings picker lists.
+ *
+ * Takes the languages rather than reading the setting: the picker is rendered
+ * under the language filter, which can be **All**, and one saved `speechVoice`
+ * has to be choosable from whichever of them is in scope.
+ */
+export function listVoices(voiceLangs: readonly string[]): SpeechSynthesisVoice[] {
   return installed()
-    .filter((v) => isChinese(v.lang))
+    .filter((v) => voiceLangs.some((lang) => speaks(v, lang)))
     .sort((a, b) => score(b) - score(a))
 }
 
@@ -177,6 +203,8 @@ let prefs = {
 const unusable = new Set<string>()
 
 let cached: SpeechSynthesisVoice | null = null
+/** The language `cached` was picked for, so a deck in another one re-picks. */
+let cachedFor = ''
 let listening = false
 
 function installed(): SpeechSynthesisVoice[] {
@@ -189,10 +217,10 @@ function installed(): SpeechSynthesisVoice[] {
  *
  * `getVoices()` is empty until the list loads on some platforms, so this
  * re-checks rather than caching a miss, and gives up gracefully — a machine with
- * no Chinese voice installed simply gets no audio button.
+ * no voice for the language installed simply gets no audio button.
  */
-function selected(): SpeechSynthesisVoice | null {
-  if (cached) return cached
+function selected(voiceLang: string): SpeechSynthesisVoice | null {
+  if (cached && cachedFor === voiceLang) return cached
 
   const voices = installed()
   if (voices.length === 0) {
@@ -207,12 +235,14 @@ function selected(): SpeechSynthesisVoice | null {
     return null
   }
 
-  cached = pickVoice(voices, prefs.voice, unusable)
+  cached = pickVoice(voices, voiceLang, prefs.voice, unusable)
+  cachedFor = voiceLang
   return cached
 }
 
-export function canSpeak(): boolean {
-  return selected() !== null
+/** `voiceLang` is `LanguagePack.voiceLang`; `''` where the language is unknown. */
+export function canSpeak(voiceLang: string): boolean {
+  return selected(voiceLang) !== null
 }
 
 /**
@@ -225,13 +255,18 @@ export function canSpeak(): boolean {
  */
 let issued = 0
 
-export function speak(text: string): void {
-  const voice = selected()
+export function speak(text: string, voiceLang: string): void {
+  const voice = selected(voiceLang)
   if (!voice) return
-  say(text, voice, true)
+  say(text, voice, voiceLang, true)
 }
 
-function say(text: string, voice: SpeechSynthesisVoice, mayRetry: boolean): void {
+function say(
+  text: string,
+  voice: SpeechSynthesisVoice,
+  voiceLang: string,
+  mayRetry: boolean,
+): void {
   // Cancel first: clicking through several cards otherwise queues them all and
   // the audio runs minutes behind the screen.
   speechSynthesis.cancel()
@@ -257,8 +292,8 @@ function say(text: string, voice: SpeechSynthesisVoice, mayRetry: boolean): void
 
       unusable.add(voice.name)
       cached = null
-      const fallback = selected()
-      if (fallback && fallback.name !== voice.name) say(text, fallback, false)
+      const fallback = selected(voiceLang)
+      if (fallback && fallback.name !== voice.name) say(text, fallback, voiceLang, false)
     }
 
     speechSynthesis.speak(utterance)
@@ -274,8 +309,9 @@ function apply(settings: Settings): void {
 }
 
 // Read once and then follow. `canSpeak()` is called during render in three
-// places and so has to stay synchronous, which it can: whether *a* Chinese voice
-// exists does not depend on settings. Only the choice between them does, and
+// places and so has to stay synchronous, which it can: whether *a* voice for the
+// language exists does not depend on settings — the caller passes the language,
+// and it holds a pack. Only the choice between voices depends on settings, and
 // until this resolves the defaults are the right answer anyway.
 if (typeof chrome !== 'undefined' && chrome.storage) {
   void loadSettings().then(apply)

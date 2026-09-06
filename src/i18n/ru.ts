@@ -13,6 +13,9 @@ export const ru: Messages = {
   'app.tab.data': 'Данные',
   'app.tab.settings': 'Настройки',
 
+  'filter.studying': 'Изучаю',
+  'filter.all': 'Все языки',
+
   'controls.notSet': 'Не задано',
   'controls.sections': 'Разделы',
 
@@ -42,9 +45,10 @@ export const ru: Messages = {
   'settings.studying.voiceAuto': 'Автоматически (лучший доступный)',
   'settings.studying.voiceNetworked': '{name} — сетевой',
   'settings.studying.noVoice':
-    'На этом компьютере не найден китайский голос, поэтому карточки нельзя озвучить.',
+    'На этом компьютере нет голоса для изучаемого языка, поэтому карточки нельзя озвучить.',
   'settings.studying.voiceSpeed': 'Скорость речи',
   'settings.studying.testVoice': 'Проверить голос',
+  'settings.studying.testVoiceIn': 'Проверить голос: {language}',
   'settings.studying.voiceHint':
     'Сетевые голоса звучат лучше всего, но синтезируются Google, поэтому текст карточки покидает ваш компьютер, а без сети они замолкают — тогда включается локальный голос.',
 
@@ -204,7 +208,6 @@ export const ru: Messages = {
   'wordlist.help.levels':
     'Список уровней требует столбца с уровнями от 1 до 9 рядом со словами. Они читаются как есть и не перенумеровываются.',
 
-  'setup.language': 'Какой язык',
   'setup.howAsked': 'Как вас спрашивать',
   'setup.whatIncluded': 'Что включать',
   'setup.length': 'Длина сессии',
@@ -219,8 +222,8 @@ export const ru: Messages = {
   'setup.mode.typeHint': 'Соберите по значению',
   'setup.mode.audio': 'Аудирование',
   'setup.mode.audioHint': 'Соберите на слух',
-  'setup.mode.noVoiceTitle': 'На этом компьютере не установлен голос путунхуа',
-  'setup.mode.noVoiceHint': 'Голос путунхуа не установлен',
+  'setup.mode.noVoiceTitle': 'На этом компьютере не установлен голос для этого языка',
+  'setup.mode.noVoiceHint': 'Голос не установлен',
   'setup.include.both': 'Всё',
   'setup.include.words': 'Только слова',
   'setup.include.sentences': 'Только фразы',
@@ -365,7 +368,6 @@ export const ru: Messages = {
   'dict.filter.sentences': 'Предложения',
   'dict.noPack': 'Нет языкового пакета для «{lang}».',
   'dict.thisLanguage': 'этого языка',
-  'dict.study': 'Изучать: {language}',
   'dict.search': 'Искать среди собранных слов…',
   'dict.notCollected': 'Пока не собрано.',
   'dict.nothingHere': 'Здесь пока пусто.',
