@@ -189,6 +189,15 @@ export interface Entry {
   tags: Tag[]
 }
 
+/**
+ * A capability a language is going to get and has not got yet.
+ *
+ * Named states rather than free text so that the badge, its tooltip and the
+ * settings row it sits on all come out of one table (`src/lang/gaps.ts`), and
+ * so that shipping one of them is a compile error at every place that lists it.
+ */
+export type Gap = 'patterns' | 'onDeviceTranslation'
+
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
   readonly code: string
@@ -206,10 +215,48 @@ export interface LanguagePack {
   /**
    * Whether readings carry tone worth colouring.
    *
-   * Pinyin does and kana does not, so this is what will hide the tone controls
-   * for a language they mean nothing in rather than showing dead switches.
+   * Pinyin does and kana does not, so this hides the "Tone colors" switch in
+   * Settings › Language for a language it means nothing in rather than showing
+   * a dead control.
    */
   readonly displaysTones: boolean
+  /**
+   * Whether the script has a second form the reader can be shown instead.
+   *
+   * Gates "Show traditional in definitions" in Settings › Language. Chinese has
+   * traditional and simplified; Japanese has one written form and nothing to
+   * choose between, so the row is hidden rather than disabled — a control that
+   * can never apply is not a control.
+   */
+  readonly usesTraditional: boolean
+  /**
+   * A line for the "Test voice" button to say, or `''` if there is nothing to
+   * speak this language with.
+   *
+   * Here rather than in the settings component because the alternative is a
+   * hardcoded Chinese sentence, which is what this replaces — a Japanese-only
+   * learner pressed Test voice and heard 你好，今天天气很好。
+   */
+  readonly speechSample: string
+  /**
+   * The BCP-47 tag a voice has to speak for this language's cards.
+   *
+   * What `listVoices` filters the picker by and what `pickVoice` selects
+   * against, so the voice chosen in Settings is one that can read the deck.
+   */
+  readonly voiceLang: string
+  /**
+   * What this language is going to have and does not have yet.
+   *
+   * Read by the "Coming soon" badge in Settings and on the wizard's language
+   * card, so a language that is half-built says so instead of reading as
+   * finished. Only for work that is actually planned: something a language will
+   * never have is hidden by the flags above, because a badge on it would be a
+   * promise nobody intends to keep. That is also why this is a list here rather
+   * than derived from `patterns` being empty — `findPatterns` documents an
+   * empty table as a valid answer, not as a gap.
+   */
+  readonly comingSoon: readonly Gap[]
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean

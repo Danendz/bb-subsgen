@@ -1,6 +1,6 @@
 import { adoptStyles } from './overlay'
-import { buildCard, characterBreakdown } from './card'
-import type { LanguagePack, Token } from '../lang/pack'
+import { buildCard, characterBreakdown, MAX_DEFINITIONS, setCardGlosses } from './card'
+import type { Entry, LanguagePack, Token } from '../lang/pack'
 import { discoverWord, markKnown } from '../shared/flashcards-client'
 import type { Context } from '../flashcards/types'
 import type { DefsLookup } from '../shared/dict-client'
@@ -80,6 +80,15 @@ export interface HoverDeps {
    * read that": the translation was withheld and you went looking for it. No
    * threshold to tune, which is why it is a separate signal from the dwell.
    */
+  /**
+   * The card's senses in the language being read, or `[]` where there are none.
+   *
+   * Injected rather than reached for: this file runs in a content script, and
+   * the caller is what knows the target language and holds the round trip to
+   * the worker's cache. Resolving to `[]` leaves the English standing, which is
+   * the intended fallback rather than a failure.
+   */
+  localizedGlosses?: (headword: string, senses: string[]) => Promise<string[]>
   onLookup: (headword: string) => void
   /** How long the card stayed open, once the pointer has finally left. */
   onLookupEnd: (ms: number) => void
@@ -108,6 +117,7 @@ export function attachHover({
   video,
   lookup,
   showToneColors,
+  localizedGlosses,
   currentContext,
   currentTokens,
   known,
@@ -135,6 +145,23 @@ export function attachHover({
     }
     popup?.remove()
     popup = null
+  }
+
+  /**
+   * Replaces a shown card's English definitions with their translations.
+   *
+   * Re-checks that the card it was asked about is still the card on screen: a
+   * hover can be replaced while the round trip is out, and writing the answer
+   * into whatever popup is there now would put one word's meaning under
+   * another's.
+   */
+  const localizeGlosses = async (card: HTMLElement, headword: string, found: Entry[]) => {
+    const [primary] = pack.rank(found, headword)
+    const senses = primary?.senses.slice(0, MAX_DEFINITIONS).map((sense) => sense.gloss) ?? []
+    if (!senses.length) return
+
+    const translated = await localizedGlosses!(headword, senses)
+    if (popup === card) setCardGlosses(card, translated)
   }
 
   const openPopup = async (wordEl: HTMLElement, surface: string) => {
@@ -180,6 +207,10 @@ export function attachHover({
     )
     // Append before measuring — the popup needs layout to have a width.
     shadowRoot.appendChild(popup)
+
+    // After the card is up, never before it. The English is already on screen
+    // and a hover must not wait on a translation to draw at all.
+    if (localizedGlosses) void localizeGlosses(popup, headword, found[headword] ?? [])
 
     const wordRect = wordEl.getBoundingClientRect()
     const hostRect = shadowRoot.host.getBoundingClientRect()

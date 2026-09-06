@@ -9,6 +9,7 @@
 // actually arrive in rather than the shapes their documentation describes.
 
 import type { LanguagePack } from '../lang/pack'
+import type { Translate } from '../i18n/t'
 
 export type ListKind = 'frequency' | 'hsk'
 
@@ -300,15 +301,15 @@ export function parseWordList(kind: ListKind, raw: string, pack: LanguagePack): 
 }
 
 /** What to tell the user, in terms of the thing they should actually go and do. */
-export function errorMessage(error: ParseError): string {
+export function errorMessage(error: ParseError, t: Translate): string {
   switch (error) {
     case 'empty':
-      return 'That file is empty.'
+      return t('wordlist.error.empty')
     case 'binary':
-      return 'That looks like a zip or a spreadsheet. Unzip it first, or open it and save as CSV.'
+      return t('wordlist.error.binary')
     case 'no-chinese':
-      return 'No Chinese found. Check it is the right file — and if it came from an older dataset, it may not be saved as UTF-8, which would arrive here as garbled text.'
+      return t('wordlist.error.noChinese')
     case 'no-levels':
-      return 'Found the words, but no HSK level column (a number from 1 to 9).'
+      return t('wordlist.error.noLevels')
   }
 }

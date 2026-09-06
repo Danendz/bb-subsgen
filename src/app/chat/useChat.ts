@@ -13,6 +13,7 @@ import { systemFor } from '../../llm/prompts'
 import { stripThinkBlocks } from '../../llm/reply'
 import type { LlmMessage } from '../../llm/types'
 import { loadSettings, type Settings } from '../../shared/settings'
+import { useT } from '../../i18n/useT'
 
 /**
  * The models the configured server has, fetched once per page load.
@@ -98,6 +99,7 @@ export interface UseChatOptions {
  * front so an interrupted reply still has somewhere to land.
  */
 export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {}): ChatSession {
+  const { t } = useT()
   const [chat, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState<string | null>(null)
@@ -144,7 +146,7 @@ export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {
 
       const model = chat.model || settings.llmChatModel
       if (!settings.llmBaseUrl || !model) {
-        setError('Set a model server and a chat model in the extension popup first.')
+        setError(t('chat.noModel'))
         return
       }
 
@@ -216,7 +218,7 @@ export function useChat(chatId: string | null, { onChanged }: UseChatOptions = {
         onChanged?.()
       })
     },
-    [chat, settings, busy, messages, onChanged],
+    [chat, settings, busy, messages, onChanged, t],
   )
 
   const chooseModel = useCallback(

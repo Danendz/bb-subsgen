@@ -10,6 +10,8 @@
 // Same markup in both, skinned by each host's stylesheet — the arrangement
 // controls.tsx describes, for the same reason.
 
+import { useT } from '../i18n/useT'
+
 /** One rail entry. `slug` is what appears in the hash on the app side. */
 export interface RailItem<S extends string> {
   slug: S
@@ -25,8 +27,10 @@ export function SectionRail<S extends string>({
   active: S
   onSelect: (slug: S) => void
 }) {
+  const { t } = useT()
+
   return (
-    <nav class="panel section-rail" aria-label="Sections">
+    <nav class="panel section-rail" aria-label={t('controls.sections')}>
       {items.map((item) => (
         <div class={`row section-row ${item.slug === active ? 'on' : ''}`} key={item.slug}>
           <button

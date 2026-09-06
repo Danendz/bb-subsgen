@@ -1,5 +1,6 @@
 import { useEffect } from 'preact/hooks'
 import { ChatPanel } from './ChatPanel'
+import { useT } from '../../i18n/useT'
 
 export interface ChatDrawerProps {
   chatId: string
@@ -24,6 +25,8 @@ export interface ChatDrawerProps {
  * Asking a question about a card must not cost you the card.
  */
 export function ChatDrawer({ chatId, autoAsk, onClose, fullHref, fullTarget }: ChatDrawerProps) {
+  const { t } = useT()
+
   // Escape closes, as it does everywhere else a panel covers the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,13 +41,13 @@ export function ChatDrawer({ chatId, autoAsk, onClose, fullHref, fullTarget }: C
       {/* The panel swallows clicks so only the backdrop closes. */}
       <aside class="drawer" onClick={(e) => e.stopPropagation()}>
         <header class="drawer-head">
-          <strong class="grow">Explain</strong>
+          <strong class="grow">{t('embed.title')}</strong>
           {fullHref && (
             <a class="small" href={fullHref} target={fullTarget} rel="noreferrer">
-              Open full width
+              {t('chat.openFullWidth')}
             </a>
           )}
-          <button class="ghost icon-btn" onClick={onClose} aria-label="Close">
+          <button class="ghost icon-btn" onClick={onClose} aria-label={t('embed.close')}>
             ✕
           </button>
         </header>

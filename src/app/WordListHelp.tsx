@@ -10,30 +10,27 @@
 // what `wordlist-install.ts` now does. What survives is the part no button
 // replaces: what the uploader accepts, and the one way a file is silently wrong.
 
+import { useT } from '../i18n/useT'
+import { Rich } from '../i18n/Rich'
+
 export function WordListHelp() {
+  const { t } = useT()
+
   return (
     <details class="help">
-      <summary>Use your own file instead</summary>
+      <summary>{t('wordlist.help.summary')}</summary>
 
-      <p>Nothing here is uploaded anywhere. The file is read in your browser and stays in it.</p>
+      <p>{t('wordlist.help.privacy')}</p>
 
-      <h4>What the uploader accepts</h4>
-      <p>
-        One word per line, or any tab- or comma-separated file with a column of the language you
-        study in it, or a JSON array. A header row is detected and skipped, and the word column is
-        found wherever it sits.
-      </p>
+      <h4>{t('wordlist.help.acceptsTitle')}</h4>
+      <p>{t('wordlist.help.accepts')}</p>
       <p class="callout">
-        A frequency list is ranked by <strong>the order words appear in the file</strong>, most
-        common first. Any number in the file is ignored, because the same number means opposite
-        things in different lists — a rank counts up as words get rarer, a raw count counts down. So
-        check the preview before importing: for Chinese it should start 的, 一, 是. If it starts 爱,
-        爱好, 八 the file is in alphabetical order and needs sorting by frequency first.
+        <Rich
+          text={t('wordlist.help.frequency')}
+          slots={{ order: <strong>{t('wordlist.help.frequencyOrder')}</strong> }}
+        />
       </p>
-      <p>
-        A level list needs a column of levels from 1 to 9 alongside the words. Those are read as
-        given, not renumbered.
-      </p>
+      <p>{t('wordlist.help.levels')}</p>
     </details>
   )
 }

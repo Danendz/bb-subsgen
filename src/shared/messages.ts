@@ -127,6 +127,78 @@ export function isLookupDefsMessage(msg: unknown): msg is LookupDefsMessage {
 }
 
 /**
+ * The cached translations of dictionary glosses, read before translating.
+ *
+ * A request/response pair of its own rather than a field on `LookupDefsMessage`:
+ * the two have different answers for the same word. `defs` is the English the
+ * dictionary shipped and is always there; this is a cache that starts empty and
+ * fills as words are met, and a caller that finds nothing here still has a
+ * definition to show.
+ *
+ * The split of work is forced by where the Translator API exists. It is
+ * unavailable in workers (see `src/lang/translate.ts`), so the worker cannot
+ * translate — but the store is on the extension origin, so the caller cannot
+ * cache. The caller translates and the worker remembers, which is why this is
+ * two messages rather than one.
+ */
+export interface LookupGlossesMessage {
+  type: 'bb-subsgen:lookup-glosses'
+  /** The language being studied — the first segment of the key. */
+  lang: string
+  /** The language being read — the last. See `glossKey` in src/dict/store.ts. */
+  target: string
+  headwords: string[]
+}
+export interface LookupGlossesResponse {
+  /**
+   * Only the headwords that have one. Absent and empty mean different things
+   * here — "never translated" is a reason to translate, "translated to nothing"
+   * is a reason not to bother again.
+   */
+  glosses: Record<string, string[]>
+}
+
+export function isLookupGlossesMessage(msg: unknown): msg is LookupGlossesMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:lookup-glosses' &&
+    typeof (msg as { lang?: unknown }).lang === 'string' &&
+    typeof (msg as { target?: unknown }).target === 'string' &&
+    Array.isArray((msg as { headwords?: unknown }).headwords)
+  )
+}
+
+/**
+ * A translation the caller has just produced, handed to the worker to keep.
+ *
+ * Fire-and-forget, and deliberately not part of `DictWriteMessage` or any
+ * existing union — there is no such union for the dictionary, and the only
+ * other thing that writes to that database is the installer, which runs on an
+ * extension page and holds the store directly. Losing one of these costs a
+ * re-translation, not data.
+ */
+export interface PutGlossesMessage {
+  type: 'bb-subsgen:put-glosses'
+  lang: string
+  target: string
+  /** Headword to its translated senses, in the order the pack ranked them. */
+  glosses: Record<string, string[]>
+}
+
+export function isPutGlossesMessage(msg: unknown): msg is PutGlossesMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as { type?: unknown }).type === 'bb-subsgen:put-glosses' &&
+    typeof (msg as { lang?: unknown }).lang === 'string' &&
+    typeof (msg as { target?: unknown }).target === 'string' &&
+    typeof (msg as { glosses?: unknown }).glosses === 'object' &&
+    (msg as { glosses?: unknown }).glosses !== null
+  )
+}
+
+/**
  * Everything a content script asks the worker to write.
  *
  * One union with one guard rather than a message type and predicate each: these

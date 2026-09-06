@@ -28,6 +28,8 @@ import { disableReaderFor, enableReaderFor } from '../shared/reader-sites'
 import type { ReaderOrigin } from '../shared/settings'
 import { SectionRail, type RailItem } from '../settings/SectionRail'
 import { navigate } from './hooks'
+import { useT } from '../i18n/useT'
+import type { Translate } from '../i18n/t'
 
 /**
  * The sites the reader runs on, and the box that adds another.
@@ -37,6 +39,7 @@ import { navigate } from './hooks'
  * from the grant rather than from a guess about whether the grant succeeded.
  */
 function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
+  const { t } = useT()
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,11 +47,11 @@ function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
   const add = async () => {
     const origin = originFromInput(draft)
     if (!origin) {
-      setError('That does not look like a site address. Try zhihu.com.')
+      setError(t('settings.sites.badAddress'))
       return
     }
     if (origins.some((entry) => entry.origin === origin)) {
-      setError(`${hostLabel(origin)} is already on.`)
+      setError(t('settings.sites.already', { host: hostLabel(origin) }))
       return
     }
 
@@ -58,7 +61,7 @@ function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
       // Nothing is awaited before this: Chrome only shows the permission
       // prompt inside the gesture that asked for it.
       if (await enableReaderFor(origin)) setDraft('')
-      else setError('Chrome needs permission to reach that site before the reader can run there.')
+      else setError(t('settings.sites.needsPermission'))
     } finally {
       setBusy(false)
     }
@@ -79,7 +82,7 @@ function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
         <div class="row" key={entry.origin}>
           <span class="grow">{hostLabel(entry.origin)}</span>
           <button disabled={busy} onClick={() => void remove(entry.origin)}>
-            Remove
+            {t('settings.sites.remove')}
           </button>
         </div>
       ))}
@@ -97,18 +100,11 @@ function ReaderSites({ origins }: { origins: ReaderOrigin[] }) {
           }}
         />
         <button class="primary" disabled={busy || !draft.trim()} onClick={() => void add()}>
-          Add site
+          {t('settings.sites.add')}
         </button>
       </div>
 
-      {error ? (
-        <p class="hint verdict no">{error}</p>
-      ) : (
-        <Hint>
-          Chrome asks before each site is added, and turning one off hands that access straight
-          back. Bilibili is already covered.
-        </Hint>
-      )}
+      {error ? <p class="hint verdict no">{error}</p> : <Hint>{t('settings.sites.hint')}</Hint>}
     </>
   )
 }
@@ -132,22 +128,23 @@ export const SETTINGS_SLUGS = ['general', 'studying', 'language', 'models'] as c
 
 export type SettingsSection = (typeof SETTINGS_SLUGS)[number]
 
-const SECTIONS: readonly RailItem<SettingsSection>[] = [
-  { slug: 'general', label: 'General' },
-  { slug: 'studying', label: 'Studying' },
-  { slug: 'language', label: 'Language' },
-  { slug: 'models', label: 'Local models' },
+const sections = (t: Translate): readonly RailItem<SettingsSection>[] => [
+  { slug: 'general', label: t('settings.rail.general') },
+  { slug: 'studying', label: t('settings.studying.title') },
+  { slug: 'language', label: t('settings.language.title') },
+  { slug: 'models', label: t('settings.rail.models') },
 ]
 
 export function Settings({ section }: { section: SettingsSection }) {
+  const { t } = useT()
   const { settings, loaded, update } = useSettings()
 
-  if (!loaded) return <p class="muted">Loading…</p>
+  if (!loaded) return <p class="muted">{t('common.loading')}</p>
 
   return (
     <div class="section-layout">
       <SectionRail
-        items={SECTIONS}
+        items={sections(t)}
         active={section}
         onSelect={(slug) => navigate(`/settings/${slug}`)}
       />
@@ -155,20 +152,17 @@ export function Settings({ section }: { section: SettingsSection }) {
       <div class="section-pane">
         {section === 'general' && (
           <>
-            <Section title="Page reader">
+            <Section title={t('settings.pageReader.title')}>
               <ReaderSites origins={settings.readerOrigins} />
               <div class={settings.readerOrigins.length ? '' : 'disabled'}>
                 <ReaderOptions settings={settings} update={update} />
               </div>
-              <Hint>
-                Hold {modifierLabel(settings)} and point at a word; click it for characters. Select
-                Chinese text for a phrase card.
-              </Hint>
+              <Hint>{t('settings.pageReader.hint', { key: modifierLabel(settings) })}</Hint>
             </Section>
 
-            <Section title="Subtitles">
+            <Section title={t('settings.subtitles.title')}>
               <SubtitlesSection settings={settings} update={update} />
-              <Hint>Shortcuts: Alt+P toggles pinyin, Alt+S cycles font size — for fullscreen.</Hint>
+              <Hint>{t('settings.subtitles.hint')}</Hint>
             </Section>
           </>
         )}
@@ -177,13 +171,12 @@ export function Settings({ section }: { section: SettingsSection }) {
           <>
             <StudyingSection settings={settings} update={update} />
 
-            <Section title="Session">
+            <Section title={t('settings.session.title')}>
               <p class="muted small" style={{ margin: 0 }}>
-                How you are asked, what is included and how long a sitting runs are set where you
-                start one — they read better next to the counts they change.
+                {t('settings.session.note')}
               </p>
               <div class="toolbar">
-                <button onClick={() => navigate('/review')}>Open Review</button>
+                <button onClick={() => navigate('/review')}>{t('settings.session.open')}</button>
               </div>
             </Section>
           </>
@@ -193,11 +186,11 @@ export function Settings({ section }: { section: SettingsSection }) {
           <>
             <LanguageSection settings={settings} update={update} />
 
-            <Section title="Dictionaries">
+            <Section title={t('settings.dicts.title')}>
               <div class="toolbar">
-                <button onClick={() => navigate('/setup')}>Manage dictionaries</button>
+                <button onClick={() => navigate('/setup')}>{t('settings.dicts.manage')}</button>
               </div>
-              <Hint>Add a language you study, or check an installed one for an update.</Hint>
+              <Hint>{t('settings.dicts.hint')}</Hint>
             </Section>
           </>
         )}

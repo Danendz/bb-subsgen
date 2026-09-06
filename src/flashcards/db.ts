@@ -11,6 +11,7 @@
 // defs-store.ts lives in the worker), so they go through messages instead.
 
 import { connection, request } from '../shared/idb'
+import { DEFAULT_SETTINGS, loadSettings } from '../shared/settings'
 import { snapshotIfOutdated, type DeckRows } from './snapshot'
 import {
   namespaceLegacyId,
@@ -35,8 +36,14 @@ const DB_NAME = 'bb-subsgen-flashcards'
  *     pre-upgrade deck is exported to `bb-subsgen-flashcards-snapshots` first —
  *     see snapshot.ts, which cannot happen inside this transaction because an
  *     IDB transaction is scoped to one database.
+ * 5 — every captured `Context` learns which language its translation is in.
+ *     The target language is a setting, so a deck built before this is a mix
+ *     with nothing on the record saying which card is in which language. See
+ *     `tagContextLanguage`. The tag is the profile's current target, passed in
+ *     rather than read here: only `en` and `ru` have ever shipped, so whichever
+ *     one is set now is the one every existing card was captured under.
  */
-const VERSION = 4
+const VERSION = 5
 
 /**
  * The language every row that predates schema 4 is in.
@@ -201,6 +208,42 @@ function renameInContexts(items: IDBObjectStore, next: () => void): void {
   }
 }
 
+/**
+ * Stamps every stored context with the language its translation is in.
+ *
+ * Takes the language as an argument for the same reason `LEGACY_LANG` is a
+ * literal: a versionchange transaction auto-commits at the end of the microtask
+ * turn, so nothing in here can await `chrome.storage`. The caller reads the
+ * setting before opening — see `flashcardsDb`.
+ *
+ * Only contexts that actually hold a translation are tagged. An empty one was
+ * captured with no translation available at all, and calling that English would
+ * be inventing a fact rather than recording one.
+ */
+function tagContextLanguage(items: IDBObjectStore, lang: string, next: () => void): void {
+  const cursor = items.openCursor()
+  cursor.onsuccess = () => {
+    const at = cursor.result
+    if (!at) return next()
+
+    const item = at.value as { contexts?: Array<Record<string, unknown>> }
+    const needsTag = item.contexts?.some(
+      (context) => context.translation && !context.translationLang,
+    )
+    if (needsTag) {
+      at.update({
+        ...item,
+        contexts: item.contexts!.map((context) =>
+          context.translation && !context.translationLang
+            ? { ...context, translationLang: lang }
+            : context,
+        ),
+      })
+    }
+    at.continue()
+  }
+}
+
 /** Renames the field on rows that carry it at the top level. */
 function renameFieldInPlace(store: IDBObjectStore, next: () => void): void {
   const cursor = store.openCursor()
@@ -350,8 +393,15 @@ function rekey(
   }
 }
 
-/** `dbName` is overridable so tests don't share state. */
-export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
+/**
+ * `dbName` is overridable so tests don't share state.
+ *
+ * `translationLang` is what schema 5 stamps onto untagged contexts. It defaults
+ * to `'en'` — the setting's own default, and the language every card was in
+ * before a second target existed — so a caller with no settings to hand still
+ * migrates to something true for almost every profile.
+ */
+export function openFlashcardsDb(dbName = DB_NAME, translationLang = 'en'): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(dbName, VERSION)
 
@@ -372,6 +422,11 @@ export function openFlashcardsDb(dbName = DB_NAME): Promise<IDBDatabase> {
         }
         if (event.oldVersion < 4) {
           steps.push((next) => namespaceByLanguage(db, tx, next))
+        }
+        if (event.oldVersion < 5) {
+          steps.push((next) =>
+            tagContextLanguage(tx.objectStore(STORES.items), translationLang, next),
+          )
         }
         sequence(steps)
         return
@@ -466,5 +521,17 @@ export async function readAllRows(db: IDBDatabase): Promise<DeckRows> {
 // deck before whichever of them happens to be first triggers the migration.
 export const flashcardsDb = connection(async () => {
   await snapshotIfOutdated(DB_NAME, VERSION, readAllRows)
-  return openFlashcardsDb()
+  // Read out here, not inside the upgrade: see `tagContextLanguage`. A profile
+  // that cannot be read falls back to the parameter default rather than blocking
+  // the open — a mis-tagged card re-translates itself, an unopenable deck does
+  // not recover on its own.
+  return openFlashcardsDb(DB_NAME, await currentTranslationLang())
 })
+
+async function currentTranslationLang(): Promise<string> {
+  try {
+    return (await loadSettings()).translationLang
+  } catch {
+    return DEFAULT_SETTINGS.translationLang
+  }
+}

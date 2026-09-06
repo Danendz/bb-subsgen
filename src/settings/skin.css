@@ -192,7 +192,8 @@ a:focus-visible {
   min-width: var(--grow-min);
 }
 
-.settings-group select {
+.settings-group select,
+.lang-filter select {
   padding: 6px 8px;
   color: var(--text);
   background: var(--inset);
@@ -224,6 +225,17 @@ a:focus-visible {
   margin: 12px 0 0;
 }
 
+/* The language filter (LanguageFilter.tsx), which is chrome rather than a
+   setting: it sits above the tabs on the page and in the popup's pinned block,
+   so it carries the rule the settings groups get from the panel around them. */
+.lang-filter {
+  margin: 0 0 14px;
+
+  & .row {
+    padding: 0 0 12px;
+  }
+}
+
 .value {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -233,6 +245,23 @@ a:focus-visible {
   font-size: 12px;
   margin: 10px 0 0;
 }
+/* A pill of small caps for a word about the thing beside it. Here rather than in
+   the app's stylesheet because the popup badges the same unfinished controls the
+   app does; the app keeps the modifiers only it renders. */
+.tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--pill);
+  background: var(--inset);
+  color: var(--text-3);
+  font: 500 11px var(--display);
+}
+/* Unfinished, not broken — the warm tone the pool badge already uses for "on its
+   way", never the error red. */
+.tag.soon {
+  color: var(--warn);
+}
+
 /* Still legible, still there, and not reachable until the thing above it is on. */
 .disabled {
   opacity: 0.4;

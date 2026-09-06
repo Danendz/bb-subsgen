@@ -9,6 +9,7 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { listVoices } from '../shared/speak'
+import { useT } from '../i18n/useT'
 
 export function Section({ title, children }: { title: string; children: ComponentChildren }) {
   return (
@@ -94,7 +95,8 @@ export function Select<T extends string>({
 }: {
   label: string
   value: T
-  options: ReadonlyArray<{ code: T; label: string }>
+  /** `disabled` is an option worth naming and not worth offering — see LanguageFilter. */
+  options: ReadonlyArray<{ code: T; label: string; disabled?: boolean }>
   onChange: (v: T) => void
 }) {
   return (
@@ -102,7 +104,7 @@ export function Select<T extends string>({
       <span class="grow">{label}</span>
       <select value={value} onChange={(e) => onChange(e.currentTarget.value as T)}>
         {options.map((option) => (
-          <option key={option.code} value={option.code}>
+          <option key={option.code} value={option.code} disabled={option.disabled}>
             {option.label}
           </option>
         ))}
@@ -129,13 +131,14 @@ export function ModelSelect({
   models: string[]
   onChange: (v: string) => void
 }) {
+  const { t } = useT()
   const options = Array.from(new Set([value, ...models].filter(Boolean)))
 
   return (
     <label class="row">
       <span class="grow">{label}</span>
       <select class="model" value={value} onChange={(e) => onChange(e.currentTarget.value)}>
-        <option value="">Not set</option>
+        <option value="">{t('controls.notSet')}</option>
         {options.map((id) => (
           <option key={id} value={id}>
             {id}
@@ -147,7 +150,7 @@ export function ModelSelect({
 }
 
 /**
- * The Chinese voices this browser has, best first.
+ * The voices this browser has for the languages in scope, best first.
  *
  * `getVoices()` comes back empty on the first call and fills in later. In a
  * popup that is the normal case rather than the edge one — the window is opened
@@ -155,13 +158,19 @@ export function ModelSelect({
  * in a page this short-lived, so listening alone leaves the picker empty. Hence
  * the poll as well, which stops as soon as anything arrives.
  */
-export function useVoices(): SpeechSynthesisVoice[] {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(listVoices)
+export function useVoices(voiceLangs: readonly string[]): SpeechSynthesisVoice[] {
+  // Joined rather than passed as an array: the caller derives it per render, so
+  // a new array every time would re-run the effect on every render.
+  const key = voiceLangs.join(' ')
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => listVoices(voiceLangs))
+  const found = voices.length > 0
 
   useEffect(() => {
-    if (voices.length > 0) return
+    const langs = key ? key.split(' ') : []
+    const refresh = () => setVoices(listVoices(langs))
+    refresh()
+    if (found) return
 
-    const refresh = () => setVoices(listVoices())
     speechSynthesis.addEventListener('voiceschanged', refresh)
     const timer = setInterval(refresh, 150)
 
@@ -169,7 +178,7 @@ export function useVoices(): SpeechSynthesisVoice[] {
       speechSynthesis.removeEventListener('voiceschanged', refresh)
       clearInterval(timer)
     }
-  }, [voices.length])
+  }, [key, found])
 
   return voices
 }

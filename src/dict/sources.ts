@@ -60,8 +60,20 @@ export const DICT_SOURCES: Record<string, DictSource> = {
  * languages in the order you chose them.
  */
 export function installedSources(enabled: string[], installed: ReadonlySet<string>): DictSource[] {
+  return enabledSources(enabled).filter((source) => installed.has(source.lang))
+}
+
+/**
+ * The languages the wizard was told about, installed or not.
+ *
+ * What the language filter lists, because a language you chose and never
+ * downloaded is a state worth showing rather than hiding: the filter offers it
+ * switched off, which is the only place in the app that says the download is
+ * still owed. Everything that would *use* a dictionary asks
+ * `installedSources` instead.
+ */
+export function enabledSources(enabled: string[]): DictSource[] {
   return enabled
-    .filter((lang) => installed.has(lang))
     .map((lang) => DICT_SOURCES[lang])
     .filter((source): source is DictSource => source !== undefined)
 }

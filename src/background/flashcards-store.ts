@@ -349,6 +349,28 @@ export async function applyReviewIn(
   return next
 }
 
+/**
+ * Replaces the contexts on one card, leaving every other field alone.
+ *
+ * Written as a read-modify-write inside one transaction rather than taking the
+ * caller's `Item`: the review screen holds a card it loaded some seconds ago,
+ * and grading it in another tab in the meantime must not be undone by a
+ * translation catching up.
+ */
+export async function replaceContextsIn(
+  db: IDBDatabase,
+  id: string,
+  contexts: Context[],
+): Promise<void> {
+  const tx = db.transaction(STORES.items, 'readwrite')
+  const store = tx.objectStore(STORES.items)
+  const existing = await request<Item | undefined>(store.get(id))
+  // Gone means deleted while the translation was in flight. Re-adding it would
+  // resurrect a card the learner removed.
+  if (existing) store.put({ ...existing, contexts })
+  await done(tx)
+}
+
 export async function recordSignalIn(db: IDBDatabase, signal: Signal): Promise<void> {
   const tx = db.transaction(STORES.signals, 'readwrite')
   tx.objectStore(STORES.signals).put(signal)
@@ -563,6 +585,10 @@ export async function captureSentence(
 export async function markKnown(lang: string, headword: string, known: boolean): Promise<void> {
   await markKnownIn(await flashcardsDb(), lang, headword, known)
   await refreshKnownMirror()
+}
+
+export async function replaceContexts(id: string, contexts: Context[]): Promise<void> {
+  await replaceContextsIn(await flashcardsDb(), id, contexts)
 }
 
 export async function recordSignal(signal: Signal): Promise<void> {

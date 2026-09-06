@@ -142,7 +142,7 @@ describe('snapshotIfOutdated', () => {
     await snapshotIfOutdated(name, 4, readAllRows, snapshots)
     const db = await openFlashcardsDb(name)
 
-    expect(db.version).toBe(4)
+    expect(db.version).toBe(5)
     expect(await readAllRows(db)).toMatchObject({ items: [{ id: 'w:zh:学习' }] })
   })
 

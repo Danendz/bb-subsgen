@@ -2,38 +2,39 @@ import { useCallback, useState } from 'preact/hooks'
 import { clearLog, filterEntries, formatLogEntry, readLog } from '../llm/log'
 import type { LlmLogEntry, LlmLogKind, LlmLogLevel } from '../llm/types'
 import { useAsync } from './hooks'
+import { useT } from '../i18n/useT'
+import type { MessageKey } from '../i18n/keys'
 
-const LEVELS: ReadonlyArray<{ value: LlmLogLevel | 'all'; label: string }> = [
-  { value: 'all', label: 'Everything' },
+const LEVELS: ReadonlyArray<{ value: LlmLogLevel | 'all'; label: MessageKey }> = [
+  { value: 'all', label: 'log.level.all' },
   // The default: the two things you open a log to find.
-  { value: 'warn', label: 'Warnings and errors' },
-  { value: 'error', label: 'Errors only' },
+  { value: 'warn', label: 'log.level.warn' },
+  { value: 'error', label: 'log.level.error' },
 ]
 
-const KINDS: ReadonlyArray<{ value: LlmLogKind | 'all'; label: string }> = [
-  { value: 'all', label: 'All activity' },
-  { value: 'chat', label: 'Chat' },
-  { value: 'explain', label: 'Explain' },
-  { value: 'translate-batch', label: 'Translation' },
-  { value: 'models', label: 'Model list' },
-  { value: 'connect', label: 'Connection' },
+const KINDS: ReadonlyArray<{ value: LlmLogKind | 'all'; label: MessageKey }> = [
+  { value: 'all', label: 'log.kind.all' },
+  { value: 'chat', label: 'log.kind.chat' },
+  { value: 'explain', label: 'log.kind.explain' },
+  { value: 'translate-batch', label: 'log.kind.translate' },
+  { value: 'models', label: 'log.kind.models' },
+  { value: 'connect', label: 'log.kind.connect' },
 ]
-
-function time(at: number): string {
-  return new Date(at).toLocaleTimeString()
-}
 
 function Row({ entry }: { entry: LlmLogEntry }) {
+  const { t, lang } = useT()
   const [open, setOpen] = useState(false)
 
   return (
     <div class={`log-row ${entry.level}`}>
       <button class="row-btn log-head" onClick={() => setOpen((v) => !v)}>
-        <span class="log-time">{time(entry.at)}</span>
+        <span class="log-time">{new Date(entry.at).toLocaleTimeString(lang)}</span>
         <span class={`tag log-level ${entry.level}`}>{entry.level}</span>
         <span class="tag">{entry.kind}</span>
         <span class="grow log-message">{entry.message}</span>
-        {entry.durationMs !== undefined && <span class="muted small">{entry.durationMs}ms</span>}
+        {entry.durationMs !== undefined && (
+          <span class="muted small">{t('log.duration', { ms: entry.durationMs })}</span>
+        )}
         {entry.detail && <span class="muted small">{open ? '▾' : '▸'}</span>}
       </button>
 
@@ -41,7 +42,7 @@ function Row({ entry }: { entry: LlmLogEntry }) {
         <div class="log-detail">
           <div class="muted small">
             {/* The id is what ties a request to its reply and its retry. */}
-            request {entry.requestId}
+            {t('log.request', { id: entry.requestId })}
             {entry.model ? ` · ${entry.model}` : ''}
             {entry.status !== undefined ? ` · HTTP ${entry.status}` : ''}
           </div>
@@ -59,6 +60,7 @@ function Row({ entry }: { entry: LlmLogEntry }) {
  * for the things you came to the app to do.
  */
 export function LlmLog() {
+  const { t } = useT()
   const [level, setLevel] = useState<LlmLogLevel | 'all'>('all')
   const [kind, setKind] = useState<LlmLogKind | 'all'>('all')
   const [nonce, setNonce] = useState(0)
@@ -82,11 +84,8 @@ export function LlmLog() {
     <div class="panel">
       <div class="row">
         <div class="grow">
-          <strong>Model log</strong>
-          <div class="muted small">
-            Every request the local model was sent, and everything that came back or went wrong.
-            Newest first, capped at the last 500. Also mirrored to the browser console.
-          </div>
+          <strong>{t('log.title')}</strong>
+          <div class="muted small">{t('log.blurb')}</div>
         </div>
       </div>
 
@@ -98,7 +97,7 @@ export function LlmLog() {
         >
           {LEVELS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {t(option.label)}
             </option>
           ))}
         </select>
@@ -109,28 +108,24 @@ export function LlmLog() {
         >
           {KINDS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {t(option.label)}
             </option>
           ))}
         </select>
         <span class="grow" />
-        <button onClick={refresh}>Refresh</button>
+        <button onClick={refresh}>{t('log.refresh')}</button>
         <button disabled={!shown.length} onClick={copyAll}>
-          Copy
+          {t('log.copy')}
         </button>
         <button disabled={!entries?.length} onClick={() => void wipe()}>
-          Clear
+          {t('log.clear')}
         </button>
       </div>
 
       {loading ? (
-        <p class="muted small">Reading…</p>
+        <p class="muted small">{t('log.reading')}</p>
       ) : shown.length === 0 ? (
-        <p class="muted small">
-          {entries?.length
-            ? 'Nothing matches those filters.'
-            : 'Nothing logged yet. Anything the model is asked will show up here.'}
-        </p>
+        <p class="muted small">{entries?.length ? t('log.noMatches') : t('log.empty')}</p>
       ) : (
         <div class="log">
           {shown.map((entry) => (

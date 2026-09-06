@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { DICT_SOURCES, installedSources } from './sources'
+import { DICT_SOURCES, enabledSources, installedSources } from './sources'
 
 describe('installedSources', () => {
   test('offers a language only once its dictionary is on disk', () => {
@@ -19,5 +19,18 @@ describe('installedSources', () => {
     // version of the registry — a removed source must not become `undefined`
     // in a list the picker maps over.
     expect(installedSources(['xx'], new Set(['xx']))).toEqual([])
+  })
+})
+
+describe('enabledSources', () => {
+  test('keeps a language you chose and never downloaded, for the filter to show as owed', () => {
+    // The one list that is allowed to contain a language nothing can look up:
+    // the filter offers it disabled, which is the only place outside the wizard
+    // that says the download is still outstanding.
+    expect(enabledSources(['zh', 'ja'])).toEqual([DICT_SOURCES.zh, DICT_SOURCES.ja])
+  })
+
+  test('still drops a language whose source has left the registry', () => {
+    expect(enabledSources(['xx'])).toEqual([])
   })
 })

@@ -14,7 +14,14 @@
 // 3.9MB gzip of lines and a 10.5MB gzip of XML.
 import type { DictRow } from '../lang/pack'
 import { parserFor } from './parsers'
-import { clearLangIn, putDefsChunk, putLexicon, putMeta, type DictMeta } from './store'
+import {
+  clearGlossesIn,
+  clearLangIn,
+  putDefsChunk,
+  putLexicon,
+  putMeta,
+  type DictMeta,
+} from './store'
 import type { DictSource } from './sources'
 
 // One transaction per chunk rather than one for all ~198k headwords, which is
@@ -103,6 +110,10 @@ export async function installDictionary({
   // Cleared first: if the writes below fail partway, the store reads as
   // "not installed" rather than as a mix of two versions.
   await clearLangIn(db, source.lang)
+  // The translated glosses go with the definitions they were made from. A
+  // re-install can drop a headword, and a translation still keyed to it would
+  // outlive the entry it describes.
+  await clearGlossesIn(db, source.lang)
 
   let written = 0
   let chunk = new Map<string, DictRow[]>()

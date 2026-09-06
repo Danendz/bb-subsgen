@@ -3,6 +3,12 @@
 // Split from the popup component for the same reason content/progress.ts is
 // split from the overlay: the arithmetic and the wording are what go wrong, and
 // neither needs a DOM to be wrong in.
+//
+// The wording is the caller's language, so `t` is a parameter rather than a
+// hook: this module is imported by the popup component and by its own test, and
+// only one of those can run a hook.
+
+import type { Translate } from '../i18n/t'
 
 export interface PassProgress {
   model: string
@@ -29,13 +35,16 @@ export function modelLabel(model: string): string {
   return tail || model
 }
 
-export function passProgressView({ model, translated, total }: PassProgress): PassProgressView {
+export function passProgressView(
+  { model, translated, total }: PassProgress,
+  t: Translate,
+): PassProgressView {
   // A track with nothing translatable in it would otherwise divide by zero and
   // render a NaN-wide bar.
   const fraction = total > 0 ? Math.min(1, translated / total) : 0
   return {
-    label: `Translating with ${modelLabel(model)}`,
-    count: `${translated} / ${total} lines`,
+    label: t('progress.translating', { model: modelLabel(model) }),
+    count: t('progress.lines', { done: translated, total }),
     fraction,
   }
 }
@@ -63,31 +72,25 @@ export interface TranscriptProgressView extends PassProgressView {
  * a transcription that fails leaves no subtitles at all. So this one has to be
  * able to say it stopped, and how much of the episode has no lines.
  */
-export function transcriptProgressView({
-  model,
-  done,
-  total,
-  failed,
-  error,
-  running,
-}: TranscriptProgress): TranscriptProgressView {
+export function transcriptProgressView(
+  { model, done, total, failed, error, running }: TranscriptProgress,
+  t: Translate,
+): TranscriptProgressView {
   const fraction = total > 0 ? Math.min(1, done / total) : 0
   if (running) {
     return {
-      label: `Transcribing with ${modelLabel(model)}`,
-      count: total ? `${done} / ${total} chunks` : 'starting…',
+      label: t('progress.transcribing', { model: modelLabel(model) }),
+      count: total ? t('progress.chunks', { done, total }) : t('progress.starting'),
       fraction,
       stopped: false,
     }
   }
 
   return {
-    label: 'Transcription stopped',
+    label: t('progress.stopped'),
     // Stretches rather than chunks, because what matters to the reader is how
     // much of the episode has no subtitles, not how the work was divided up.
-    count: failed
-      ? `${failed} stretch${failed === 1 ? '' : 'es'} missing`
-      : 'nothing was transcribed',
+    count: failed ? t('progress.missing', { count: failed }) : t('progress.nothingTranscribed'),
     fraction,
     stopped: true,
     ...(error ? { detail: error } : {}),

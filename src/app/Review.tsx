@@ -12,8 +12,7 @@ import { buildSession, queueCounts, type QueueSession } from '../flashcards/queu
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankKey, rankMap } from '../background/flashcards-store'
 import { packFor } from '../lang/packs'
-import { dictDb, getAllMeta, getLexiconIn } from '../dict/store'
-import { installedSources } from '../dict/sources'
+import { dictDb, getLexiconIn } from '../dict/store'
 import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
@@ -21,6 +20,7 @@ import { useSettings } from '../settings/useSettings'
 import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
+import { useT } from '../i18n/useT'
 
 /**
  * Extension-origin caller, so it reads the store directly rather than asking
@@ -37,6 +37,8 @@ async function loadWords(lang: string) {
 }
 
 export function Review() {
+  const { t, lang: uiLang } = useT()
+
   // Through the hook rather than `loadSettings`/`saveSettings`: the panel used
   // to lay a local `override` over a loaded snapshot to answer immediately, and
   // that is `useSettings`' pending ref written a second time.
@@ -51,12 +53,10 @@ export function Review() {
     // Nothing to read the deck against until the settings land: reading it on
     // the defaults would load one lexicon and then immediately load another.
     if (!lang) return null
-    const dict = await dictDb()
     const db = await flashcardsDb()
-    const [items, words, installed, ranks, streak, exposures] = await Promise.all([
+    const [items, words, ranks, streak, exposures] = await Promise.all([
       listItems(db, lang),
       loadWords(lang),
-      getAllMeta(dict),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -65,7 +65,6 @@ export function Review() {
       items,
       words,
       lang,
-      installedLangs: new Set(Object.keys(installed)),
       ranks,
       streak,
       known: knownSetOf(items),
@@ -95,19 +94,6 @@ export function Review() {
     [data],
   )
 
-  /**
-   * Which languages the picker can offer: enabled, and actually installed.
-   *
-   * Out of `load` rather than in it, because it is the only thing there that
-   * reads a setting the load does not otherwise depend on — putting
-   * `enabledLanguages` in the dependency list would re-read the whole deck on
-   * every storage echo.
-   */
-  const languages = useMemo(
-    () => (data ? installedSources(settings.enabledLanguages, data.installedLangs) : []),
-    [data, settings.enabledLanguages],
-  )
-
   // The saved setup. No local copy laid over the top: `update` applies the
   // change to the hook's state before the write goes out, so the panel already
   // answers immediately.
@@ -115,10 +101,6 @@ export function Review() {
     () =>
       data
         ? {
-            // The resolved language, not the raw setting: with one dictionary
-            // installed nothing has ever written `studyLang`, and the control
-            // has to show that language as the one in use.
-            studyLang: data.lang,
             studyMode: settings.studyMode,
             studyInclude: settings.studyInclude,
             studySessionSize: settings.studySessionSize,
@@ -145,11 +127,11 @@ export function Review() {
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
 
-  if (loading || !data || !counts || !setup) return <p class="muted">Loading…</p>
+  if (loading || !data || !counts || !setup) return <p class="muted">{t('common.loading')}</p>
   // Only reachable if the study language outlived its pack — `packs.test.ts`
   // holds the registries together, so this says which language rather than
   // pretending the screen is still loading.
-  if (!data.words) return <p class="muted">No language pack for {data.lang}.</p>
+  if (!data.words) return <p class="muted">{t('review.noPack', { lang: data.lang })}</p>
 
   const start = () => {
     setSession(
@@ -199,72 +181,75 @@ export function Review() {
   const shortfall =
     studying < setup.studySessionSize
       ? setup.studyInclude === 'words'
-        ? 'that is every word ready — switch to lines too for more'
+        ? t('review.shortfall.words')
         : setup.studyInclude === 'sentences'
-          ? 'that is every line ready — switch to words too for more'
-          : 'that is everything ready'
+          ? t('review.shortfall.sentences')
+          : t('review.shortfall.all')
       : ''
+
+  // Joined here rather than concatenated in the markup: each clause is its own
+  // message, and a language that orders them differently keeps the separator.
+  const detail = [
+    t('review.cards', { count: studying }),
+    ...(drilled > 0 ? [t('review.breakdown', { scheduled, drilled })] : []),
+    ...(owed > scheduled ? [t('review.waiting', { count: owed })] : []),
+    ...(shortfall ? [shortfall] : []),
+  ].join(' \u00b7 ')
 
   return (
     <>
       {data.streak > 0 && (
         <p class="streak">
-          <span aria-hidden="true">🔥</span> {data.streak} day{data.streak === 1 ? '' : 's'} in a
-          row
+          <span aria-hidden="true">🔥</span> {t('review.streak', { count: data.streak })}
         </p>
       )}
 
       <div class="stats">
         <div class="panel stat">
-          <span class="n">{counts.due}</span>
-          <span class="label">due for review</span>
+          <span class="n">{counts.due.toLocaleString(uiLang)}</span>
+          <span class="label">{t('review.stat.due')}</span>
         </div>
         <div class="panel stat">
-          <span class="n">{counts.newWords}</span>
-          <span class="label">words not started</span>
+          <span class="n">{counts.newWords.toLocaleString(uiLang)}</span>
+          <span class="label">{t('review.stat.newWords')}</span>
         </div>
         <div class="panel stat">
-          <span class="n">{counts.newSentences}</span>
-          <span class="label">new lines today</span>
+          <span class="n">{counts.newSentences.toLocaleString(uiLang)}</span>
+          <span class="label">{t('review.stat.newLines')}</span>
         </div>
         <div class="panel stat">
-          <span class="n">{counts.pooled}</span>
-          <span class="label">lines waiting</span>
+          <span class="n">{counts.pooled.toLocaleString(uiLang)}</span>
+          <span class="label">{t('review.stat.pooled')}</span>
         </div>
       </div>
 
       <div class="panel setup-panel">
         <div class="setup-summary">
-          <span class="summary-text">{setupSummary(setup)}</span>
+          <span class="summary-text">{setupSummary(setup, t)}</span>
           <button class="ghost" aria-expanded={editing} onClick={() => setEditing((on) => !on)}>
-            {editing ? 'Done' : 'Change'}
+            {editing ? t('review.done') : t('review.change')}
           </button>
         </div>
 
         {editing && (
-          <Setup setup={setup} canSpeak={canSpeak()} languages={languages} onChange={update} />
+          <Setup setup={setup} canSpeak={canSpeak(data.words.pack.voiceLang)} onChange={update} />
         )}
       </div>
 
       {studying > 0 ? (
         <div class="start">
           <button class="primary big" onClick={start}>
-            Start studying
+            {t('review.start')}
           </button>
-          <p class="small muted">
-            {studying} card{studying === 1 ? '' : 's'}
-            {drilled > 0 ? ` · ${scheduled} scheduled, ${drilled} practice` : ''}
-            {owed > scheduled ? ` · ${owed} waiting` : ''}
-            {shortfall ? ` · ${shortfall}` : ''}
-          </p>
+          <p class="small muted">{detail}</p>
         </div>
       ) : (
         <div class="empty">
-          <p>Nothing to study yet.</p>
+          <p>{t('review.emptyTitle')}</p>
           <p class="small">
             {counts.pooled > 0
-              ? `${counts.pooled} lines are waiting their turn — they are let in a few a day, easiest first.`
-              : 'Go and read something; whatever you look up will show up here.'}
+              ? t('review.emptyPooled', { count: counts.pooled })
+              : t('review.emptyBody')}
           </p>
         </div>
       )}

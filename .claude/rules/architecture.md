@@ -21,6 +21,15 @@ worker guessing a URL.
 Both directions are reasoned out in the headers of `src/llm/client.ts`,
 `src/background/llm-translate.ts` and `src/offscreen/main.ts`.
 
+**Chrome's Translator API is the mirror image of both.** It does not exist in a
+worker at all (`src/lang/translate.ts`), so the service worker can neither translate a
+subtitle nor a dictionary gloss — but the `glosses` cache lives in IndexedDB on the
+extension origin, which a content script cannot reach. So the *caller* translates and the
+*worker* remembers: `bb-subsgen:lookup-glosses` reads the cache and
+`bb-subsgen:put-glosses` writes it, with `translatedGlosses` in `src/shared/dict-client.ts`
+tying the two together for both surfaces. Anything that moves the translating into the
+worker will compile and then find no `Translator` at runtime.
+
 ## Which UI toolkit goes where
 
 **No Preact in `src/content/` or `src/reader/`.** Those surfaces are imperative DOM inside a
@@ -66,10 +75,10 @@ Five IndexedDB databases, separated by how bad it is to lose them:
 
 | Database | Contents | Losing it means |
 |---|---|---|
-| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language (schema 2, `src/dict/store.ts`) | re-download from the setup wizard |
+| `bb-subsgen` | dictionary: definitions, lexicon text and per-language install state, all keyed by language; plus `glosses`, definitions machine-translated out of English and keyed `${lang}:${headword}:${target}` (schema 3, `src/dict/store.ts`) | re-download from the setup wizard, and re-translate on next hover |
 | `bb-subsgen-llm` | debug log of model calls | nothing |
 | `bb-subsgen-chat` | conversations | annoying |
-| `bb-subsgen-flashcards` | review history; every key carries its language since schema 4 — card ids are `w:zh:生`, and `exposures` / `videoWords` / `ranks` key on `[lang, headword]` (`src/flashcards/db.ts`) | **irreplaceable** |
+| `bb-subsgen-flashcards` | review history; every key carries its language since schema 4 — card ids are `w:zh:生`, and `exposures` / `videoWords` / `ranks` key on `[lang, headword]`; since schema 5 every captured `Context` also carries the `translationLang` its translation is in (`src/flashcards/db.ts`) | **irreplaceable** |
 | `bb-subsgen-flashcards-snapshots` | the deck as it stood before each schema migration (`src/flashcards/snapshot.ts`) | the undo for a bad migration |
 
 Bumping a `VERSION` requires a numbered migration note in the module header, next to the ones
@@ -97,6 +106,15 @@ implementation) is modelled on `Site` / `siteFor` in `src/media/`, and both `pac
 and `ja/segment.ts` is a plain longest match, because the two languages are hard in different
 places. That is the interface working, not being worked around. What is *not* allowed is
 widening `Entry` or `Tag` so that one language's fields ride on every language's shape.
+
+**A capability flag hides a control; `comingSoon` badges one.** `displaysTones`,
+`usesTraditional`, `speechSample` and `voiceLang` say what a language *is*, and a row they
+do not apply to is not rendered at all — kana carry no tone, so there is no tone switch to
+show switched off. `LanguagePack.comingSoon` is the other case: work that is planned and has
+not shipped, listed as named `Gap`s and turned into prose by `src/lang/gaps.ts`. The two must
+not be swapped. A hidden row for planned work leaves the reader hunting for a setting that
+was never there; a badge on something the language will never have is a promise with a timer
+on it, which is why pitch accent is hidden and Japanese grammar patterns are badged.
 
 **Nothing outside a language's directory imports a module from inside it.** That is the point
 of the directory: an import of `zh/segment` from `reader/` is a Chinese assumption that
@@ -202,3 +220,34 @@ reload. Routing is hash-based, via `useRoute()` / `navigate()` in `src/app/hooks
 default there. In UI, go through `useSettings()` in `src/settings/useSettings.ts`, which
 reconciles optimistic local edits against storage echoes — writing to `chrome.storage`
 directly from a component reintroduces the flicker that hook exists to remove.
+
+## `src/i18n/`
+
+The UI's own strings, in the six languages of `TranslationLang`. **Not `chrome.i18n`** — that
+resolves against the *browser's* UI locale and cannot be pointed at a setting, and the whole
+point here is that the app speaks whatever `translationLang` says.
+
+`en.ts` is authored and `keys.ts` derives `MessageKey` from it, so every other locale is a
+`Record<MessageKey, Message>` and **a string left out of one is a compile error**. A `Message`
+is a bare string or a set of plural forms picked with `Intl.PluralRules`; five of the six
+targets inflect after a number and `n === 1 ? '' : 's'` cannot express 1 карточка / 2 карточки /
+5 карточек.
+
+**Components read `useT()`, never `useSettings()` for the language.** That hook keeps one
+`chrome.storage` listener for the whole page: a `useSettings()` per component would open thirty
+subscriptions on open and flash English while they landed. The roots — `App.tsx`, `Embed.tsx`,
+`popup/App.tsx` — gate on its `ready` for that same reason, and it is `useT` that writes
+`document.documentElement.lang`.
+
+**A module that renders prose outside a component takes `t: Translate` as a parameter.**
+`src/llm/progress.ts`, `src/flashcards/wordlist.ts`'s `errorMessage` and `mastery.tsx`'s
+`masteryTitle` all do; their tests bind English with `translateIn('en')`. A message with
+markup in the middle of it — a `<code>`, a link — goes through `Rich` rather than being split
+into a before-key and an after-key, because where the markup lands in the clause is not the
+same in every language.
+
+**Out of scope, deliberately:** `src/content/` and `src/reader/`. Those are imperative DOM in a
+shadow root over somebody else's video and carry almost no chrome. The log *entries* the model
+pipeline writes are out too — they are diagnostics that get pasted into bug reports, and the
+service worker that writes most of them has no `document` to read a locale from. The `LlmLog`
+screen around them is translated.

@@ -154,6 +154,10 @@ describe('the v2 upgrade', () => {
       state: 'new',
       lang: 'zh',
       id: 'w:zh:憔悴',
+      // Every later migration runs too, so the v5 tag is here as well. Named
+      // rather than loosened: the point of this case is that nothing changes
+      // except what a migration was asked to change.
+      contexts: [{ ...original.contexts[0], translationLang: 'en' }],
     })
   })
 
@@ -295,6 +299,7 @@ describe('the v3 upgrade', () => {
       ...original,
       lang: 'zh',
       id: 's:zh:他很憔悴。',
+      contexts: [{ ...original.contexts[0], translationLang: 'en' }],
     })
   })
 
@@ -502,6 +507,160 @@ describe('the v4 upgrade', () => {
   })
 })
 
+describe('the v5 upgrade', () => {
+  const context = (text: string, translation: string) => ({
+    text,
+    translation,
+    videoId: 'BV1',
+    at: 1700000000000,
+  })
+
+  test('tags every stored translation with the language it is in', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(name, {
+      items: [
+        item({
+          id: 'w:憔悴',
+          kind: 'word',
+          text: '憔悴',
+          state: 'learning',
+          contexts: [context('他很憔悴', 'He looks worn out')],
+        }),
+      ],
+    })
+
+    const db = await openFlashcardsDb(name, 'ru')
+
+    expect((await read(db, 'w:憔悴'))!.contexts[0].translationLang).toBe('ru')
+  })
+
+  // Only `en` and `ru` have ever shipped, so whichever is set now is the one
+  // every existing card was captured under — but nothing may be *invented* for
+  // a context that never had a translation to begin with.
+  test('leaves a context that never had a translation untagged', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(name, {
+      items: [
+        item({
+          id: 'w:生',
+          kind: 'word',
+          text: '生',
+          state: 'learning',
+          contexts: [context('他还活着', '')],
+        }),
+      ],
+    })
+
+    const db = await openFlashcardsDb(name, 'en')
+
+    expect((await read(db, 'w:生'))!.contexts[0].translationLang).toBeUndefined()
+  })
+
+  test('tags some contexts of a card without disturbing the others', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(name, {
+      items: [
+        item({
+          id: 'w:好',
+          kind: 'word',
+          text: '好',
+          state: 'learning',
+          contexts: [context('很好', 'Very good'), context('好吗', '')],
+        }),
+      ],
+    })
+
+    const db = await openFlashcardsDb(name, 'en')
+    const contexts = (await read(db, 'w:好'))!.contexts
+
+    expect(contexts).toHaveLength(2)
+    expect(contexts[0].translationLang).toBe('en')
+    expect(contexts[1].translationLang).toBeUndefined()
+    expect(contexts[1].text).toBe('好吗')
+  })
+
+  // This database cannot be rebuilt from anything (see the note at the top of
+  // db.ts), so a version bump must not cost a single review or a single card.
+  test('costs no card, no review and no context', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(name, {
+      items: [
+        item({
+          id: 'w:憔悴',
+          kind: 'word',
+          text: '憔悴',
+          state: 'learning',
+          reps: 3,
+          lapses: 1,
+          contexts: [context('他很憔悴', 'He looks worn out'), context('憔悴不堪', 'Utterly worn')],
+        }),
+        item({ id: 'w:生', kind: 'word', text: '生', state: 'known' }),
+      ],
+      reviews: [{ itemId: 'w:憔悴', at: 1, grade: 3 }],
+    })
+
+    const db = await openFlashcardsDb(name, 'en')
+    const card = (await read(db, 'w:憔悴'))!
+
+    expect(await readAll(db, STORES.items)).toHaveLength(2)
+    expect(await readAll(db, STORES.reviews)).toHaveLength(1)
+    expect(card.contexts).toHaveLength(2)
+    expect(card.reps).toBe(3)
+    expect(card.lapses).toBe(1)
+    expect(card.contexts.map((c) => c.text)).toEqual(['他很憔悴', '憔悴不堪'])
+  })
+
+  // The steps run one after another, so a database that is four versions behind
+  // has to come out the far end with both the v4 keys and the v5 tag.
+  test('a v1 database arrives with its language namespace and its tag alike', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(name, {
+      items: [
+        item({
+          id: 'w:憔悴',
+          kind: 'word',
+          text: '憔悴',
+          state: 'learning',
+          contexts: [{ text: '他很憔悴', translation: 'Worn out', bvid: 'BV1' }] as never,
+        }),
+      ],
+    })
+
+    const db = await openFlashcardsDb(name, 'ru')
+    const card = (await read(db, 'w:憔悴'))!
+
+    expect(card.lang).toBe('zh')
+    expect(card.contexts[0].videoId).toBe('BV1')
+    expect(card.contexts[0].translationLang).toBe('ru')
+  })
+
+  test('a card already tagged is left as it was', async () => {
+    const name = `v5-${Math.random()}`
+    await seed(
+      name,
+      {
+        items: [
+          item({
+            // Seeded at v4, so it carries the id and the `lang` that migration
+            // already gave it — only the v5 step is under test here.
+            id: 'w:zh:生',
+            kind: 'word',
+            text: '生',
+            state: 'learning',
+            lang: 'zh',
+            contexts: [{ ...context('他还活着', 'Está vivo'), translationLang: 'es' }],
+          }),
+        ],
+      },
+      4,
+    )
+
+    const db = await openFlashcardsDb(name, 'en')
+
+    expect((await read(db, 'w:生'))!.contexts[0].translationLang).toBe('es')
+  })
+})
+
 describe('a fresh database', () => {
   test('a fresh database opens at the current version with every store in place', async () => {
     // The upgrade branches on oldVersion, so the create path has to keep working
@@ -510,7 +669,7 @@ describe('a fresh database', () => {
     for (const store of Object.values(STORES)) {
       expect(db.objectStoreNames.contains(store)).toBe(true)
     }
-    expect(db.version).toBe(4)
+    expect(db.version).toBe(5)
   })
 
   test('a fresh database keys on videoId, not bvid', async () => {

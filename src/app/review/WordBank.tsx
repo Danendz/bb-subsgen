@@ -5,6 +5,8 @@
 // you have not used are always exactly the pieces still on offer — there is no
 // state where the screen and the answer disagree.
 
+import { useT } from '../../i18n/useT'
+
 export interface WordBankProps {
   /** Every tile offered, in their shuffled order. */
   tiles: string[]
@@ -17,13 +19,14 @@ export interface WordBankProps {
 }
 
 export function WordBank({ tiles, placed, disabled, onPlace, onRemove }: WordBankProps) {
+  const { t } = useT()
   const used = new Set(placed)
 
   return (
     <div class="bank">
       <div class={`bank-line ${placed.length ? '' : 'empty'}`}>
         {placed.length === 0 ? (
-          <span class="bank-placeholder">Tap the words in order</span>
+          <span class="bank-placeholder">{t('bank.placeholder')}</span>
         ) : (
           placed.map((tile, position) => (
             <button
@@ -32,7 +35,7 @@ export function WordBank({ tiles, placed, disabled, onPlace, onRemove }: WordBan
               class="tile placed"
               disabled={disabled}
               onClick={() => onRemove(position)}
-              aria-label={`Remove ${tiles[tile]}`}
+              aria-label={t('bank.remove', { word: tiles[tile] })}
             >
               {tiles[tile]}
             </button>

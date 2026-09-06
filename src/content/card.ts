@@ -13,7 +13,8 @@ export type { CharacterGloss, CardInput } from './card-data'
 import type { Token } from '../lang/pack'
 import type { Entry } from '../lang/pack'
 
-const MAX_DEFINITIONS = 3
+/** Exported so a caller translating the glosses asks for exactly the rows drawn. */
+export const MAX_DEFINITIONS = 3
 
 /** Styles for a run of words with pinyin above — the subtitle line and the selection card. */
 export const WORD_STYLE = `
@@ -822,4 +823,24 @@ export function buildCard(data: CardData, options: CardOptions): HTMLElement {
 export function setCardTranslation(card: HTMLElement, text: string): void {
   const el = card.querySelector<HTMLElement>('.popup-sentence')
   if (el) el.textContent = text
+}
+
+/**
+ * Swaps the English definitions for their translations, in place.
+ *
+ * Same reason as `setCardTranslation`: the card is built and shown from the
+ * English the dictionary ships, because that is available synchronously, and
+ * the translation arrives afterwards. Patched rather than rebuilt so a hover
+ * does not flicker or lose the copy buttons' feedback.
+ *
+ * Only rows that line up are replaced. A translator that returned a different
+ * number of senses than were rendered has not translated this card, and pairing
+ * them off by position anyway would put one word's meaning under another's.
+ */
+export function setCardGlosses(card: HTMLElement, senses: string[]): void {
+  const rows = card.querySelectorAll<HTMLElement>('.popup-def')
+  if (!senses.length || rows.length !== senses.length) return
+  rows.forEach((row, i) => {
+    row.textContent = senses[i]
+  })
 }

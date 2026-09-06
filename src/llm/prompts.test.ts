@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { ChatContext } from '../chat/types'
 import { contextBlock, explainQuestion, systemFor, tutorSystem } from './prompts'
+import { translateIn } from '../i18n/t'
 
 const context: ChatContext = {
   target: '了',
@@ -95,10 +96,10 @@ describe('systemFor', () => {
 
 describe('explainQuestion', () => {
   test('asks about the word when the button was pressed on one', () => {
-    expect(explainQuestion('了')).toContain('「了」')
+    expect(explainQuestion(translateIn('en'), '了')).toContain('「了」')
   })
 
   test('asks about the line when it was not', () => {
-    expect(explainQuestion()).toContain('this line')
+    expect(explainQuestion(translateIn('en'))).toContain('this line')
   })
 })

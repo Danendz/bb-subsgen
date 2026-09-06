@@ -19,6 +19,10 @@ import { dictDb, getMetaIn, type DictMeta } from '../dict/store'
 import { installDictionary, type InstallProgress } from '../dict/install'
 import { navigate } from './hooks'
 import { Flag } from './flags'
+import { gapSummary } from '../lang/gaps'
+import { packFor } from '../lang/packs'
+import { ComingSoon } from '../settings/ComingSoon'
+import { useT } from '../i18n/useT'
 
 const SOURCES = Object.values(DICT_SOURCES)
 
@@ -26,8 +30,8 @@ function announceDictChanged(): void {
   void chrome.runtime.sendMessage({ type: 'bb-subsgen:dict-changed' } satisfies DictChangedMessage)
 }
 
-function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, {
+function formatDate(ms: number, lang: string): string {
+  return new Date(ms).toLocaleDateString(lang, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -72,15 +76,20 @@ function LanguagePicker({
   enabled: string[]
   onToggle: (lang: string, on: boolean) => void
 }) {
+  const { t, lang } = useT()
+
   return (
     <div class="wizard-picker">
-      <h2>What are you studying?</h2>
-      <p class="hint">
-        Choosing a language just remembers it — nothing downloads until the next step.
-      </p>
+      <h2>{t('wizard.whatStudying')}</h2>
+      <p class="hint">{t('wizard.pickHint')}</p>
       <div class="choices row">
         {SOURCES.map((source) => {
           const on = enabled.includes(source.lang)
+          // Badged, not disabled: the parts of Japanese that work are most of
+          // it, and a card you cannot press would leave a Japanese learner
+          // nothing to install.
+          const pack = packFor(source.lang)
+          const soon = pack ? gapSummary(pack, t, lang) : ''
           return (
             <button
               key={source.lang}
@@ -91,6 +100,7 @@ function LanguagePicker({
             >
               <Flag lang={source.lang} />
               <span class="choice-label">{source.langName}</span>
+              {soon && <ComingSoon title={soon} />}
             </button>
           )
         })}
@@ -110,6 +120,7 @@ function RequirementRow({
   onInstall: () => void
   onCheck: () => void
 }) {
+  const { t, lang } = useT()
   const { meta, progress, error, checking, updateAvailable, noChangeNote } = state
   const busy = progress !== null
 
@@ -117,7 +128,11 @@ function RequirementRow({
     <div class="wizard-requirement">
       <div class="wizard-requirement-head">
         <span class="grow">{source.name}</span>
-        {meta && <span class="muted small">Installed {formatDate(meta.installedAt)}</span>}
+        {meta && (
+          <span class="muted small">
+            {t('wizard.installedOn', { date: formatDate(meta.installedAt, lang) })}
+          </span>
+        )}
       </div>
 
       {busy && (
@@ -127,7 +142,7 @@ function RequirementRow({
           aria-valuemin={0}
           aria-valuemax={progress.total ?? 0}
           aria-valuenow={progress.loaded}
-          aria-label={progress.phase === 'download' ? 'Downloading' : 'Importing'}
+          aria-label={t(progress.phase === 'download' ? 'wizard.downloading' : 'wizard.importing')}
         >
           <i
             style={{
@@ -144,24 +159,18 @@ function RequirementRow({
       <div class="toolbar">
         <button class="primary" disabled={busy} onClick={onInstall}>
           {busy
-            ? progress.phase === 'download'
-              ? 'Downloading…'
-              : 'Importing…'
-            : meta
-              ? 'Re-download'
-              : 'Install'}
+            ? t(progress.phase === 'download' ? 'wizard.downloadingBusy' : 'wizard.importingBusy')
+            : t(meta ? 'wizard.redownload' : 'wizard.install')}
         </button>
         {meta && !busy && (
           <button disabled={checking} onClick={onCheck}>
-            {checking ? 'Checking…' : 'Check for update'}
+            {checking ? t('wizard.checking') : t('wizard.checkForUpdate')}
           </button>
         )}
       </div>
 
-      {updateAvailable && (
-        <p class="hint">A newer export is available — install above to get it.</p>
-      )}
-      {noChangeNote && <p class="hint">Re-downloaded — no change from what was installed.</p>}
+      {updateAvailable && <p class="hint">{t('wizard.updateAvailable')}</p>}
+      {noChangeNote && <p class="hint">{t('wizard.noChange')}</p>}
 
       <p class="hint small">{source.attribution}</p>
     </div>
@@ -169,6 +178,7 @@ function RequirementRow({
 }
 
 export function SetupWizard() {
+  const { t } = useT()
   const { settings, loaded, update } = useSettings()
   const [langState, setLangState] = useState<Record<string, LangState>>({})
 
@@ -231,7 +241,7 @@ export function SetupWizard() {
       console.warn('[bb-subsgen] dictionary install failed', e)
       patch(source.lang, {
         progress: null,
-        error: 'Could not download the dictionary. Check your connection and try again.',
+        error: t('wizard.installFailed'),
       })
     }
   }
@@ -254,13 +264,13 @@ export function SetupWizard() {
 
   return (
     <div class="wizard">
-      <h1>Set up your dictionaries</h1>
+      <h1>{t('wizard.title')}</h1>
 
       <LanguagePicker enabled={enabled} onToggle={toggleLanguage} />
 
       {enabled.length > 0 && (
         <div class="wizard-requirements">
-          <h2>Required</h2>
+          <h2>{t('wizard.required')}</h2>
           {enabled.map((lang) => {
             const source = DICT_SOURCES[lang]
             if (!source) return null
@@ -275,18 +285,13 @@ export function SetupWizard() {
             )
           })}
 
-          <p class="hint">
-            Optional: a local LLM for chat and translation, ASR for videos with no subtitles, yt-dlp
-            for YouTube audio, Chrome's built-in Translator, a Chinese TTS voice, and per-site
-            reader permission. Each is configured from Settings once the dictionary above is
-            installed — none of them are required to get started.
-          </p>
+          <p class="hint">{t('wizard.optional')}</p>
         </div>
       )}
 
       <div class="toolbar wizard-done">
         <button class="primary" onClick={() => navigate('/')}>
-          Done
+          {t('wizard.done')}
         </button>
       </div>
     </div>

@@ -12,11 +12,8 @@
 import type { ChatContext } from '../chat/types'
 import type { TranslationLang } from '../shared/settings'
 import { glossLine } from './glossary'
-
-const LANGUAGE_NAME: Record<TranslationLang, string> = {
-  en: 'English',
-  ru: 'Russian',
-}
+import { LANGUAGE_NAME } from './languages'
+import type { Translate } from '../i18n/t'
 
 /**
  * The standing instruction for every conversation.
@@ -86,9 +83,16 @@ export function systemFor(lang: TranslationLang, context?: ChatContext): string 
   return context ? `${base}\n\n${contextBlock(context)}` : base
 }
 
-/** The question the explain button asks on your behalf. */
-export function explainQuestion(target?: string): string {
-  return target
-    ? `Why is 「${target}」 used in this line, and what is the line saying?`
-    : 'What is this line saying, and what is going on grammatically?'
+/**
+ * The opening turn of an explanation.
+ *
+ * Written in the target language rather than in English, unlike everything else
+ * in this file: this one is not only sent to the model, it is rendered in the
+ * transcript as the user's own message. A Spanish reader seeing an English
+ * question they never typed is the thing this is here to avoid. The system
+ * prompt already names the answer language, so the model is not being asked to
+ * infer it from this.
+ */
+export function explainQuestion(t: Translate, target?: string): string {
+  return target ? t('explain.questionAbout', { word: target }) : t('explain.question')
 }

@@ -2,12 +2,14 @@ import { afterEach, describe, expect, test } from 'vitest'
 import {
   clampSpeechRate,
   DEFAULT_SETTINGS,
+  isTranslationLang,
   loadSettings,
   MAX_SPEECH_RATE,
   MIN_SPEECH_RATE,
   nextFontSize,
   onSettingsChanged,
   resolveStudyLang,
+  TRANSLATION_LANGS,
   type Settings,
 } from './settings'
 
@@ -142,6 +144,48 @@ describe('readerOrigins as it is read back', () => {
     onSettingsChanged((next) => seen.push(next))
     listener?.({ [STORAGE_KEY]: { newValue: { readerOrigins: ['https://zhihu.com'] } } }, 'sync')
     expect(seen[0]?.readerOrigins).toEqual([{ origin: 'https://zhihu.com' }])
+  })
+})
+
+describe('translationLang as it is read back', () => {
+  const STORAGE_KEY = 'bbSubsgenSettings'
+
+  /** Stands in for `chrome.storage.sync` holding exactly `stored`. */
+  function withStored(stored: unknown) {
+    globalThis.chrome = {
+      storage: {
+        sync: { get: () => Promise.resolve({ [STORAGE_KEY]: stored }) },
+        onChanged: { addListener: () => {}, removeListener: () => {} },
+      },
+    } as unknown as typeof chrome
+  }
+
+  test('every offered language is one the union admits', () => {
+    for (const lang of TRANSLATION_LANGS) {
+      expect(isTranslationLang(lang.code)).toBe(true)
+    }
+  })
+
+  // Settings are synced, so a profile can arrive from a build whose union had a
+  // language this one has dropped. A shallow merge would hand it through typed
+  // as a member, and `LANGUAGE_NAME[lang]` would then tell the model to reply in
+  // `undefined`.
+  test('a language this build no longer offers falls back to the default', async () => {
+    withStored({ translationLang: 'kl' })
+
+    expect((await loadSettings()).translationLang).toBe(DEFAULT_SETTINGS.translationLang)
+  })
+
+  test('a language it does offer is left alone', async () => {
+    withStored({ translationLang: 'de' })
+
+    expect((await loadSettings()).translationLang).toBe('de')
+  })
+
+  test('a profile that has never set one still reads a usable language', async () => {
+    withStored({})
+
+    expect(isTranslationLang((await loadSettings()).translationLang)).toBe(true)
   })
 })
 

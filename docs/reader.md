@@ -41,6 +41,46 @@ both be open. Where the guess is wrong, a card offers to reread the page in anot
 installed language for as long as the tab is open; nothing is written down, so a reload
 goes back to the site's own setting.
 
+## The language you read it in
+
+One setting in Settings → Language, and everything follows it: the translated subtitle
+line, the sentence translation under a selection, the chat tutor's replies, the definitions
+on the hover card, and the extension's own screens — the flashcards app, the popup and
+Settings itself. English, Russian, Spanish, French, German and Portuguese.
+
+The screens follow this setting rather than your browser's language on purpose. Chrome's
+own extension localisation resolves against the browser's UI locale, which is the wrong
+question: someone reading Chinese subtitles in Spanish wants the app in Spanish whether or
+not their browser is set to it.
+
+Three things about it are worth knowing.
+
+**Definitions are translated, not sourced.** CC-CEDICT and JMdict ship English and nothing
+else, so a Spanish definition is the English one put through a translator, once per word,
+and kept. Sound for the great majority of entries and occasionally clumsy on the ones that
+were terse to begin with. A word that cannot be translated shows its English rather than
+showing nothing.
+
+**The fast path is not available for every language.** Chrome's on-device translator
+serves Chinese→English and Chinese→Russian directly; the others it may not serve at all,
+which Settings says plainly when it happens. There the local model does the subtitle
+lines instead — slower, and nothing is translated while the model is off. The dictionary
+definitions are unaffected, because those are translated out of English, which Chrome is
+much better at.
+
+**The screens are drafted, not reviewed.** English and Russian aside, the interface
+strings were written by the author rather than by a native speaker. Corrections are
+welcome: every string lives in one file per language under `src/i18n/`, and a locale that
+is missing one will not compile.
+
+Two surfaces stay in place: the subtitle overlay and the page reader's hover card. Both are
+drawn over somebody else's page and carry almost no wording of their own — the readings and
+the definitions in them already follow the setting.
+
+Cards keep the language they were captured in. Switch target and a card captured under the
+old one re-translates itself the first time you review it; if that cannot be done, it keeps
+the answer it had rather than showing you a blank.
+
 ## Japanese
 
 Words are found in the form they are written in. 食べる turns up as 食べました, 食べて,
@@ -49,6 +89,19 @@ conjugation, shows you the dictionary form, and files that in the deck rather th
 card per ending.
 
 Furigana lands over the kanji it reads, and nothing is drawn over the kana.
+
+Two things are not there yet, and the app says so where you would look for them — a
+**Coming soon** badge in Settings › Language and on the wizard's Japanese card:
+
+- **Grammar patterns.** Hover cards and review explain the words in a line but not the
+  structures around them; the pattern table for Japanese has not been written.
+- **On-device translation.** Chrome's built-in translator is wired up for Chinese only,
+  so Japanese lines are translated by your local model instead — slower, and nothing is
+  translated while the model is off.
+
+Everything else — lookups, furigana, deinflection, the deck — works today. Nothing that
+Japanese will never have is badged: there is no tone to colour and no second script to
+switch to, so those rows are simply not shown.
 
 *(The alignment and the deinflection table live in `src/lang/ja/`; each module says why
 it works the way it does.)*

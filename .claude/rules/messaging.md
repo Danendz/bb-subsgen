@@ -30,6 +30,12 @@ has run. A cast is not a check.
   `lang` alongside its headwords: `defs` has been keyed `` `${lang}:${headword}` `` since schema 2
   (`src/dict/store.ts`), so there is no answer without one, and only the sender knows which
   language the text it is annotating is in.
+- A **pair that splits one job across two origins** gets one of each. `LookupGlossesMessage`
+  reads the translated-gloss cache and answers; `PutGlossesMessage` writes it and does not.
+  They are two messages because Chrome's Translator API does not exist in a worker while the
+  store does — so the caller translates and the worker only remembers. Neither belongs in an
+  existing union: there is no dictionary-write union, and the only other writer to that
+  database is the installer, which runs on an extension page and holds the store directly.
 - A single-member notification that fits none of the existing unions gets its own guard rather
   than being forced into one — see `DictChangedMessage`. Forcing it into an existing union would
   mean widening that union's dispatch for a message unrelated to what the union is for; a second

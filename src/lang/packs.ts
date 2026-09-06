@@ -28,3 +28,27 @@ export const PACKS: Record<string, LanguagePack> = {
 export function packFor(code: string): LanguagePack | null {
   return PACKS[code] ?? null
 }
+
+/**
+ * The packs a settings row has to satisfy, given the language filter.
+ *
+ * `studyLang` is `''` for **All**, which is what the filter writes when you
+ * want every installed language at once — so the answer is a list, not one
+ * pack, and a row renders when any pack in it declares the capability. One
+ * chosen language answers with that pack alone.
+ *
+ * Enabled rather than installed: this is asked during render, and the installed
+ * set costs a database read the settings form does not otherwise make. The
+ * difference is a language the wizard was told about and never downloaded,
+ * which shows one extra row rather than hiding a live one.
+ *
+ * Nothing enabled at all is the window before the wizard has run, and it
+ * answers with every pack: there is no filter yet to narrow anything by, and
+ * hiding half the settings page from someone who has not finished setting up
+ * would read as a broken screen rather than as a filter.
+ */
+export function packsInScope(studyLang: string, enabled: readonly string[]): LanguagePack[] {
+  const codes = studyLang ? [studyLang] : enabled
+  const scoped = codes.map(packFor).filter((pack): pack is LanguagePack => pack !== null)
+  return scoped.length ? scoped : Object.values(PACKS)
+}
