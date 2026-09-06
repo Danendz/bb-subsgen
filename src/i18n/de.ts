@@ -287,6 +287,7 @@ export const de: Messages = {
   'task.cloze': 'Welches Wort fehlt?',
   'task.meaning.word': 'Was heißt das?',
   'task.meaning.line': 'Was sagt dieser Satz?',
+  'task.choice.word': 'Wähle die Bedeutung',
 
   'videos.verdict.comfortable': 'bequem',
   'videos.verdict.stretch': 'grenzwertig',

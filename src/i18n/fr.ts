@@ -288,6 +288,7 @@ export const fr: Messages = {
   'task.cloze': 'Quel mot manque ?',
   'task.meaning.word': 'Qu’est-ce que cela veut dire ?',
   'task.meaning.line': 'Que veut dire cette phrase ?',
+  'task.choice.word': 'Choisissez le sens',
 
   'videos.verdict.comfortable': 'confortable',
   'videos.verdict.stretch': 'un peu juste',

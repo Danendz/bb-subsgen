@@ -25,7 +25,12 @@ const line = (extra: Partial<Item> = {}) =>
 const pattern = (extra: Partial<Item> = {}) =>
   make({ kind: 'grammar', text: 'V + 得 + how', patternId: 'de-complement', ...extra })
 
-const able: Capability = { canSpeak: true, hasTranslation: true, hasTarget: true }
+const able: Capability = {
+  canSpeak: true,
+  hasTranslation: true,
+  hasTarget: true,
+  hasChoices: true,
+}
 
 describe('modeFor', () => {
   test('a chosen mode is used as chosen', () => {
@@ -52,12 +57,28 @@ describe('modeFor', () => {
 })
 
 describe('exerciseFor: word cards', () => {
-  test('remembering shows the characters and asks you to recall', () => {
+  test('remembering shows the characters and asks you to pick what they mean', () => {
     expect(exerciseFor(word(), 'remember', able)).toMatchObject({
       style: 'recognise',
       cue: 'hanzi',
+      response: 'choice',
+    })
+  })
+
+  // The last self-graded word card, and it is the one nobody can grade any
+  // other way: with no gloss there is no correct option to offer. It has to go
+  // before `reveal` can leave the union.
+  test('falls back to self-grading only for a word the dictionary cannot gloss', () => {
+    expect(exerciseFor(word(), 'remember', { ...able, hasChoices: false })).toMatchObject({
+      cue: 'hanzi',
       response: 'reveal',
     })
+  })
+
+  // The log is append-only: a row written before options existed says
+  // `recognise`, and this card is asking the same question it always was.
+  test('still logs a recognition review, so the history keeps meaning what it meant', () => {
+    expect(exerciseFor(word(), 'remember', able).style).toBe('recognise')
   })
 
   test('typing prompts with the gloss and takes text', () => {
@@ -107,9 +128,8 @@ describe('every prompt carries a cue', () => {
 
   test('a line with no translation is cued by its audio instead', () => {
     const exercise = exerciseFor(line({ target: '累' }), 'type', {
-      canSpeak: true,
+      ...able,
       hasTranslation: false,
-      hasTarget: true,
     })
     expect(exercise.cue).toBe('cloze')
     expect(exercise.autoSpeak).toBe(true)
@@ -120,9 +140,9 @@ describe('every prompt carries a cue', () => {
     // There is nothing left to prompt with, so asking the user to produce the
     // line would be asking them to guess it.
     const exercise = exerciseFor(line({ target: '累' }), 'type', {
+      ...able,
       canSpeak: false,
       hasTranslation: false,
-      hasTarget: true,
     })
     expect(exercise.response).toBe('reveal')
     expect(exercise.cue).toBe('hanzi')
@@ -130,7 +150,7 @@ describe('every prompt carries a cue', () => {
 
   test('a line with no translation and no blankable word degrades too', () => {
     const exercise = exerciseFor(line(), 'type', {
-      canSpeak: true,
+      ...able,
       hasTranslation: false,
       hasTarget: false,
     })
@@ -143,20 +163,26 @@ describe('every prompt carries a cue', () => {
         for (const canSpeak of [true, false]) {
           for (const hasTranslation of [true, false]) {
             for (const hasTarget of [true, false]) {
-              for (const reps of [0, 1, 2]) {
-                const exercise = exerciseFor(kind({ reps }), mode, {
-                  canSpeak,
-                  hasTranslation,
-                  hasTarget,
-                })
-                if (exercise.response === 'reveal') continue
+              for (const hasChoices of [true, false]) {
+                for (const reps of [0, 1, 2]) {
+                  const exercise = exerciseFor(kind({ reps }), mode, {
+                    canSpeak,
+                    hasTranslation,
+                    hasTarget,
+                    hasChoices,
+                  })
+                  if (exercise.response === 'reveal') continue
 
-                const cued =
-                  exercise.cue === 'gloss' ||
-                  exercise.cue === 'translation' ||
-                  (exercise.cue === 'audio' && canSpeak) ||
-                  (exercise.cue === 'cloze' && canSpeak && hasTarget)
-                expect(cued).toBe(true)
+                  const cued =
+                    exercise.cue === 'gloss' ||
+                    exercise.cue === 'translation' ||
+                    // The characters are the cue, and the options are what
+                    // makes picking between them a test rather than a guess.
+                    exercise.response === 'choice' ||
+                    (exercise.cue === 'audio' && canSpeak) ||
+                    (exercise.cue === 'cloze' && canSpeak && hasTarget)
+                  expect(cued).toBe(true)
+                }
               }
             }
           }

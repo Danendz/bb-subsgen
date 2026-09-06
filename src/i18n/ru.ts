@@ -306,6 +306,7 @@ export const ru: Messages = {
   'task.cloze': 'Какого слова не хватает?',
   'task.meaning.word': 'Что это значит?',
   'task.meaning.line': 'Что значит эта фраза?',
+  'task.choice.word': 'Выберите значение',
 
   'videos.verdict.comfortable': 'легко',
   'videos.verdict.stretch': 'на пределе',

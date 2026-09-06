@@ -13,6 +13,7 @@ import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
+import type { Choice } from '../../flashcards/choices'
 import type { LanguagePack, Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
 import { bareId, isYoutubeId } from '../../youtube/site'
@@ -102,6 +103,12 @@ export interface SessionProps {
   known: Set<string>
   /** Known words, as an array, to draw distractor tiles from. */
   distractorPool: string[]
+  /**
+   * The meanings a word card offers, per card id, resolved before the session
+   * started — see `src/app/review/options.ts` for why they cannot be resolved
+   * here. A card with no entry is one the dictionary cannot gloss.
+   */
+  choices: ReadonlyMap<string, Choice[]>
   mode: StudyMode
   onFinish: () => void
 }
@@ -121,6 +128,7 @@ export function Session({
   words,
   known,
   distractorPool,
+  choices,
   mode,
   onFinish,
 }: SessionProps) {
@@ -135,6 +143,7 @@ export function Session({
   const [placed, setPlaced] = useState<number[]>([])
   const [typed, setTyped] = useState('')
   const [typingEscape, setTypingEscape] = useState(false)
+  const [picked, setPicked] = useState<number | null>(null)
   const [outcome, setOutcome] = useState<{
     right: boolean
     from: number
@@ -219,10 +228,12 @@ export function Session({
     const target =
       current.kind === 'sentence' ? chooseTarget(vocabularyIn(tokens), known, current.target) : null
 
+    const options = choices.get(current.id) ?? []
     const exercise = exerciseFor(current, mode, {
       canSpeak: canSpeak(words.pack.voiceLang),
       hasTranslation: Boolean(translation),
       hasTarget: Boolean(target),
+      hasChoices: options.length > 0,
     })
 
     // A clozed line asks for the one missing word; everything else asks for the
@@ -247,8 +258,19 @@ export function Session({
     const patterns =
       current.kind === 'sentence' ? distinctPatterns(words.pack.findPatterns(tokens)) : []
 
-    return { context, translation, tokens, target, exercise, answer, bank, patterns, exampleText }
-  }, [current?.id, current?.reps, current?.contexts, words, known, distractorPool, mode])
+    return {
+      context,
+      translation,
+      tokens,
+      target,
+      exercise,
+      answer,
+      bank,
+      options,
+      patterns,
+      exampleText,
+    }
+  }, [current?.id, current?.reps, current?.contexts, words, known, distractorPool, choices, mode])
 
   // Speaking is the question on a listening card, so it has to happen on its own
   // rather than waiting for a button that would give the answer away.
@@ -287,7 +309,9 @@ export function Session({
       ? placed.length > 0
       : card?.exercise.response === 'text'
         ? typed.trim().length > 0
-        : true
+        : card?.exercise.response === 'choice'
+          ? picked !== null
+          : true
 
   /** Whether what the user gave back matches the card. Recall cards have nothing to check. */
   const correct = (() => {
@@ -298,6 +322,9 @@ export function Session({
         placed.map((i) => card.bank!.tiles[i]),
         card.answer,
       )
+    }
+    if (card.exercise.response === 'choice') {
+      return picked !== null && Boolean(card.options[picked]?.correct)
     }
     if (card.exercise.response === 'text') {
       const attempt = typed.trim()
@@ -313,15 +340,18 @@ export function Session({
 
   /** What the user actually gave back, for the verdict to quote. */
   const attempt =
-    card?.exercise.response === 'tiles' && !typingEscape
-      ? placed.map((i) => card.bank!.tiles[i]).join('')
-      : typed.trim()
+    card?.exercise.response === 'choice'
+      ? (picked !== null && card.options[picked]?.text) || ''
+      : card?.exercise.response === 'tiles' && !typingEscape
+        ? placed.map((i) => card.bank!.tiles[i]).join('')
+        : typed.trim()
 
   const reset = () => {
     setChecked(false)
     setPlaced([])
     setTyped('')
     setTypingEscape(false)
+    setPicked(null)
     setOutcome(null)
   }
 
@@ -453,6 +483,15 @@ export function Session({
 
       if (typingHere || checked) return
 
+      if (card.exercise.response === 'choice') {
+        const digit = Number(e.key)
+        if (Number.isInteger(digit) && digit >= 1 && digit <= card.options.length) {
+          e.preventDefault()
+          setPicked(digit - 1)
+        }
+        return
+      }
+
       if (card.exercise.response === 'tiles' && !typingEscape) {
         if (e.key === 'Backspace' && placed.length) {
           e.preventDefault()
@@ -469,7 +508,7 @@ export function Session({
 
     addEventListener('keydown', onKeyDown)
     return () => removeEventListener('keydown', onKeyDown)
-  }, [card, checked, placed, typingEscape, answered, correct, outcome])
+  }, [card, checked, placed, picked, typingEscape, answered, correct, outcome])
 
   if (!current || !card) {
     return (
@@ -494,7 +533,7 @@ export function Session({
     )
   }
 
-  const { exercise, context, translation, target, bank, patterns, exampleText } = card
+  const { exercise, context, translation, target, bank, options, patterns, exampleText } = card
   // The card's own pattern, as opposed to `patterns`, which is everything the
   // example line happens to contain.
   const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
@@ -578,6 +617,31 @@ export function Session({
                 />
               )}
             </p>
+          </div>
+        )}
+
+        {/* The meanings, one of them right. Picking arms the answer rather than
+            settling it: every other card in the session is checked with the
+            same button, and a card that graded on touch would be the one place
+            a misplaced finger costs a rung. */}
+        {exercise.response === 'choice' && (
+          <div class="choices">
+            {options.map((choice, i) => (
+              <button
+                key={choice.text}
+                class={`choice ${picked === i ? 'picked' : ''} ${
+                  checked ? (choice.correct ? 'right' : picked === i ? 'wrong' : '') : ''
+                }`}
+                disabled={checked}
+                aria-pressed={picked === i}
+                onClick={() => setPicked(i)}
+              >
+                <span class="choice-key" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span class="choice-text">{choice.text}</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -820,6 +884,7 @@ function taskLabel(
   if (cue === 'gloss') return t('task.gloss')
   if (cue === 'translation') return t('task.translation', { language: t(pack.nameKey) })
   if (cue === 'cloze') return t('task.cloze')
+  if (response === 'choice') return t('task.choice.word')
   return t(kind === 'word' ? 'task.meaning.word' : 'task.meaning.line')
 }
 

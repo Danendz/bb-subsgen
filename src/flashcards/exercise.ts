@@ -28,12 +28,23 @@ export type Cue =
 
 /** What the question wants back. */
 export type Response =
-  /** Recall it in your head, then reveal. Nothing to check, so you say how it went. */
+  /**
+   * Recall it in your head, then reveal. Nothing to check, so you say how it
+   * went.
+   *
+   * On its way out: a grade nobody checks is a grade the honest answer and the
+   * flattering one cost the same click for. Word recall no longer reaches it —
+   * it asks for a `choice` instead — and the sentence and grammar cards that
+   * still do lose it in their own slices, at which point this variant is deleted
+   * from the union rather than deprecated.
+   */
   | 'reveal'
   /** Type the characters. */
   | 'text'
   /** Tap tiles into order. */
   | 'tiles'
+  /** Pick the meaning out of several. The app grades it. */
+  | 'choice'
 
 export interface Exercise {
   /** Logged on the review, so recognition and production stay separable later. */
@@ -52,6 +63,17 @@ export interface Capability {
   hasTranslation: boolean
   /** A word in the line can be blanked. See `chooseTarget`. */
   hasTarget: boolean
+  /**
+   * The session resolved an option set for this card — see
+   * `src/app/review/options.ts`.
+   *
+   * False for a headword the dictionary cannot gloss, which is a word captured
+   * off a page as often as it is a bad row: there is no correct option to
+   * offer, so there is no question to ask. It is the last thing that sends a
+   * word card back to self-grading, and it has to stop doing that before
+   * `reveal` can be deleted.
+   */
+  hasChoices: boolean
 }
 
 const ROTATION: ReadonlyArray<Exclude<StudyMode, 'mixed'>> = ['remember', 'type', 'audio']
@@ -103,6 +125,12 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
       return { style: 'type', cue: 'gloss', response: 'text', autoSpeak: false }
     if (resolved === 'audio')
       return { style: 'audio', cue: 'audio', response: 'text', autoSpeak: true }
+    // The characters, and four meanings to choose between. The style logged is
+    // still `recognise`: what the card asks has not changed, only who decides
+    // whether the answer was right, and the review log is append-only — rows
+    // written before this have to keep meaning what they meant.
+    if (can.hasChoices)
+      return { style: 'recognise', cue: 'hanzi', response: 'choice', autoSpeak: false }
     return { style: 'recognise', cue: 'hanzi', response: 'reveal', autoSpeak: false }
   }
 

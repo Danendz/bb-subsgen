@@ -306,6 +306,7 @@ export const en = {
   'task.cloze': 'Which word is missing?',
   'task.meaning.word': 'What does this mean?',
   'task.meaning.line': 'What does this line mean?',
+  'task.choice.word': 'Pick the meaning',
 
   // --- Videos tab (src/app/Videos.tsx) ---
   'videos.verdict.comfortable': 'comfortable',
