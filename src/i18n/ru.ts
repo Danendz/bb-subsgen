@@ -71,6 +71,10 @@ export const ru: Messages = {
     'Встроенный переводчик Chrome подключён только для китайского, поэтому строки на {language} переводит ваша локальная модель.',
   'gap.onDevice.noun': 'перевод на устройстве',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'китайский',
+  'language.ja': 'японский',
+
   'settings.llm.title': 'Локальная модель',
   'settings.llm.noModels': 'Подключено, но на сервере не загружено ни одной модели.',
   'settings.llm.needsPermission':
@@ -298,7 +302,7 @@ export const ru: Messages = {
   'task.audio.word': 'Наберите то, что слышите',
   'task.audio.line': 'Соберите то, что слышите',
   'task.gloss': 'Наберите иероглифы',
-  'task.translation': 'Соберите эту фразу по-китайски',
+  'task.translation': 'Соберите эту фразу — язык: {language}',
   'task.cloze': 'Какого слова не хватает?',
   'task.meaning.word': 'Что это значит?',
   'task.meaning.line': 'Что значит эта фраза?',

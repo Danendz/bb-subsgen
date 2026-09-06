@@ -83,6 +83,10 @@ export const en = {
     "Chrome's on-device translator is only wired up for Chinese, so {language} lines are translated by your local model instead.",
   'gap.onDevice.noun': 'on-device translation',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'Chinese',
+  'language.ja': 'Japanese',
+
   // --- Settings \u203a Local model ---
   'settings.llm.title': 'Local model',
   'settings.llm.noModels': 'Connected, but the server has no models loaded.',
@@ -298,7 +302,7 @@ export const en = {
   'task.audio.word': 'Type what you hear',
   'task.audio.line': 'Build what you hear',
   'task.gloss': 'Type the characters',
-  'task.translation': 'Build this line in Chinese',
+  'task.translation': 'Build this line in {language}',
   'task.cloze': 'Which word is missing?',
   'task.meaning.word': 'What does this mean?',
   'task.meaning.line': 'What does this line mean?',

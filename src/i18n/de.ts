@@ -71,6 +71,10 @@ export const de: Messages = {
     'Chromes eingebauter Übersetzer ist nur für Chinesisch angebunden, daher übersetzt dein lokales Modell die Zeilen auf {language}.',
   'gap.onDevice.noun': 'die Übersetzung auf dem Gerät',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'Chinesisch',
+  'language.ja': 'Japanisch',
+
   'settings.llm.title': 'Lokales Modell',
   'settings.llm.noModels': 'Verbunden, aber auf dem Server ist kein Modell geladen.',
   'settings.llm.needsPermission':
@@ -279,7 +283,7 @@ export const de: Messages = {
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',
   'task.gloss': 'Tippe die Zeichen',
-  'task.translation': 'Bau diesen Satz auf Chinesisch',
+  'task.translation': 'Bau diesen Satz auf {language}',
   'task.cloze': 'Welches Wort fehlt?',
   'task.meaning.word': 'Was heißt das?',
   'task.meaning.line': 'Was sagt dieser Satz?',

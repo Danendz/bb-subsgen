@@ -69,6 +69,10 @@ export const pt: Messages = {
     'O tradutor integrado do Chrome só está ligado para chinês, por isso as linhas em {language} são traduzidas pelo teu modelo local.',
   'gap.onDevice.noun': 'a tradução no dispositivo',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'chinês',
+  'language.ja': 'japonês',
+
   'settings.llm.title': 'Modelo local',
   'settings.llm.noModels': 'Ligado, mas o servidor não tem nenhum modelo carregado.',
   'settings.llm.needsPermission':
@@ -279,7 +283,7 @@ export const pt: Messages = {
   'task.audio.word': 'Escreva o que ouve',
   'task.audio.line': 'Construa o que ouve',
   'task.gloss': 'Escreva os caracteres',
-  'task.translation': 'Construa esta frase em chinês',
+  'task.translation': 'Construa esta frase em {language}',
   'task.cloze': 'Que palavra falta?',
   'task.meaning.word': 'O que quer isto dizer?',
   'task.meaning.line': 'O que quer dizer esta frase?',

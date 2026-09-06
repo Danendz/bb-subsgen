@@ -20,6 +20,8 @@
 // data public and leaks each language's internals into a shape everyone
 // imports.
 
+import type { MessageKey } from '../i18n/keys'
+
 /**
  * One piece of a reading, and the characters it is drawn over.
  *
@@ -201,8 +203,18 @@ export type Gap = 'patterns' | 'onDeviceTranslation'
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
   readonly code: string
-  /** The language's name in English, for log lines and for prose the user reads. */
+  /** The language's name in English, for log lines and anything else no one reads in Spanish. */
   readonly name: string
+  /**
+   * The same name in the locale table, for prose the user reads.
+   *
+   * A field rather than a lookup keyed on `code` because `code` is a `string`:
+   * a table would answer `undefined` for a language that forgot its entry and
+   * only show up as a blank in the middle of a sentence, where this is a
+   * compile error the moment a pack is added. `name` stays for the callers that
+   * are not prose — log lines, and the sources registry.
+   */
+  readonly nameKey: MessageKey
   /**
    * What this language's standard proficiency scale is called — 'HSK', 'JLPT'.
    *

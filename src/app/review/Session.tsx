@@ -13,7 +13,7 @@ import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
 import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
-import type { Pattern, PatternMatch } from '../../lang/pack'
+import type { LanguagePack, Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
 import { bareId, isYoutubeId } from '../../youtube/site'
 import type { Lexicon } from '../../lang/pack'
@@ -517,7 +517,9 @@ export function Session({
           graded, and colouring it red in that gap prejudges an answer the user
           has not given yet. */}
       <div class={`panel card ${outcome ? (outcome.right ? 'right' : 'wrong') : ''}`}>
-        <p class="task">{taskLabel(exercise.cue, current.kind, exercise.response, t)}</p>
+        <p class="task">
+          {taskLabel(exercise.cue, current.kind, exercise.response, words.pack, t)}
+        </p>
 
         {exercise.cue === 'pattern' ? (
           <div class="prompt">
@@ -804,13 +806,19 @@ export function Session({
   )
 }
 
-function taskLabel(cue: string, kind: Item['kind'], response: string, t: Translate): string {
+function taskLabel(
+  cue: string,
+  kind: Item['kind'],
+  response: string,
+  pack: LanguagePack,
+  t: Translate,
+): string {
   if (cue === 'pattern') {
     return t(response === 'tiles' ? 'task.pattern.tiles' : 'task.pattern.reveal')
   }
   if (cue === 'audio') return t(kind === 'word' ? 'task.audio.word' : 'task.audio.line')
   if (cue === 'gloss') return t('task.gloss')
-  if (cue === 'translation') return t('task.translation')
+  if (cue === 'translation') return t('task.translation', { language: t(pack.nameKey) })
   if (cue === 'cloze') return t('task.cloze')
   return t(kind === 'word' ? 'task.meaning.word' : 'task.meaning.line')
 }
