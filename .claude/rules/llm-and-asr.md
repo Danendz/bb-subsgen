@@ -87,5 +87,12 @@ Dictionary Research and Development Group respectively — and attribution is re
 either's derived data is shown or shipped. `DICT_SOURCES` carries the line to print; use it rather
 than writing one out.
 
+**Where the notice goes is the surface that shows the definitions**, which is not the same as
+every surface: the setup wizard prints it beside the download, and the Dictionary tab under the
+list. The popup carried both licences on every open while showing no definition at all, and the
+overlays show definitions but have no chrome to put a licence in — a shadow root over somebody
+else's video is not a reasonable place for one, and the app carries it for them. Do not add it
+back to a screen that renders no dictionary text.
+
 Definitions go through the service worker (`src/dict/store.ts`, batched via `lookupDefsIn`) rather
 than being loaded per page: a content script copy would be held once per page origin.

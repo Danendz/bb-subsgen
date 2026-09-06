@@ -182,6 +182,14 @@ nav.tabs a.on {
   margin: 0 0 6px;
 }
 
+/* The dictionary licence, under the definitions it covers: required, and not
+   the thing anyone came to the page to read. */
+.attribution {
+  color: var(--text-3);
+  font-size: 10px;
+  margin-top: 16px;
+}
+
 .tag.known {
   color: var(--right);
 }
