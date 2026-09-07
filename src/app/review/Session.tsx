@@ -13,7 +13,7 @@ import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
 import { answerOf, buildBank, distractorChars, isCorrect, seedFor } from '../../flashcards/wordbank'
-import { nearestByRank } from '../../flashcards/distractors'
+import { nearestByRank, nearestToAny } from '../../flashcards/distractors'
 import type { Choice } from '../../flashcards/choices'
 import type { LanguagePack, Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
@@ -261,18 +261,16 @@ export function Session({
           ? [target]
           : answerOf(tokens)
     const seed = seedFor(current.id, current.reps)
-    // Sampled by index rather than by shuffling the pool: the known set runs to
-    // thousands of words, and copying all of them to take three would be the
-    // most expensive thing on the screen.
+    // Drawn by frequency proximity rather than sampled by index, which is what
+    // this did and which had no notion of similarity at all: three tiles from
+    // anywhere in a known set of thousands are three tiles you can see are
+    // wrong. It costs a walk of that set per card — the sampling existed to
+    // avoid one — and the walk is worth it, because a distractor nobody would
+    // place is not a distractor.
     const distractors =
       current.kind === 'word'
         ? distractorChars(nearestByRank(current.text, deckWords, rankOf, NEAR_WORDS), DISTRACTORS)
-        : distractorPool.length
-          ? Array.from(
-              { length: DISTRACTORS },
-              (_, i) => distractorPool[(seed + i * 7919) % distractorPool.length],
-            )
-          : []
+        : nearestToAny(answer, distractorPool, rankOf, DISTRACTORS)
     const bank = exercise.response === 'tiles' ? buildBank(answer, distractors, seed) : null
 
     // Only lines have structure worth naming. A word card's example lives in

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { nearestByRank } from './distractors'
+import { nearestByRank, nearestToAny } from './distractors'
 
 /** A frequency list as `rankOf` sees one: known words numbered, everything else absent. */
 const ranks = (entries: Record<string, number>) => (word: string) => entries[word]
@@ -54,5 +54,37 @@ describe('nearestByRank', () => {
       '学生',
       '学校',
     ])
+  })
+})
+
+describe('nearestToAny', () => {
+  test('a line gets tiles plausible beside every word in it, not just the first', () => {
+    // The wrong tiles used to be sampled by index out of the known set, which
+    // has no notion of similarity: on a line of common words they arrived from
+    // wherever the arithmetic landed, and you could see they were wrong.
+    const rankOf = ranks({ 我: 5, 图书馆: 3000, 你: 6, 博物馆: 3005, 鹦鹉: 40000 })
+    expect(nearestToAny(['我', '图书馆'], ['鹦鹉', '博物馆', '你'], rankOf, 2)).toEqual([
+      '你',
+      '博物馆',
+    ])
+  })
+
+  test('measures to the nearest word rather than to the middle of the line', () => {
+    // A line pairing a first-week word with a fourth-year one has no midpoint
+    // worth drawing from — the words either side of each end are the tiles.
+    const rankOf = ranks({ 我: 5, 鹦鹉: 40000, 你: 6, 中间: 20000 })
+    expect(nearestToAny(['我', '鹦鹉'], ['中间', '你'], rankOf, 1)).toEqual(['你'])
+  })
+
+  test('never offers a word the answer already contains', () => {
+    // Two identical tiles make the check ambiguous and one of them impossible
+    // to place wrongly.
+    const rankOf = ranks({ 我: 5, 很: 20, 累: 200 })
+    expect(nearestToAny(['我', '很'], ['很', '累'], rankOf, 3)).toEqual(['累'])
+  })
+
+  test('with no list installed the tiles still fill, in the order given', () => {
+    const none = () => undefined
+    expect(nearestToAny(['我', '很'], ['累', '学生', '鹦鹉'], none, 2)).toEqual(['累', '学生'])
   })
 })
