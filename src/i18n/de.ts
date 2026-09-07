@@ -264,10 +264,7 @@ export const de: Messages = {
   'session.asrWarning':
     'Aus dem Ton transkribiert — dieser Satz kann falsch verstanden worden sein.',
   'session.explain': 'Diesen Satz erklären',
-  'session.showAnswer': 'Antwort zeigen',
   'session.check': 'Prüfen',
-  'session.didntKnow': 'Wusste ich nicht',
-  'session.knewIt': 'Wusste ich',
   'session.continue': 'Weiter',
   'session.cardsSettled': 'Erledigte Karten',
   'session.mastered': 'Beherrscht',
@@ -279,7 +276,6 @@ export const de: Messages = {
   },
   'session.practice': 'Übung · {when}',
   'task.pattern.tiles': 'Bau diesen Satz mit dem Muster',
-  'task.pattern.reveal': 'Was macht dieses Muster?',
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',
   'task.gloss': 'Bau das Wort',

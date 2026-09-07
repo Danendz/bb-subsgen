@@ -65,13 +65,23 @@ describe('exerciseFor: word cards', () => {
     })
   })
 
-  // The last self-graded word card, and it is the one nobody can grade any
-  // other way: with no gloss there is no correct option to offer. It has to go
-  // before `reveal` can leave the union.
-  test('falls back to self-grading only for a word the dictionary cannot gloss', () => {
+  // A word the dictionary cannot gloss can be asked neither by showing its
+  // meaning nor by offering four of them. Blanking it inside the sentence it
+  // was met in is the question that survives, and the app grades it.
+  test('a word the dictionary cannot gloss is blanked into its own sentence', () => {
     expect(exerciseFor(word(), 'remember', { ...able, hasChoices: false })).toMatchObject({
-      cue: 'hanzi',
-      response: 'reveal',
+      style: 'cloze',
+      cue: 'cloze',
+      response: 'tiles',
+    })
+  })
+
+  // Producing a word from its gloss needs a gloss. The same shortfall, so the
+  // same answer — otherwise the prompt is the "(no definition)" placeholder and
+  // the tiles are the whole question.
+  test('producing one it cannot gloss is blanked too, rather than prompted with nothing', () => {
+    expect(exerciseFor(word(), 'type', { ...able, hasChoices: false })).toMatchObject({
+      cue: 'cloze',
     })
   })
 
@@ -108,12 +118,25 @@ describe('exerciseFor: sentence cards', () => {
     })
   })
 
-  // A line captured with no translation has no correct option to offer, which
-  // is the same reason a word the dictionary cannot gloss falls back.
-  test('falls back to self-grading only for a line with no translation stored', () => {
+  // A line captured with no translation has no correct option to offer and
+  // nothing to prompt a production question with either. It is asked as the
+  // cued cloze, which is the exercise that replaced self-grading outright.
+  test('a line with no translation is blanked and cued by the blanked word', () => {
+    expect(
+      exerciseFor(line(), 'remember', { ...able, hasChoices: false, hasTranslation: false }),
+    ).toMatchObject({
+      style: 'cloze',
+      cue: 'cloze',
+      response: 'tiles',
+    })
+  })
+
+  // Options come from other cards' stored translations, so a deck of one line
+  // has none to draw on. The line still has its own translation to prompt with.
+  test('a lone translated line still asks for the line, options or no options', () => {
     expect(exerciseFor(line(), 'remember', { ...able, hasChoices: false })).toMatchObject({
-      cue: 'hanzi',
-      response: 'reveal',
+      cue: 'translation',
+      response: 'tiles',
     })
   })
 
@@ -138,7 +161,7 @@ describe('every prompt carries a cue', () => {
   // constrain the answer is a guess, not a recall test.
   const modes: StudyMode[] = ['remember', 'type', 'audio', 'mixed']
 
-  test('a line with no translation is cued by its audio instead', () => {
+  test('a line with no translation is blanked, and spoken as well when it can be', () => {
     const exercise = exerciseFor(line({ target: '累' }), 'type', {
       ...able,
       hasTranslation: false,
@@ -148,25 +171,28 @@ describe('every prompt carries a cue', () => {
     expect(exercise.style).toBe('cloze')
   })
 
-  test('a line with neither translation nor voice stops being a production question', () => {
-    // There is nothing left to prompt with, so asking the user to produce the
-    // line would be asking them to guess it.
+  // The card this whole slice exists for. The blank used to need the spoken
+  // line to be a fair question; it is the blanked word's definition that makes
+  // it one, and that is on screen whether or not the machine has a voice.
+  test('a line with neither translation nor voice is still asked, cued by the gloss', () => {
     const exercise = exerciseFor(line({ target: '累' }), 'type', {
       ...able,
       canSpeak: false,
       hasTranslation: false,
     })
-    expect(exercise.response).toBe('reveal')
-    expect(exercise.cue).toBe('hanzi')
+    expect(exercise.cue).toBe('cloze')
+    expect(exercise.autoSpeak).toBe(false)
   })
 
-  test('a line with no translation and no blankable word degrades too', () => {
+  // Nothing to blank means no line was ever captured with the card, which is a
+  // deck written by a version of this extension that no longer exists.
+  test('only a card with no line at all runs out of questions', () => {
     const exercise = exerciseFor(line(), 'type', {
       ...able,
       hasTranslation: false,
       hasTarget: false,
     })
-    expect(exercise.response).toBe('reveal')
+    expect(exercise.cue).toBe('gloss')
   })
 
   test('no combination ever asks for production without a cue', () => {
@@ -183,7 +209,15 @@ describe('every prompt carries a cue', () => {
                     hasTarget,
                     hasChoices,
                   })
-                  if (exercise.response === 'reveal') continue
+
+                  // A gloss prompt on a card the dictionary cannot gloss is
+                  // the one uncued shape the module admits to, and it is only
+                  // reachable with no line to blank either — the orphan branch,
+                  // which no deck this version writes can produce.
+                  if (exercise.cue === 'gloss' && !hasChoices) {
+                    expect(hasTarget).toBe(false)
+                    continue
+                  }
 
                   const cued =
                     exercise.cue === 'gloss' ||
@@ -192,7 +226,9 @@ describe('every prompt carries a cue', () => {
                     // makes picking between them a test rather than a guess.
                     exercise.response === 'choice' ||
                     (exercise.cue === 'audio' && canSpeak) ||
-                    (exercise.cue === 'cloze' && canSpeak && hasTarget)
+                    // The blanked word's definition, which is on screen with or
+                    // without a voice to add to it.
+                    (exercise.cue === 'cloze' && hasTarget)
                   expect(cued).toBe(true)
                 }
               }
@@ -221,9 +257,20 @@ describe('grammar cards', () => {
   })
 
   // Nothing to name the shape with, so nothing to offer as the right answer.
-  test('falls back to self-grading only for a pattern the table has dropped', () => {
+  // The example it was found in is still a line, and building that line is the
+  // question a pattern card was always for.
+  test('a pattern the table has dropped asks for the line instead', () => {
     const exercise = exerciseFor(pattern(), 'remember', { ...able, hasChoices: false })
-    expect(exercise.response).toBe('reveal')
+    expect(exercise).toMatchObject({ cue: 'pattern', response: 'tiles' })
+  })
+
+  test('and with no translated example either, it is blanked like any other line', () => {
+    const exercise = exerciseFor(pattern(), 'remember', {
+      ...able,
+      hasChoices: false,
+      hasTranslation: false,
+    })
+    expect(exercise.cue).toBe('cloze')
   })
 
   // In production mode the card has a real question: here is a translation and

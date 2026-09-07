@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { applyReview } from '../../background/flashcards-store'
 import { vocabularyIn } from '../../flashcards/capture'
-import { chooseTarget } from '../../flashcards/cloze'
+import { chooseTarget, fallbackTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
@@ -241,24 +241,48 @@ export function Session({
     // skeleton, which is not a sentence and has no tiles in it.
     const exampleText = current.kind === 'grammar' ? (context?.text ?? '') : current.text
     const tokens = words.segment(exampleText)
+
+    // The line the card was met in, which is not `exampleText`: a word card
+    // produces its own characters from tiles, so its example is the word
+    // itself, while the line it can be clozed into lives in its context.
+    const clozeTokens = current.kind === 'word' ? words.segment(line) : tokens
+    const vocabulary = vocabularyIn(clozeTokens)
+    // Which word the gap is. A word card blanks itself — that is the word the
+    // review is about — and everything else asks `chooseTarget` first, falling
+    // back to the relaxed pick when its "exactly one unknown" rule declines.
+    // The fallback is what puts a cued cloze within reach of every card, which
+    // is what let self-grading go.
     const target =
-      current.kind === 'sentence' ? chooseTarget(vocabularyIn(tokens), known, current.target) : null
+      current.kind === 'word'
+        ? vocabulary.includes(current.text)
+          ? current.text
+          : null
+        : (chooseTarget(vocabulary, known, current.target) ?? fallbackTarget(vocabulary, rankOf))
+
+    // A headword is the identity a card stores, but the blank is drawn, so it
+    // has to be the surface the line actually uses: 食べる is the headword of a
+    // line that says 食べて, and blanking on the headword would blank nothing.
+    const blank =
+      target === null
+        ? null
+        : (clozeTokens.find((token) => (token.dictionary ?? token.text) === target)?.text ?? target)
 
     const options = choices.get(current.id) ?? []
     const exercise = exerciseFor(current, mode, {
       canSpeak: canSpeak(words.pack.voiceLang),
       hasTranslation: Boolean(translation),
-      hasTarget: Boolean(target),
+      hasTarget: Boolean(blank),
       hasChoices: options.length > 0,
     })
 
-    // A word card is built out of its own characters; a clozed line asks for the
-    // one missing word; everything else asks for the whole line.
+    // A clozed line asks for the one missing word, whatever kind of card it
+    // came from; a word card otherwise builds itself out of its own characters;
+    // everything else asks for the whole line.
     const answer =
-      current.kind === 'word'
-        ? Array.from(current.text)
-        : exercise.cue === 'cloze' && target
-          ? [target]
+      exercise.cue === 'cloze' && blank
+        ? [blank]
+        : current.kind === 'word'
+          ? Array.from(current.text)
           : answerOf(tokens)
     const seed = seedFor(current.id, current.reps)
     // Drawn by frequency proximity rather than sampled by index, which is what
@@ -268,7 +292,7 @@ export function Session({
     // avoid one — and the walk is worth it, because a distractor nobody would
     // place is not a distractor.
     const distractors =
-      current.kind === 'word'
+      current.kind === 'word' && exercise.cue !== 'cloze'
         ? distractorChars(nearestByRank(current.text, deckWords, rankOf, NEAR_WORDS), DISTRACTORS)
         : nearestToAny(answer, distractorPool, rankOf, DISTRACTORS)
     const bank = exercise.response === 'tiles' ? buildBank(answer, distractors, seed) : null
@@ -285,6 +309,8 @@ export function Session({
       translation,
       tokens,
       target,
+      blank,
+      clozeText: current.kind === 'word' ? line : exampleText,
       exercise,
       answer,
       bank,
@@ -308,7 +334,11 @@ export function Session({
   // Speaking is the question on a listening card, so it has to happen on its own
   // rather than waiting for a button that would give the answer away.
   useEffect(() => {
-    if (card?.exercise.autoSpeak && current && !checked) speak(current.text, words.pack.voiceLang)
+    // The clozed line, which for a word card is the sentence it was met in
+    // rather than the word — reading the answer aloud is not a question.
+    if (card?.exercise.autoSpeak && current && !checked) {
+      speak(card.exercise.cue === 'cloze' ? card.clozeText : current.text, words.pack.voiceLang)
+    }
   }, [current?.id, card?.exercise.autoSpeak, checked])
 
   useEffect(() => {
@@ -331,8 +361,11 @@ export function Session({
   const answers = useMemo(() => {
     if (!card || !current) return []
     if (current.kind !== 'word') return [card.answer.join('')]
+    // The answer as built, plus the word's other spellings. A clozed word card
+    // is answered with the surface the line uses — 食べて — and its headword is
+    // as good an answer as the form: either one is the word.
     const forms = primary ? [primary.headword, ...primary.variants] : []
-    return [...new Set([current.text, ...forms])].filter(Boolean)
+    return [...new Set([card.answer.join(''), current.text, ...forms])].filter(Boolean)
   }, [card, current?.kind, current?.text, primary])
   const englishSenses = primary?.senses.slice(0, SENSES).map((sense) => sense.gloss) ?? []
   const headword = current?.text ?? ''
@@ -354,6 +387,16 @@ export function Session({
   // moment it has a definition and improves when the translation lands.
   const gloss = (glosses[headword] ?? englishSenses).join('; ')
 
+  // What the blanked word means, which is the cloze's cue. Read out of the same
+  // batch as every other definition on the line — the target is one of the
+  // line's own words, so it was already fetched.
+  const targetGloss = (() => {
+    if (!card?.target || card.exercise.cue !== 'cloze') return ''
+    const [best] = words.pack.rank(defs?.[card.target] ?? [], card.target)
+    const english = best?.senses.slice(0, SENSES).map((sense) => sense.gloss) ?? []
+    return (glosses[card.target] ?? english).join('; ')
+  })()
+
   const answered =
     card?.exercise.response === 'tiles'
       ? placed.length > 0
@@ -363,13 +406,12 @@ export function Session({
           ? picked !== null
           : true
 
-  /** Whether what the user gave back matches the card. Recall cards have nothing to check. */
+  /** Whether what the user gave back matches the card. */
   const correct = (() => {
     if (!card) return false
     if (card.exercise.response === 'choice') {
       return picked !== null && Boolean(card.options[picked]?.correct)
     }
-    if (card.exercise.response === 'reveal') return false
     // Tiles and a text box are the same question asked through two input
     // methods, so they are checked against the same list.
     const given =
@@ -481,10 +523,6 @@ export function Session({
 
   const check = () => {
     if (checked || !card) return
-    if (card.exercise.response === 'reveal') {
-      setChecked(true)
-      return
-    }
     if (!answered) return
     setChecked(true)
     void settle(correct)
@@ -511,14 +549,7 @@ export function Session({
       if (e.key === 'Enter') {
         e.preventDefault()
         if (!checked) check()
-        else if (card.exercise.response !== 'reveal') advance()
-        else if (!outcome) void settle(true).then(advance)
-        return
-      }
-
-      if (checked && card.exercise.response === 'reveal' && !outcome) {
-        if (e.key === '1') void settle(false).then(advance)
-        if (e.key === '2') void settle(true).then(advance)
+        else advance()
         return
       }
 
@@ -574,7 +605,8 @@ export function Session({
     )
   }
 
-  const { exercise, context, translation, target, bank, options, patterns, exampleText } = card
+  const { exercise, context, translation, blank, clozeText, bank, options, patterns, exampleText } =
+    card
   // The card's own pattern, as opposed to `patterns`, which is everything the
   // example line happens to contain.
   const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined
@@ -593,9 +625,10 @@ export function Session({
         </span>
       </div>
 
-      {/* Only once there is a verdict. A recall card is revealed before it is
-          graded, and colouring it red in that gap prejudges an answer the user
-          has not given yet. */}
+      {/* Tinted by the verdict, which now always exists by the time the answer
+          side is on screen: every card is graded by the app when it is checked,
+          so there is no longer a moment where the answer is showing and nobody
+          has decided about it. */}
       <div class={`panel card ${outcome ? (outcome.right ? 'right' : 'wrong') : ''}`}>
         <p class="task">
           {taskLabel(exercise.cue, current.kind, exercise.response, words.pack, t)}
@@ -631,21 +664,29 @@ export function Session({
           <div class="prompt">
             <p class="translation-prompt">{translation}</p>
           </div>
-        ) : exercise.cue === 'cloze' && target ? (
+        ) : exercise.cue === 'cloze' && blank ? (
           <div class="prompt">
             <p class="hanzi-line">
               <Line
-                text={current.text}
+                text={clozeText}
                 words={words}
                 known={known}
                 defs={defs}
                 glosses={glosses}
-                blank={target}
+                blank={blank}
               />
             </p>
-            <button class="speak" onClick={() => speak(current.text, words.pack.voiceLang)}>
-              <span aria-hidden="true">♪</span> {t('session.playAgain')}
-            </button>
+            {/* What goes in the gap, said in the language you read. This is the
+                cue that makes a blank a recall test instead of a guess — the
+                whole reason a line with no translation is still askable. The
+                one card that reaches here without it is a word the dictionary
+                cannot gloss, and that one is cued by the line around it. */}
+            {targetGloss && <p class="gloss-prompt">{targetGloss}</p>}
+            {canSpeak(words.pack.voiceLang) && (
+              <button class="speak" onClick={() => speak(clozeText, words.pack.voiceLang)}>
+                <span aria-hidden="true">♪</span> {t('session.playAgain')}
+              </button>
+            )}
           </div>
         ) : (
           <div class="prompt">
@@ -737,7 +778,7 @@ export function Session({
             {/* The answer itself is right underneath, so the verdict reports
                 what you did instead — seeing your own wrong version next to the
                 right one is the part that teaches. */}
-            {outcome && exercise.response !== 'reveal' && (
+            {outcome && (
               <p class={`verdict ${outcome.right ? 'ok' : 'no'}`}>
                 {outcome.right
                   ? t('session.correct')
@@ -767,6 +808,22 @@ export function Session({
                 )}
                 {translation && <p class="context">{translation}</p>}
               </>
+            )}
+
+            {/* A grammar card whose pattern the language pack has dropped has
+                no explanation to give above, and its blanked example is the
+                only thing it did ask — so the filled-in line is the answer. */}
+            {current.kind === 'grammar' && !ownPattern && exercise.cue === 'cloze' && (
+              <p class="answer-hanzi">
+                <Line
+                  text={clozeText}
+                  words={words}
+                  known={known}
+                  defs={defs}
+                  glosses={glosses}
+                  readings
+                />
+              </p>
             )}
 
             {/* The characters are the answer only when they were not the
@@ -887,17 +944,8 @@ export function Session({
       <div class="actions">
         {!checked ? (
           <button class="primary" disabled={!answered} onClick={check}>
-            {exercise.response === 'reveal' ? t('session.showAnswer') : t('session.check')}
+            {t('session.check')}
           </button>
-        ) : exercise.response === 'reveal' && !outcome ? (
-          <>
-            <button class="wrong-btn" onClick={() => void settle(false).then(advance)}>
-              {t('session.didntKnow')}
-            </button>
-            <button class="right-btn" onClick={() => void settle(true).then(advance)}>
-              {t('session.knewIt')}
-            </button>
-          </>
         ) : (
           <button class="primary" onClick={advance}>
             {t('session.continue')}
@@ -937,7 +985,7 @@ function taskLabel(
     )
   }
   if (cue === 'pattern') {
-    return t(response === 'tiles' ? 'task.pattern.tiles' : 'task.pattern.reveal')
+    return t('task.pattern.tiles')
   }
   if (cue === 'audio') return t(kind === 'word' ? 'task.audio.word' : 'task.audio.line')
   if (cue === 'gloss') return t('task.gloss')

@@ -816,21 +816,6 @@ button.speak.big {
   font-size: 16px;
 }
 
-button.right-btn {
-  background: var(--right);
-  color: var(--action-ink);
-  border-color: var(--right);
-  border-bottom-color: #4a9b6c;
-}
-button.right-btn:hover:not(:disabled) {
-  background: #94e8b8;
-}
-
-button.wrong-btn {
-  background: var(--inset);
-  color: var(--text-2);
-}
-
 /* The summary --------------------------------------------------------------- */
 
 .done {
