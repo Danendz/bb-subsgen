@@ -286,6 +286,8 @@ export const es: Messages = {
   'task.meaning.word': '¿Qué significa esto?',
   'task.meaning.line': '¿Qué significa esta frase?',
   'task.choice.word': 'Elige el significado',
+  'task.choice.line': 'Elige qué significa esta frase',
+  'task.choice.pattern': 'Elige qué hace esta estructura',
 
   'videos.verdict.comfortable': 'cómodo',
   'videos.verdict.stretch': 'algo justo',

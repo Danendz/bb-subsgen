@@ -307,6 +307,8 @@ export const ru: Messages = {
   'task.meaning.word': 'Что это значит?',
   'task.meaning.line': 'Что значит эта фраза?',
   'task.choice.word': 'Выберите значение',
+  'task.choice.line': 'Выберите, что значит эта фраза',
+  'task.choice.pattern': 'Выберите, что делает эта конструкция',
 
   'videos.verdict.comfortable': 'легко',
   'videos.verdict.stretch': 'на пределе',

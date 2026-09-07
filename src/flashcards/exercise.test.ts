@@ -98,8 +98,18 @@ describe('exerciseFor: word cards', () => {
 })
 
 describe('exerciseFor: sentence cards', () => {
-  test('remembering shows the line and asks for its meaning', () => {
+  test('remembering shows the line and asks you to pick what it means', () => {
     expect(exerciseFor(line(), 'remember', able)).toMatchObject({
+      style: 'recognise',
+      cue: 'hanzi',
+      response: 'choice',
+    })
+  })
+
+  // A line captured with no translation has no correct option to offer, which
+  // is the same reason a word the dictionary cannot gloss falls back.
+  test('falls back to self-grading only for a line with no translation stored', () => {
+    expect(exerciseFor(line(), 'remember', { ...able, hasChoices: false })).toMatchObject({
       cue: 'hanzi',
       response: 'reveal',
     })
@@ -195,17 +205,23 @@ describe('every prompt carries a cue', () => {
 describe('grammar cards', () => {
   const modes: StudyMode[] = ['remember', 'type', 'audio', 'mixed']
 
-  // A pattern card in recall mode shows the shape and asks what it does. There
-  // is nothing to type and nothing to assemble — the answer is an understanding,
-  // so the card asks you to judge yourself, exactly as a word card does.
-  test('asks you to recall what the shape does', () => {
+  // A pattern card in recall mode shows the shape and asks what it does. The
+  // answer is an understanding rather than a string, which is why it used to be
+  // self-graded — four accounts of the shape are what make it checkable.
+  test('asks you to pick what the shape does', () => {
     const exercise = exerciseFor(pattern(), 'remember', able)
     expect(exercise).toEqual({
       style: 'recognise',
       cue: 'pattern',
-      response: 'reveal',
+      response: 'choice',
       autoSpeak: false,
     })
+  })
+
+  // Nothing to name the shape with, so nothing to offer as the right answer.
+  test('falls back to self-grading only for a pattern the table has dropped', () => {
+    const exercise = exerciseFor(pattern(), 'remember', { ...able, hasChoices: false })
+    expect(exercise.response).toBe('reveal')
   })
 
   // In production mode the card has a real question: here is a translation and
@@ -220,9 +236,10 @@ describe('grammar cards', () => {
 
   // Without a translated example there is nothing to prompt production with —
   // the skeleton alone would be a guess, not a recall test.
-  test('degrades to recall when no example carries a translation', () => {
+  test('degrades to picking what it does when no example carries a translation', () => {
     const exercise = exerciseFor(pattern(), 'type', { ...able, hasTranslation: false })
-    expect(exercise.response).toBe('reveal')
+    expect(exercise.cue).toBe('pattern')
+    expect(exercise.response).toBe('choice')
   })
 
   test('never speaks a skeleton, which is not a sentence', () => {

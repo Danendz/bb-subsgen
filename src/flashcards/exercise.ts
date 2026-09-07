@@ -33,10 +33,11 @@ export type Response =
    * went.
    *
    * On its way out: a grade nobody checks is a grade the honest answer and the
-   * flattering one cost the same click for. Word recall no longer reaches it —
-   * it asks for a `choice` instead — and the sentence and grammar cards that
-   * still do lose it in their own slices, at which point this variant is deleted
-   * from the union rather than deprecated.
+   * flattering one cost the same click for. Nothing reaches it any more except
+   * a card with no correct option to offer — a headword the dictionary cannot
+   * gloss, a line captured without a translation, a pattern the table has since
+   * dropped. Giving the last of those a cue is the slice that deletes this
+   * variant from the union rather than deprecating it.
    */
   | 'reveal'
   /** Type the characters. */
@@ -67,11 +68,12 @@ export interface Capability {
    * The session resolved an option set for this card — see
    * `src/app/review/options.ts`.
    *
-   * False for a headword the dictionary cannot gloss, which is a word captured
-   * off a page as often as it is a bad row: there is no correct option to
-   * offer, so there is no question to ask. It is the last thing that sends a
-   * word card back to self-grading, and it has to stop doing that before
-   * `reveal` can be deleted.
+   * False wherever there is no correct option to offer, which is a different
+   * thing for each kind: a headword the dictionary cannot gloss, a line
+   * captured with no translation, a pattern the language pack has since
+   * dropped. No correct option means no question, so those are what still send
+   * a card back to self-grading, and they have to stop doing it before `reveal`
+   * can be deleted.
    */
   hasChoices: boolean
 }
@@ -117,6 +119,10 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
     if (resolved !== 'remember' && can.hasTranslation) {
       return { style: 'type', cue: 'pattern', response: 'tiles', autoSpeak: false }
     }
+    // The shape, and four accounts of what it does — the other three are other
+    // patterns, because that is what a pattern's alternatives are.
+    if (can.hasChoices)
+      return { style: 'recognise', cue: 'pattern', response: 'choice', autoSpeak: false }
     return { style: 'recognise', cue: 'pattern', response: 'reveal', autoSpeak: false }
   }
 
@@ -135,6 +141,11 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
   }
 
   if (resolved === 'remember') {
+    // The line, and four things it might mean. Same style logged as before —
+    // what the card asks has not changed, only who decides whether the answer
+    // was right.
+    if (can.hasChoices)
+      return { style: 'recognise', cue: 'hanzi', response: 'choice', autoSpeak: false }
     return { style: 'recognise', cue: 'hanzi', response: 'reveal', autoSpeak: false }
   }
 

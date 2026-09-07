@@ -307,6 +307,8 @@ export const en = {
   'task.meaning.word': 'What does this mean?',
   'task.meaning.line': 'What does this line mean?',
   'task.choice.word': 'Pick the meaning',
+  'task.choice.line': 'Pick what this line means',
+  'task.choice.pattern': 'Pick what this shape does',
 
   // --- Videos tab (src/app/Videos.tsx) ---
   'videos.verdict.comfortable': 'comfortable',

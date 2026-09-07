@@ -288,6 +288,8 @@ export const de: Messages = {
   'task.meaning.word': 'Was heißt das?',
   'task.meaning.line': 'Was sagt dieser Satz?',
   'task.choice.word': 'Wähle die Bedeutung',
+  'task.choice.line': 'Wähle, was dieser Satz sagt',
+  'task.choice.pattern': 'Wähle, was dieses Muster macht',
 
   'videos.verdict.comfortable': 'bequem',
   'videos.verdict.stretch': 'grenzwertig',

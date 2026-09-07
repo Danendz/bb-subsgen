@@ -104,9 +104,10 @@ export interface SessionProps {
   /** Known words, as an array, to draw distractor tiles from. */
   distractorPool: string[]
   /**
-   * The meanings a word card offers, per card id, resolved before the session
-   * started — see `src/app/review/options.ts` for why they cannot be resolved
-   * here. A card with no entry is one the dictionary cannot gloss.
+   * The options a card offers, per card id, resolved before the session started
+   * — see `src/app/review/options.ts` for why they cannot be resolved here.
+   * Meanings for a word, translations for a line, explanations for a pattern. A
+   * card with no entry is one with no correct option to offer.
    */
   choices: ReadonlyMap<string, Choice[]>
   mode: StudyMode
@@ -563,7 +564,13 @@ export function Session({
         {exercise.cue === 'pattern' ? (
           <div class="prompt">
             <p class="hanzi-xl">{current.text}</p>
-            {ownPattern && <p class="gloss-prompt">{ownPattern.name}</p>}
+            {/* The name is a one-line version of the answer — "Degree
+                complement" beside four accounts of what a degree complement
+                does is the option everybody picks. It comes back on the
+                reveal. */}
+            {ownPattern && exercise.response !== 'choice' && (
+              <p class="gloss-prompt">{ownPattern.name}</p>
+            )}
             {/* In production mode the translation is the question: build the
                 line that says this, using the shape above. */}
             {exercise.response === 'tiles' && translation && (
@@ -877,6 +884,18 @@ function taskLabel(
   pack: LanguagePack,
   t: Translate,
 ): string {
+  // Ahead of the cue, because picking is what the instruction has to name: a
+  // grammar card cued by its skeleton asks a different thing of you depending
+  // on whether there are options under it.
+  if (response === 'choice') {
+    return t(
+      kind === 'word'
+        ? 'task.choice.word'
+        : kind === 'sentence'
+          ? 'task.choice.line'
+          : 'task.choice.pattern',
+    )
+  }
   if (cue === 'pattern') {
     return t(response === 'tiles' ? 'task.pattern.tiles' : 'task.pattern.reveal')
   }
@@ -884,7 +903,6 @@ function taskLabel(
   if (cue === 'gloss') return t('task.gloss')
   if (cue === 'translation') return t('task.translation', { language: t(pack.nameKey) })
   if (cue === 'cloze') return t('task.cloze')
-  if (response === 'choice') return t('task.choice.word')
   return t(kind === 'word' ? 'task.meaning.word' : 'task.meaning.line')
 }
 
