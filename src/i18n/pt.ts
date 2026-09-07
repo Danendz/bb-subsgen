@@ -282,7 +282,7 @@ export const pt: Messages = {
   'task.pattern.reveal': 'O que faz esta estrutura?',
   'task.audio.word': 'Escreva o que ouve',
   'task.audio.line': 'Construa o que ouve',
-  'task.gloss': 'Escreva os caracteres',
+  'task.gloss': 'Construa a palavra',
   'task.translation': 'Construa esta frase em {language}',
   'task.cloze': 'Que palavra falta?',
   'task.meaning.word': 'O que quer isto dizer?',

@@ -301,7 +301,7 @@ export const ru: Messages = {
   'task.pattern.reveal': 'Что делает эта конструкция?',
   'task.audio.word': 'Наберите то, что слышите',
   'task.audio.line': 'Соберите то, что слышите',
-  'task.gloss': 'Наберите иероглифы',
+  'task.gloss': 'Соберите слово',
   'task.translation': 'Соберите эту фразу — язык: {language}',
   'task.cloze': 'Какого слова не хватает?',
   'task.meaning.word': 'Что это значит?',

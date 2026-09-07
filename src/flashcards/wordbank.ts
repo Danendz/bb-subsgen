@@ -79,12 +79,44 @@ export function buildBank(answer: string[], distractors: readonly string[], seed
 }
 
 /**
- * Whether the tiles placed so far spell the line.
+ * Whether what was placed spells one of the ways this card can be answered.
  *
  * Compared as joined text rather than element by element, so a line that
  * segments into 我们 or into 我 + 们 is accepted either way. The user is being
  * asked for the sentence, not for the segmenter's opinion of it.
+ *
+ * `answers` is a list because a word card has more than one right answer: the
+ * headword and every variant form the dictionary lists against it, which is how
+ * a Japanese card is answerable in kana by someone with no IME. Both the tiles
+ * and the typing escape come through here, so the escape cannot end up stricter
+ * than the path it stands in for — which is what it was, comparing against the
+ * joined tiles alone while the word-typing path accepted the variants.
  */
-export function isCorrect(placed: readonly string[], answer: readonly string[]): boolean {
-  return placed.join('') === answer.join('')
+export function isCorrect(placed: readonly string[], answers: readonly string[]): boolean {
+  const attempt = placed.join('')
+  return attempt !== '' && answers.includes(attempt)
+}
+
+/**
+ * Wrong characters to mix in with a word's own.
+ *
+ * A two-character word laid out as exactly two tiles is not a question — there
+ * is nothing to place wrongly. The extras are taken from the words ranked
+ * nearest it, because a character out of a word you are learning alongside it
+ * is one you could plausibly reach for; a character from anywhere else in the
+ * language is scenery.
+ *
+ * Characters that also appear in the answer are dropped by `buildBank`, so a
+ * near word sharing one contributes only its others — which is why this takes
+ * more words than it needs tiles.
+ */
+export function distractorChars(near: readonly string[], count: number): string[] {
+  const chars = new Set<string>()
+  for (const word of near) {
+    for (const char of word) {
+      chars.add(char)
+      if (chars.size === count) return [...chars]
+    }
+  }
+  return [...chars]
 }

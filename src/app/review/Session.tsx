@@ -12,7 +12,8 @@ import { chooseTarget } from '../../flashcards/cloze'
 import { exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
-import { answerOf, buildBank, isCorrect, seedFor } from '../../flashcards/wordbank'
+import { answerOf, buildBank, distractorChars, isCorrect, seedFor } from '../../flashcards/wordbank'
+import { nearestByRank } from '../../flashcards/distractors'
 import type { Choice } from '../../flashcards/choices'
 import type { LanguagePack, Pattern, PatternMatch } from '../../lang/pack'
 import { isEpisodeId } from '../../bilibili/resolve'
@@ -39,6 +40,14 @@ const REWIND_S = 10
 
 /** Wrong tiles mixed into a bank, so a short line cannot be solved by elimination. */
 const DISTRACTORS = 3
+
+/**
+ * Near words mined for a word card's distractor characters.
+ *
+ * More words than tiles wanted: a word is one or two characters, and any of
+ * them that the answer already contains is dropped rather than offered twice.
+ */
+const NEAR_WORDS = 4
 
 /** Senses shown under the card's word. More is a paragraph, not a reminder. */
 const SENSES = 3
@@ -101,8 +110,12 @@ export interface SessionProps {
   extra: Set<string>
   words: Lexicon
   known: Set<string>
-  /** Known words, as an array, to draw distractor tiles from. */
+  /** Known words, as an array, to draw a line's distractor tiles from. */
   distractorPool: string[]
+  /** The deck's word headwords, which a word card's distractor characters come out of. */
+  deckWords: string[]
+  /** Where a headword sits on the installed frequency list, if one is installed. */
+  rankOf: (headword: string) => number | undefined
   /**
    * The options a card offers, per card id, resolved before the session started
    * — see `src/app/review/options.ts` for why they cannot be resolved here.
@@ -129,6 +142,8 @@ export function Session({
   words,
   known,
   distractorPool,
+  deckWords,
+  rankOf,
   choices,
   mode,
   onFinish,
@@ -237,19 +252,27 @@ export function Session({
       hasChoices: options.length > 0,
     })
 
-    // A clozed line asks for the one missing word; everything else asks for the
-    // whole line.
-    const answer = exercise.cue === 'cloze' && target ? [target] : answerOf(tokens)
+    // A word card is built out of its own characters; a clozed line asks for the
+    // one missing word; everything else asks for the whole line.
+    const answer =
+      current.kind === 'word'
+        ? Array.from(current.text)
+        : exercise.cue === 'cloze' && target
+          ? [target]
+          : answerOf(tokens)
     const seed = seedFor(current.id, current.reps)
     // Sampled by index rather than by shuffling the pool: the known set runs to
     // thousands of words, and copying all of them to take three would be the
     // most expensive thing on the screen.
-    const distractors = distractorPool.length
-      ? Array.from(
-          { length: DISTRACTORS },
-          (_, i) => distractorPool[(seed + i * 7919) % distractorPool.length],
-        )
-      : []
+    const distractors =
+      current.kind === 'word'
+        ? distractorChars(nearestByRank(current.text, deckWords, rankOf, NEAR_WORDS), DISTRACTORS)
+        : distractorPool.length
+          ? Array.from(
+              { length: DISTRACTORS },
+              (_, i) => distractorPool[(seed + i * 7919) % distractorPool.length],
+            )
+          : []
     const bank = exercise.response === 'tiles' ? buildBank(answer, distractors, seed) : null
 
     // Only lines have structure worth naming. A word card's example lives in
@@ -271,7 +294,18 @@ export function Session({
       patterns,
       exampleText,
     }
-  }, [current?.id, current?.reps, current?.contexts, words, known, distractorPool, choices, mode])
+  }, [
+    current?.id,
+    current?.reps,
+    current?.contexts,
+    words,
+    known,
+    distractorPool,
+    deckWords,
+    rankOf,
+    choices,
+    mode,
+  ])
 
   // Speaking is the question on a listening card, so it has to happen on its own
   // rather than waiting for a button that would give the answer away.
@@ -285,6 +319,23 @@ export function Session({
 
   const entries = defs?.[current?.text ?? '']
   const [primary] = words.pack.rank(entries ?? [], current?.text ?? '')
+
+  /**
+   * Every string that answers this card.
+   *
+   * One entry for a line: the words it is built from, joined. A word card has
+   * more — either spelling counts, so a deck collected in one script does not
+   * mark the same word wrong for being written in the other, and a Japanese
+   * card stays answerable in kana by someone with no IME. The tiles, the typing
+   * escape and the text box all check against this same list, which is the
+   * point of it: the escape used to be stricter than the path it replaced.
+   */
+  const answers = useMemo(() => {
+    if (!card || !current) return []
+    if (current.kind !== 'word') return [card.answer.join('')]
+    const forms = primary ? [primary.headword, ...primary.variants] : []
+    return [...new Set([current.text, ...forms])].filter(Boolean)
+  }, [card, current?.kind, current?.text, primary])
   const englishSenses = primary?.senses.slice(0, SENSES).map((sense) => sense.gloss) ?? []
   const headword = current?.text ?? ''
 
@@ -316,27 +367,18 @@ export function Session({
 
   /** Whether what the user gave back matches the card. Recall cards have nothing to check. */
   const correct = (() => {
-    if (!card || !current) return false
-    if (card.exercise.response === 'tiles') {
-      if (typingEscape) return typed.trim() === card.answer.join('')
-      return isCorrect(
-        placed.map((i) => card.bank!.tiles[i]),
-        card.answer,
-      )
-    }
+    if (!card) return false
     if (card.exercise.response === 'choice') {
       return picked !== null && Boolean(card.options[picked]?.correct)
     }
-    if (card.exercise.response === 'text') {
-      const attempt = typed.trim()
-      // Either spelling counts: a deck collected in one script should not mark
-      // the same word wrong for being typed in the other.
-      return (
-        attempt === current.text ||
-        Boolean(primary && (attempt === primary.headword || primary.variants.includes(attempt)))
-      )
-    }
-    return false
+    if (card.exercise.response === 'reveal') return false
+    // Tiles and a text box are the same question asked through two input
+    // methods, so they are checked against the same list.
+    const given =
+      card.exercise.response === 'tiles' && !typingEscape
+        ? placed.map((i) => card.bank!.tiles[i])
+        : [typed.trim()]
+    return isCorrect(given, answers)
   })()
 
   /** What the user actually gave back, for the verdict to quote. */
@@ -668,7 +710,7 @@ export function Session({
             type="text"
             class="answer-input"
             value={typed}
-            placeholder={t('session.typeLine')}
+            placeholder={t(current.kind === 'word' ? 'session.typeChars' : 'session.typeLine')}
             disabled={checked}
             onInput={(e) => setTyped(e.currentTarget.value)}
           />

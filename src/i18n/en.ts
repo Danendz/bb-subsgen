@@ -301,7 +301,7 @@ export const en = {
   'task.pattern.reveal': 'What does this shape do?',
   'task.audio.word': 'Type what you hear',
   'task.audio.line': 'Build what you hear',
-  'task.gloss': 'Type the characters',
+  'task.gloss': 'Build the word',
   'task.translation': 'Build this line in {language}',
   'task.cloze': 'Which word is missing?',
   'task.meaning.word': 'What does this mean?',

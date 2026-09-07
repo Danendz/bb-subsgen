@@ -81,12 +81,14 @@ describe('exerciseFor: word cards', () => {
     expect(exerciseFor(word(), 'remember', able).style).toBe('recognise')
   })
 
-  test('typing prompts with the gloss and takes text', () => {
-    // A single word through an IME is not the problem sentences have, so word
-    // cards keep the keyboard.
+  test('producing one prompts with the gloss and takes tiles', () => {
+    // Its own characters, to lay back out. A word through an IME is a dozen
+    // keystrokes and a candidate list between you and every one of them, and
+    // the question was never whether you can drive an input method.
     expect(exerciseFor(word(), 'type', able)).toMatchObject({
+      style: 'type',
       cue: 'gloss',
-      response: 'text',
+      response: 'tiles',
     })
   })
 

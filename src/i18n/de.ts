@@ -282,7 +282,7 @@ export const de: Messages = {
   'task.pattern.reveal': 'Was macht dieses Muster?',
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',
-  'task.gloss': 'Tippe die Zeichen',
+  'task.gloss': 'Bau das Wort',
   'task.translation': 'Bau diesen Satz auf {language}',
   'task.cloze': 'Welches Wort fehlt?',
   'task.meaning.word': 'Was heißt das?',

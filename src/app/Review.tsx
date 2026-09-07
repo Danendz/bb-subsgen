@@ -135,6 +135,18 @@ export function Review() {
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
 
+  // The whole deck's words, not the session's: how near two words sit in
+  // frequency is a better question the more words there are to ask it of.
+  const deckWords = useMemo(
+    () => (data ? data.items.flatMap((item) => (item.kind === 'word' ? [item.text] : [])) : []),
+    [data],
+  )
+
+  const rankOfWord = useCallback(
+    (headword: string) => data?.ranks.get(rankKey(data.lang, headword)),
+    [data],
+  )
+
   if (loading || !data || !counts || !setup) return <p class="muted">{t('common.loading')}</p>
   // Only reachable if the study language outlived its pack — `packs.test.ts`
   // holds the registries together, so this says which language rather than
@@ -163,7 +175,7 @@ export function Review() {
           {
             deck: data.items,
             patterns: words.pack.patterns,
-            rankOf: (headword) => data.ranks.get(rankKey(data.lang, headword)),
+            rankOf: rankOfWord,
           },
           {
             defs: (headwords) => lookupDefs(data.lang, headwords, settings.useTraditional),
@@ -196,6 +208,8 @@ export function Review() {
         words={data.words}
         known={data.known}
         distractorPool={distractorPool}
+        deckWords={deckWords}
+        rankOf={rankOfWord}
         choices={choices}
         mode={setup.studyMode}
         onFinish={() => {

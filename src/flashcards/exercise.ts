@@ -127,8 +127,12 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
   }
 
   if (item.kind === 'word') {
+    // The meaning, and the word's own characters to lay back out. Tiles rather
+    // than a text box because producing 学习 through an IME is a dozen
+    // keystrokes and a candidate list, and the question is whether you know the
+    // word — the typing escape is there for anyone who would rather type it.
     if (resolved === 'type')
-      return { style: 'type', cue: 'gloss', response: 'text', autoSpeak: false }
+      return { style: 'type', cue: 'gloss', response: 'tiles', autoSpeak: false }
     if (resolved === 'audio')
       return { style: 'audio', cue: 'audio', response: 'text', autoSpeak: true }
     // The characters, and four meanings to choose between. The style logged is
