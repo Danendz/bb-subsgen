@@ -15,6 +15,7 @@ import type { Choice } from '../flashcards/choices'
 import { loadLexicon, resolveChoices } from './review/deck'
 import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
+import { deckChanged, useDeckChanged } from './deck-signal'
 import { useAsync } from './hooks'
 import { useSettings } from '../settings/useSettings'
 import { canSpeak } from '../shared/speak'
@@ -60,6 +61,7 @@ export function Review() {
     }
   }, [lang])
   const { data, loading, reload } = useAsync(load)
+  useDeckChanged(reload)
 
   const [session, setSession] = useState<QueueSession | null>(null)
   // Resolved with the session rather than inside it, so no card pauses to fetch
@@ -180,7 +182,7 @@ export function Review() {
         mode={setup.studyMode}
         onFinish={() => {
           setSession(null)
-          reload()
+          deckChanged()
         }}
       />
     )

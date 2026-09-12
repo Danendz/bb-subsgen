@@ -14,7 +14,9 @@
 //
 // Everything here derives from a single read. Four panels each calling
 // `flashcardsDb()` would be four transactions and four spinners landing
-// separately down one column.
+// separately down one column. That read re-runs on `useDeckChanged` — see
+// src/app/deck-signal.ts for why this screen cannot hear about a write any
+// other way.
 
 import { useCallback } from 'preact/hooks'
 import { flashcardsDb } from '../flashcards/db'
@@ -32,6 +34,7 @@ import { bandsFor, waiting } from '../flashcards/path'
 import { packFor } from '../lang/packs'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
+import { useDeckChanged } from './deck-signal'
 import { navigate, useAsync } from './hooks'
 import { FlameIcon } from './icons'
 import { useT } from '../i18n/useT'
@@ -83,7 +86,10 @@ export function Aside() {
     return { items, ranks, videos: captured, streak, today, lang: studyLang }
   }, [])
 
-  const { data } = useAsync(load)
+  const { data, reload } = useAsync(load)
+  // Mounted by `Shell` and never unmounted, so without this it reads the deck
+  // once on open and every number here is as old as the tab.
+  useDeckChanged(reload)
 
   // No skeleton and no spinner: the aside is beside the work, and a column of
   // placeholders flashing next to what you came to do is worse than a column

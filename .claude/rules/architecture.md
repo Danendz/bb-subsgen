@@ -254,6 +254,13 @@ order, nothing else — and never `buildSession`. Mixing due cards into a circle
 progress bar in a costume: you press `words 281-288` and are asked six words from elsewhere.
 The scheduler, the ladder and the daily budget are untouched by anything on this screen.
 
+**A screen that reads the deck subscribes; a screen that writes to it announces.**
+`useDeckChanged(reload)` and `deckChanged()` in `src/app/deck-signal.ts` — never a bare
+`reload()` after a write. The aside is mounted by `Shell` and never unmounts, so a screen
+that only refreshed itself left the numbers beside it as old as the tab; that is what made
+"reviews today" sit still after a finished session. A writer is subscribed too, so it hears
+its own announcement and does not also reload itself.
+
 **Both screens that run a `Session` load it through `src/app/review/deck.ts`.** The lexicon
 read and the dozen lines that resolve a card's options are identical for Review and Learn, and
 the second copy is the one that quietly stops translating. What stays out of it is *which*

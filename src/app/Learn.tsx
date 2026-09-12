@@ -24,6 +24,7 @@ import { sourcesFor } from '../flashcards/wordlist-sources'
 import { packFor } from '../lang/packs'
 import { resolveStudyLang } from '../shared/settings'
 import { useSettings } from '../settings/useSettings'
+import { deckChanged, useDeckChanged } from './deck-signal'
 import { navigate, useAsync } from './hooks'
 import { Path } from './path/Path'
 import { dominantTone } from './pinyin'
@@ -51,6 +52,7 @@ export function Learn() {
     return { items, ranks, words, lang, known: knownSetOf(items), rankMap: allRanks }
   }, [lang])
   const { data, loading, reload } = useAsync(load)
+  useDeckChanged(reload)
 
   const [session, setSession] = useState<QueueSession | null>(null)
   const [choices, setChoices] = useState<ReadonlyMap<string, Choice[]>>(new Map())
@@ -165,7 +167,8 @@ export function Learn() {
    *
    * Called on the app page, so it writes through the store directly rather than
    * sending `bb-subsgen:discover-word` — the same thing the Dictionary tab does
-   * from two screens away, and it means the reload below sees the words.
+   * from two screens away, and it is what lets the announcement below reach a
+   * store that has already been written.
    */
   const add = useCallback(
     async (words: string[]) => {
@@ -173,12 +176,12 @@ export function Learn() {
       setBusy(true)
       try {
         for (const word of words) await discoverWord(data.lang, word)
-        reload()
+        deckChanged()
       } finally {
         setBusy(false)
       }
     },
-    [data, busy, reload],
+    [data, busy],
   )
 
   if (loading || !data) return <p class="muted">{t('common.loading')}</p>
@@ -199,7 +202,7 @@ export function Learn() {
         mode={settings.studyMode}
         onFinish={() => {
           setSession(null)
-          reload()
+          deckChanged()
         }}
       />
     )
