@@ -177,6 +177,10 @@ export const es: Messages = {
   'review.cards': { one: '{count} tarjeta', other: '{count} tarjetas' },
   'review.breakdown': '{scheduled} programadas, {drilled} de práctica',
   'review.waiting': '{count} en espera',
+  'review.teaching': {
+    one: '{count} palabra nueva, se presenta primero',
+    other: '{count} palabras nuevas, se presentan primero',
+  },
   'review.shortfall.words':
     'eso es toda la palabra lista — activa también las frases para tener más',
   'review.shortfall.sentences':
@@ -273,6 +277,7 @@ export const es: Messages = {
     other: 'Sigue pendiente dentro de {count} días',
   },
   'session.practice': 'Práctica · {when}',
+  'task.introduce': 'Una palabra nueva',
   'task.pattern.tiles': 'Construye esta frase con la estructura',
   'task.audio.word': 'Escribe lo que oyes',
   'task.audio.line': 'Construye lo que oyes',

@@ -325,6 +325,7 @@ export function Session({
   }, [
     current?.id,
     current?.reps,
+    current?.introducedAt,
     current?.contexts,
     words,
     known,
@@ -446,6 +447,10 @@ export function Session({
     // Guards a second Enter landing before the first has finished: the review is
     // already written, and grading the same card twice would move it two rungs.
     if (!current || !card || outcome) return
+    // Nothing was asked, so there is nothing to grade. The narrowing is the
+    // point of `Exercise` being a union: a teach screen has no `ReviewStyle`
+    // to log because it writes no row.
+    if (card.exercise.cue === 'introduce') return
     const grade: Grade = wasRight ? 'good' : 'again'
     const from = levelOf(current)
     const drilled = extra.has(current.id)
@@ -487,6 +492,28 @@ export function Session({
   const advance = () => {
     reset()
     setAt((i) => i + 1)
+  }
+
+  /**
+   * Acknowledges a teach screen: the same card, now asked.
+   *
+   * The queue does not move. The card is stamped introduced in place, which is
+   * what `tiersFor` reads, so the very next render of this same position is its
+   * first recognition question — the word is taught and then tested in one
+   * sitting, and the session's denominator never learns that anything happened.
+   *
+   * Stamped in memory and not written to the database, which is deliberate.
+   * `introducedAt` is the record of a first *review*, and the queue treats it as
+   * one: a new word carrying it is out of `newWords` and, having never been
+   * answered, is in nothing else either — so persisting here and quitting on the
+   * spot would drop the word out of the deck's reach entirely. The stamp becomes
+   * real the moment the question under it is answered, because `applyReviewIn`
+   * keeps the item's own `introducedAt` when there is one, and this is it.
+   */
+  const acknowledge = () => {
+    if (!current) return
+    const now = Date.now()
+    setQueue((q) => q.map((c) => (c.id === current.id ? { ...c, introducedAt: now } : c)))
   }
 
   /**
@@ -551,7 +578,8 @@ export function Session({
 
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (!checked) check()
+        if (card.exercise.cue === 'introduce') acknowledge()
+        else if (!checked) check()
         else advance()
         return
       }
@@ -636,7 +664,39 @@ export function Session({
           {taskLabel(exercise.cue, current.kind, exercise.response, words.pack, t)}
         </p>
 
-        {exercise.cue === 'pattern' ? (
+        {exercise.cue === 'introduce' ? (
+          /* The whole word at once: what it looks like, how it sounds, what it
+             means, and one line you actually met it in. Nothing is withheld,
+             because nothing is being asked — the rule that keeps the meaning
+             off a question prompt is satisfied here rather than waived. */
+          <div class="prompt introduce">
+            <p class="hanzi-xl">{current.text}</p>
+            {reading.length > 0 && <Pinyin parts={reading} />}
+            <p class="meaning">{gloss || t('session.noDefinition')}</p>
+            {canSpeak(words.pack.voiceLang) && (
+              <button class="speak" onClick={() => speak(current.text, words.pack.voiceLang)}>
+                <span aria-hidden="true">♪</span> {t('session.listen')}
+              </button>
+            )}
+            {context && (
+              <div class="context">
+                <p class="hanzi-line">
+                  <Line
+                    text={context.text}
+                    words={words}
+                    known={known}
+                    defs={defs}
+                    glosses={glosses}
+                    mark={current.text}
+                    readings
+                  />
+                </p>
+                {context.translation && <p class="muted small">{context.translation}</p>}
+                {context.title && <p class="muted small">{context.title}</p>}
+              </div>
+            )}
+          </div>
+        ) : exercise.cue === 'pattern' ? (
           <div class="prompt">
             <p class="hanzi-xl">{current.text}</p>
             {/* The name is a one-line version of the answer — "Degree
@@ -944,7 +1004,11 @@ export function Session({
       </div>
 
       <div class="actions">
-        {!checked ? (
+        {exercise.cue === 'introduce' ? (
+          <button class="primary" onClick={acknowledge}>
+            {t('session.continue')}
+          </button>
+        ) : !checked ? (
           <button class="primary" disabled={!answered} onClick={check}>
             {t('session.check')}
           </button>
@@ -986,6 +1050,9 @@ function taskLabel(
           : 'task.choice.pattern',
     )
   }
+  // Ahead of everything, and the only label here that is not an instruction:
+  // there is nothing to do on a teach screen but read it.
+  if (cue === 'introduce') return t('task.introduce')
   if (cue === 'pattern') {
     return t('task.pattern.tiles')
   }

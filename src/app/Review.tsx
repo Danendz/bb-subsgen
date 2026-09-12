@@ -223,10 +223,21 @@ export function Review() {
   // What is owed, and then what the rest of the session is made of. Split apart
   // because they are different promises: the scheduled cards are the day's work,
   // the practice is only there so the session is never empty.
-  const owed = counts.due + counts.newWords + counts.newSentences
+  // Listed in the order `buildSession` concatenates them, because `teaching`
+  // below depends on it: words are drawn after every other scheduled source, so
+  // the new words that fit are whatever those left room for. Patterns are in the
+  // sum — they were missing from it, which made the shortfall line appear on a
+  // session that was in fact full of grammar.
+  const owed = counts.due + counts.newSentences + counts.newGrammar + counts.newWords
   const scheduled = Math.min(owed, setup.studySessionSize)
   const drilled = Math.min(counts.practice, setup.studySessionSize - scheduled)
   const studying = scheduled + drilled
+
+  // A word nobody has met yet is taught before it is asked, and the teach screen
+  // is not one of the cards — the session still holds exactly `studying` of
+  // those. It is said out loud because it is the whole reason the sitting takes
+  // longer than the number in front of it promises.
+  const teaching = Math.max(0, scheduled - (counts.due + counts.newSentences + counts.newGrammar))
 
   // Why the session is smaller than the size that was asked for. Without this
   // the screen says only how many cards there are, which reads as a bug when the
@@ -246,6 +257,7 @@ export function Review() {
   const detail = [
     t('review.cards', { count: studying }),
     ...(drilled > 0 ? [t('review.breakdown', { scheduled, drilled })] : []),
+    ...(teaching > 0 ? [t('review.teaching', { count: teaching })] : []),
     ...(owed > scheduled ? [t('review.waiting', { count: owed })] : []),
     ...(shortfall ? [shortfall] : []),
   ].join(' \u00b7 ')

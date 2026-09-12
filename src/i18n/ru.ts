@@ -191,6 +191,12 @@ export const ru: Messages = {
   },
   'review.breakdown': '{scheduled} по плану, {drilled} на закрепление',
   'review.waiting': '{count} в очереди',
+  'review.teaching': {
+    one: '{count} новое слово, сначала показываем',
+    few: '{count} новых слова, сначала показываем',
+    many: '{count} новых слов, сначала показываем',
+    other: '{count} новых слова, сначала показываем',
+  },
   'review.shortfall.words': 'это все готовые слова — включите ещё и фразы, чтобы их было больше',
   'review.shortfall.sentences':
     'это все готовые фразы — включите ещё и слова, чтобы их было больше',
@@ -294,6 +300,7 @@ export const ru: Messages = {
     other: 'Всё ещё к повторению через {count} дня',
   },
   'session.practice': 'Закрепление · {when}',
+  'task.introduce': 'Новое слово',
   'task.pattern.tiles': 'Соберите фразу по этой конструкции',
   'task.audio.word': 'Наберите то, что слышите',
   'task.audio.line': 'Соберите то, что слышите',

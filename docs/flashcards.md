@@ -36,8 +36,16 @@ ladder, one rung up for right and one down for wrong, so the rung itself is the 
 the app shows you. Choose how you're asked (recall, typing, audio, or all three in
 rotation), what's included, and how many cards a sitting takes.
 
+The first time a word comes up it isn't asked at all. You're shown it: the characters,
+the reading, what it means, and one of the lines you actually captured it from, with the
+word marked in it. It's not a card — nothing is graded, the ladder doesn't move and the
+score doesn't change — and the word's first real question follows it in the same sitting.
+Lines and patterns have no such screen, because a line's first question already shows you
+the line and what it means; it's a word on its own that would otherwise be four English
+options for characters nobody had ever shown you.
+
 The rung also decides how demanding a question a card is allowed to ask. A word you've
-just met is asked to be recognised — its characters and four meanings, or its sound and
+met once is asked to be recognised — its characters and four meanings, or its sound and
 four meanings — and only from the third rung is it asked to be produced. Unlocks add up
 rather than replace, so a word you've known for months can still come up as a quick
 recognition question, and rotation mixes over everything that card has unlocked. Getting

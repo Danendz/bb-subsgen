@@ -199,6 +199,10 @@ export const en = {
   'review.cards': { one: '{count} card', other: '{count} cards' },
   'review.breakdown': '{scheduled} scheduled, {drilled} practice',
   'review.waiting': '{count} waiting',
+  'review.teaching': {
+    one: '{count} new word, taught first',
+    other: '{count} new words, taught first',
+  },
   'review.shortfall.words': 'that is every word ready \u2014 switch to lines too for more',
   'review.shortfall.sentences': 'that is every line ready \u2014 switch to words too for more',
   'review.shortfall.all': 'that is everything ready',
@@ -294,6 +298,7 @@ export const en = {
   'session.backIn': { one: 'Back in {count} day', other: 'Back in {count} days' },
   'session.stillDueIn': { one: 'Still due in {count} day', other: 'Still due in {count} days' },
   'session.practice': 'Practice \u00b7 {when}',
+  'task.introduce': 'A new word',
   'task.pattern.tiles': 'Build this line using the shape',
   'task.audio.word': 'Type what you hear',
   'task.audio.line': 'Build what you hear',

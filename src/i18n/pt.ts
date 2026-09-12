@@ -177,6 +177,10 @@ export const pt: Messages = {
   'review.cards': { one: '{count} cartão', other: '{count} cartões' },
   'review.breakdown': '{scheduled} agendados, {drilled} de prática',
   'review.waiting': '{count} à espera',
+  'review.teaching': {
+    one: '{count} palavra nova, apresentada primeiro',
+    other: '{count} palavras novas, apresentadas primeiro',
+  },
   'review.shortfall.words': 'são todas as palavras prontas — ative também as frases para ter mais',
   'review.shortfall.sentences':
     'são todas as frases prontas — ative também as palavras para ter mais',
@@ -275,6 +279,7 @@ export const pt: Messages = {
     other: 'Continua pendente daqui a {count} dias',
   },
   'session.practice': 'Prática · {when}',
+  'task.introduce': 'Uma palavra nova',
   'task.pattern.tiles': 'Construa esta frase com a estrutura',
   'task.audio.word': 'Escreva o que ouve',
   'task.audio.line': 'Construa o que ouve',

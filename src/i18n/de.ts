@@ -179,6 +179,10 @@ export const de: Messages = {
   'review.cards': { one: '{count} Karte', other: '{count} Karten' },
   'review.breakdown': '{scheduled} geplant, {drilled} zur Übung',
   'review.waiting': '{count} warten',
+  'review.teaching': {
+    one: '{count} neues Wort, zuerst erklärt',
+    other: '{count} neue Wörter, zuerst erklärt',
+  },
   'review.shortfall.words':
     'das sind alle Wörter, die bereit sind — nimm auch Sätze dazu, wenn du mehr willst',
   'review.shortfall.sentences':
@@ -275,6 +279,7 @@ export const de: Messages = {
     other: 'Immer noch fällig in {count} Tagen',
   },
   'session.practice': 'Übung · {when}',
+  'task.introduce': 'Ein neues Wort',
   'task.pattern.tiles': 'Bau diesen Satz mit dem Muster',
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',

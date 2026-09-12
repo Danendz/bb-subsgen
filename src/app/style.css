@@ -390,6 +390,19 @@ nav.tabs a.on {
   margin: 0 0 12px;
 }
 
+/* The teach screen: the one prompt carrying a meaning, because it is the one
+   prompt that is not a question. Everything in it is a class the reveal already
+   styles — it is the same material, shown before the card is asked instead of
+   after — so all this adds is the breathing room three stacked lines need. */
+.prompt.introduce {
+  & .meaning {
+    font-size: 17px;
+  }
+  & .context p + p {
+    margin-top: 6px;
+  }
+}
+
 .hanzi-xl {
   font: 600 clamp(40px, 9vw, 60px) / 1.25 var(--hanzi);
   letter-spacing: 0.04em;
