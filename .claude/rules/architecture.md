@@ -56,6 +56,15 @@ Three files, and a new value belongs in exactly one of them:
   and the shared settings rows. Imported by both pages.
 - **`src/popup/style.css` / `src/app/style.css`** — only what that page alone renders.
 
+**Three surface levels, and `--action` is spent on one thing.** `--ink` is the page, `--raised`
+is a panel, and `--lifted` is a panel sitting on a panel — the session card, the open chat
+against the chat list, the section rail against its pane. Reaching for `--raised-hot` to get a
+fourth level is how the nesting stopped reading in the first place. `--action` is violet because
+it is the one hue the five tones leave free, and it means "press this": primary buttons,
+`:focus-visible`, the active navigation item. Anything that is merely selected, active or
+decorative takes `--edge-lit` or `--text-2` — an active-tab underline and a range thumb in the
+action colour is what made the old pink stop reading as emphasis.
+
 **A popup/app difference is a token, not an override.** The two hosts differ in density, and the
 tokens above are the whole list of ways they are allowed to. If a difference cannot be expressed
 as one of them it is a different design rather than a different density — `.settings-group` is

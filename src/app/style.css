@@ -16,10 +16,6 @@ body {
   font: 14px/1.5 var(--body);
   color: var(--text);
   background: var(--ink);
-  /* A single quiet wash, so the page has a light source rather than being a
-     flat field. */
-  background-image: radial-gradient(120% 70% at 50% -10%, #2a2036 0%, transparent 60%);
-  background-attachment: fixed;
 }
 
 a {
@@ -67,7 +63,7 @@ nav.tabs a:hover {
 }
 nav.tabs a.on {
   color: var(--text);
-  border-bottom-color: var(--action);
+  border-bottom-color: var(--edge-lit);
 }
 
 /* Surfaces ------------------------------------------------------------------ */
@@ -288,8 +284,8 @@ nav.tabs a.on {
   margin-left: 6px;
   padding: 1px 10px;
   border-radius: var(--pill);
-  background: var(--action);
-  color: var(--action-ink);
+  background: var(--lifted);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
   text-transform: none;
   letter-spacing: 0;
@@ -297,7 +293,7 @@ nav.tabs a.on {
 
 .size-range {
   width: 100%;
-  accent-color: var(--action);
+  accent-color: var(--text-2);
 }
 .setup-note {
   margin: 8px 0 0;
@@ -361,6 +357,7 @@ nav.tabs a.on {
 }
 
 .card {
+  background: var(--lifted);
   min-height: 300px;
   display: flex;
   flex-direction: column;
@@ -886,7 +883,7 @@ details.help p {
 /* The one thing a user can get wrong invisibly, so it does not read as prose. */
 .callout {
   padding: 12px 14px;
-  border-left: 3px solid var(--action);
+  border-left: 3px solid var(--edge-lit);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
   background: var(--inset);
 }
@@ -938,6 +935,7 @@ details.help p {
 
 .chat-open {
   padding: 0;
+  background: var(--lifted);
 }
 .chat {
   display: flex;
