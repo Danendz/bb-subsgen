@@ -36,6 +36,13 @@ ladder, one rung up for right and one down for wrong, so the rung itself is the 
 the app shows you. Choose how you're asked (recall, typing, audio, or all three in
 rotation), what's included, and how many cards a sitting takes.
 
+The rung also decides how demanding a question a card is allowed to ask. A word you've
+just met is asked to be recognised — its characters and four meanings, or its sound and
+four meanings — and only from the third rung is it asked to be produced. Unlocks add up
+rather than replace, so a word you've known for months can still come up as a quick
+recognition question, and rotation mixes over everything that card has unlocked. Getting
+one wrong drops it a rung, and the next question it asks eases with it.
+
 A sitting is never empty. Once what's due and the day's new material run out, the rest is
 filled with practice drawn from the deck — coldest first, most frequent among cards last
 met on the same day, so it works through everything you've collected rather than the same
