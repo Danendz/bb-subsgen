@@ -50,11 +50,21 @@ Three files, and a new value belongs in exactly one of them:
 
 - **`src/shared/tokens.css`** — the palette, the type stacks, the radii, and the density tokens
   (`--rail-w`, `--row-y`, `--r-ctl`, `--lip`/`--lip-sunk`, `--btn-size`/`--btn-pad`, `--grow-min`,
-  `--range-w`, `--url-w`). Every extension page imports it. A hardcoded hex in a page stylesheet
+  `--range-w`, `--url-w`, and the study app's `--nav-w`/`--aside-w`). Every extension page
+  imports it. A hardcoded hex in a page stylesheet
   is a bug waiting for the second page to disagree.
 - **`src/settings/skin.css`** — the control base (`button`, inputs, `:focus-visible`, `.panel`)
   and the shared settings rows. Imported by both pages.
 - **`src/popup/style.css` / `src/app/style.css`** — only what that page alone renders.
+
+**Three surface levels, and `--action` is spent on one thing.** `--ink` is the page, `--raised`
+is a panel, and `--lifted` is a panel sitting on a panel — the session card, the open chat
+against the chat list, the section rail against its pane. Reaching for `--raised-hot` to get a
+fourth level is how the nesting stopped reading in the first place. `--action` is violet because
+it is the one hue the five tones leave free, and it means "press this": primary buttons,
+`:focus-visible`, the active navigation item. Anything that is merely selected, active or
+decorative takes `--edge-lit` or `--text-2` — an active-tab underline and a range thumb in the
+action colour is what made the old pink stop reading as emphasis.
 
 **A popup/app difference is a token, not an override.** The two hosts differ in density, and the
 tokens above are the whole list of ways they are allowed to. If a difference cannot be expressed
@@ -116,6 +126,14 @@ not be swapped. A hidden row for planned work leaves the reader hunting for a se
 was never there; a badge on something the language will never have is a promise with a timer
 on it, which is why pitch accent is hidden and Japanese grammar patterns are badged.
 
+`LanguagePack.sections` is the same kind of flag one level up: it is how the path bands the
+frequency list, and "a section is an HSK level" is exactly the Chinese assumption this
+directory exists to contain. A pack that implements none falls back to plain rank bands. It
+cuts the ranked list by *size* rather than reading each word's own `Rank.hsk`, because the
+setup wizard installs the frequency list alone — the level list is a separate, optional
+install — so most decks carry no level on any row and the alternative puts every word in one
+undifferentiated section.
+
 **Nothing outside a language's directory imports a module from inside it.** That is the point
 of the directory: an import of `zh/segment` from `reader/` is a Chinese assumption that
 compiles cleanly and is invisible from the file it sits in. The exceptions are the surfaces
@@ -170,9 +188,12 @@ Nothing here is a build step: it all runs in the extension at install time, from
 The same three-part shape as `src/dict/`, one level down and for the same reasons:
 `src/flashcards/wordlist-sources.ts` is the registry, `wordlist-readers.ts` is the seam that
 knows a payload's format, and `wordlist-install.ts` reads neither. `readerFor` is imported by
-the installer and nothing else — `Data.tsx` imports only the registry, to ask what exists for
-a language, so a reader hanging off `WordListSource` would pull every payload format into the
-app bundle.
+the installer and nothing else — `Data.tsx` and `SetupWizard.tsx` import only the registry, to
+ask what exists for a language, so a reader hanging off `WordListSource` would pull every
+payload format into the app bundle. The wizard installs the `frequency` list beside the
+dictionary, because an empty rank store is a deck with no order to it; `sourcesFor` returning
+empty is a normal answer and renders no step at all rather than a button that installs
+nothing.
 
 Two things here are deliberately *not* the dictionary's shape. There is no
 `DecompressionStream` and no incremental parser: these are ~3MB of plain JSON and `JSON.parse`
@@ -193,12 +214,71 @@ installed deck re-ranks every card with nothing to say so, and `main` gives
 entry in `manifest.json` — that allowlist is explicit, and `optional_host_permissions` is not
 the pattern the dictionary sources follow.
 
+## The study app's shell
+
+`src/app/App.tsx` is the route table and nothing else. The frame is `src/app/Shell.tsx`: a
+three-column grid of navigation rail, work and aside, with the widths coming from `--nav-w`
+and `--aside-w` above.
+
+**The rail has two groups and the rule between them is the hierarchy.** Primary is what you
+came to do — the path at `/`, review, dictionary, chat. Below the rule is what you go looking
+for: videos, settings, data. Adding an item means deciding which side it belongs on; a rail
+where everything is primary is the seven equal-weight tabs this replaced.
+
+**The two breakpoints drop things in one order only.** The aside goes first, because it is
+commentary on the work, and the rail collapses to its glyphs second and never disappears.
+Navigation is the last thing a narrow window should lose.
+
+**The aside is derived, never authoritative.** Everything in it comes from one read in
+`src/app/Aside.tsx`; four panels each opening the database would be four transactions and
+four spinners landing separately down one column. There is no `Overview` screen any more —
+those numbers are these panels, because a stats dashboard as the front door is something to
+read rather than something to act on.
+
+Icons are hand-authored SVG in `src/app/icons.tsx`, on the model of `src/app/flags.tsx`: named
+exports, `currentColor`, one fixed viewBox. The extension ships offline, so a CDN is not an
+option and an icon font is a dependency for seven drawings.
+
+## The path
+
+`/` is `src/app/Learn.tsx` and the circles it draws are `src/app/path/`. The model behind them
+— banding, the four circle states, what is waiting — is `src/flashcards/path.ts`, which takes
+rows and returns a model so that all of it is testable without a screen. **Nothing about a
+circle is stored.** Every state derives from `ranks` and the deck on each render, so there is
+no schema change and nothing that can disagree with the deck; mastery is `isKnown` from
+`known.ts`, the same maturity rule that stops the overlay annotating a word, rather than a
+second threshold that can drift from it.
+
+**Learn adds, Review maintains.** A circle runs `buildIntake` — its own eight words, in rank
+order, nothing else — and never `buildSession`. Mixing due cards into a circle makes it a
+progress bar in a costume: you press `words 281-288` and are asked six words from elsewhere.
+The scheduler, the ladder and the daily budget are untouched by anything on this screen.
+
+**A screen that reads the deck subscribes; a screen that writes to it announces.**
+`useDeckChanged(reload)` and `deckChanged()` in `src/app/deck-signal.ts` — never a bare
+`reload()` after a write. The aside is mounted by `Shell` and never unmounts, so a screen
+that only refreshed itself left the numbers beside it as old as the tab; that is what made
+"reviews today" sit still after a finished session. A writer is subscribed too, so it hears
+its own announcement and does not also reload itself.
+
+**Both screens that run a `Session` load it through `src/app/review/deck.ts`.** The lexicon
+read and the dozen lines that resolve a card's options are identical for Review and Learn, and
+the second copy is the one that quietly stops translating. What stays out of it is *which*
+cards a sitting holds — that is the whole difference between the two screens.
+
 ## The setup surface
 
-`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** one of the tabs in
-`src/app/App.tsx`'s `TABS` array — it's reached from the popup when nothing is installed, and
-from a link in Settings, not from primary navigation. Its header explains why it runs the
-download itself rather than asking the service worker to.
+`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** in either rail group — it
+is reached from the popup when nothing is installed, and from the last row of the language
+menu in `src/app/LanguagePill.tsx`. That row is the reason the pill is rendered even when only
+one language exists: the popup's rule of hiding a one-option picker would hide the only front
+door to the wizard. Its header explains why it runs the download itself rather than asking the
+service worker to.
+
+The pill and the popup's `LanguageFilter` are two designs for one choice, not one design at two
+densities — the same split `.settings-group` makes. What they share is
+`src/settings/useStudyLanguages.ts`; two copies meant two `dictStatus()` round trips whose
+answers could disagree for a frame.
 
 ## Build-time shape
 

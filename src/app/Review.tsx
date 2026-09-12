@@ -12,32 +12,16 @@ import { buildSession, queueCounts, type QueueSession } from '../flashcards/queu
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankKey, rankMap } from '../background/flashcards-store'
 import type { Choice } from '../flashcards/choices'
-import { buildOptions } from './review/options'
-import { lookupDefs, translatedGlosses } from '../shared/dict-client'
-import { packFor } from '../lang/packs'
-import { dictDb, getLexiconIn } from '../dict/store'
+import { loadLexicon, resolveChoices } from './review/deck'
 import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
+import { deckChanged, useDeckChanged } from './deck-signal'
 import { useAsync } from './hooks'
 import { useSettings } from '../settings/useSettings'
 import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 import { useT } from '../i18n/useT'
-
-/**
- * Extension-origin caller, so it reads the store directly rather than asking
- * the worker for it — see src/dict/store.ts. No dictionary installed loads the
- * empty lexicon: a deck with nothing to segment against is not a reason to fail
- * the whole screen. A language with no pack has nothing to load it with, and is
- * the one case that has to be null.
- */
-async function loadWords(lang: string) {
-  const pack = packFor(lang)
-  if (!pack) return null
-  const text = await getLexiconIn(await dictDb(), lang)
-  return pack.load(text ?? '')
-}
 
 export function Review() {
   const { t, lang: uiLang } = useT()
@@ -59,7 +43,7 @@ export function Review() {
     const db = await flashcardsDb()
     const [items, words, ranks, streak, exposures] = await Promise.all([
       listItems(db, lang),
-      loadWords(lang),
+      loadLexicon(lang),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -77,6 +61,7 @@ export function Review() {
     }
   }, [lang])
   const { data, loading, reload } = useAsync(load)
+  useDeckChanged(reload)
 
   const [session, setSession] = useState<QueueSession | null>(null)
   // Resolved with the session rather than inside it, so no card pauses to fetch
@@ -170,27 +155,10 @@ export function Review() {
     setBuilding(true)
     try {
       setChoices(
-        await buildOptions(
+        await resolveChoices(
           built.cards,
-          {
-            deck: data.items,
-            patterns: words.pack.patterns,
-            rankOf: rankOfWord,
-          },
-          {
-            defs: (headwords) => lookupDefs(data.lang, headwords, settings.useTraditional),
-            // The sense the learner would have been shown, and only the first
-            // one: an option is a thing to pick between, and three senses each
-            // makes the card something to read instead.
-            glossOf: (entries, headword) =>
-              words.pack.rank(entries, headword)[0]?.senses[0]?.gloss ?? '',
-            // Words written with the same character as the target, which are
-            // the dictionary's nearest thing to a plausible wrong answer.
-            padding: (headword, exclude, count) =>
-              words.search(Array.from(headword)[0] ?? '', exclude, count),
-            translate: (requests) =>
-              translatedGlosses(data.lang, settings.translationLang, requests),
-          },
+          { deck: data.items, words, lang: data.lang, rankOf: rankOfWord },
+          settings,
         ),
       )
       setSession(built)
@@ -214,7 +182,7 @@ export function Review() {
         mode={setup.studyMode}
         onFinish={() => {
           setSession(null)
-          reload()
+          deckChanged()
         }}
       />
     )
@@ -223,10 +191,21 @@ export function Review() {
   // What is owed, and then what the rest of the session is made of. Split apart
   // because they are different promises: the scheduled cards are the day's work,
   // the practice is only there so the session is never empty.
-  const owed = counts.due + counts.newWords + counts.newSentences
+  // Listed in the order `buildSession` concatenates them, because `teaching`
+  // below depends on it: words are drawn after every other scheduled source, so
+  // the new words that fit are whatever those left room for. Patterns are in the
+  // sum — they were missing from it, which made the shortfall line appear on a
+  // session that was in fact full of grammar.
+  const owed = counts.due + counts.newSentences + counts.newGrammar + counts.newWords
   const scheduled = Math.min(owed, setup.studySessionSize)
   const drilled = Math.min(counts.practice, setup.studySessionSize - scheduled)
   const studying = scheduled + drilled
+
+  // A word nobody has met yet is taught before it is asked, and the teach screen
+  // is not one of the cards — the session still holds exactly `studying` of
+  // those. It is said out loud because it is the whole reason the sitting takes
+  // longer than the number in front of it promises.
+  const teaching = Math.max(0, scheduled - (counts.due + counts.newSentences + counts.newGrammar))
 
   // Why the session is smaller than the size that was asked for. Without this
   // the screen says only how many cards there are, which reads as a bug when the
@@ -246,6 +225,7 @@ export function Review() {
   const detail = [
     t('review.cards', { count: studying }),
     ...(drilled > 0 ? [t('review.breakdown', { scheduled, drilled })] : []),
+    ...(teaching > 0 ? [t('review.teaching', { count: teaching })] : []),
     ...(owed > scheduled ? [t('review.waiting', { count: owed })] : []),
     ...(shortfall ? [shortfall] : []),
   ].join(' \u00b7 ')

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { buildQueue, buildSession, queueCounts, type QueueSession } from './queue'
+import { buildIntake, buildQueue, buildSession, queueCounts, type QueueSession } from './queue'
 import { DAY_MS, startOfDay } from './scheduler'
+import { tiersFor } from './exercise'
 import type { Item } from './types'
 
 const NOW = Date.UTC(2026, 7, 12, 12, 0, 0)
@@ -608,5 +609,43 @@ describe('grammar intake', () => {
     })
 
     expect(ids(session)).toEqual(['g:de-complement'])
+  })
+})
+
+describe('buildIntake', () => {
+  const circle = ['一', '二', '三', '四', '五', '六', '七', '八']
+
+  test('holds exactly the circle, in the order the path lists it', () => {
+    const items = [...circle].reverse().map((text) => word(text))
+    expect(buildIntake({ words: circle, items }).cards.map((card) => card.text)).toEqual(circle)
+  })
+
+  test('mixes in nothing that is due elsewhere \u2014 Learn adds, Review maintains', () => {
+    const items = [
+      ...circle.map((text) => word(text)),
+      word('学习', { state: 'review', due: NOW - DAY_MS, interval: 7, introducedAt: 1 }),
+      sentence('我很累。'),
+    ]
+
+    expect(buildIntake({ words: circle, items }).cards).toHaveLength(8)
+  })
+
+  test('teaches each of its words before asking it', () => {
+    const items = circle.map((text) => word(text))
+    const cards = buildIntake({ words: circle, items }).cards
+    // The teach screen is `exerciseFor`'s answer to a word with no
+    // `introducedAt`, not a card of its own, so what the intake owes is eight
+    // untaught words rather than sixteen entries.
+    expect(cards.every((card) => tiersFor(card).includes('introduce'))).toBe(true)
+  })
+
+  test('counts none of it as practice \u2014 the circle promised every one of these', () => {
+    const items = circle.map((text) => word(text))
+    expect(buildIntake({ words: circle, items }).extra.size).toBe(0)
+  })
+
+  test('drops a word deleted between the render and the press rather than failing', () => {
+    const items = circle.slice(0, 7).map((text) => word(text))
+    expect(buildIntake({ words: circle, items }).cards).toHaveLength(7)
   })
 })

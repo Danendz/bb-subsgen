@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const ru: Messages = {
   'app.title': 'Карточки',
-  'app.subtitle': 'Всё, что bb-subsgen собрал, пока вы читали.',
-  'app.tab.overview': 'Обзор',
-  'app.tab.review': 'Повторение',
-  'app.tab.chat': 'Чат',
-  'app.tab.dictionary': 'Словарь',
-  'app.tab.videos': 'Видео',
-  'app.tab.data': 'Данные',
-  'app.tab.settings': 'Настройки',
+  'app.nav.label': 'Основная навигация',
+  'app.nav.learn': 'Учить',
+  'app.nav.review': 'Повторение',
+  'app.nav.chat': 'Чат',
+  'app.nav.dictionary': 'Словарь',
+  'app.nav.videos': 'Видео',
+  'app.nav.data': 'Данные',
+  'app.nav.settings': 'Настройки',
 
   'filter.studying': 'Изучаю',
   'filter.all': 'Все языки',
@@ -143,21 +143,101 @@ export const ru: Messages = {
   'settings.dicts.hint':
     'Добавьте язык, который вы изучаете, или проверьте обновления для установленного.',
 
-  'overview.nothingToShow': 'Пока нечего показать.',
-  'overview.emptyTitle': 'Пока ничего не собрано.',
-  'overview.emptyBody':
-    'Посмотрите видео на Bilibili с субтитрами или удержите клавишу чтения на разрешённой странице — и слова, которые вы посмотрите, окажутся здесь.',
-  'overview.stat.words': 'слов собрано',
-  'overview.stat.known': 'слов известно',
-  'overview.stat.sentences': 'предложений',
-  'overview.stat.grammar': 'конструкций',
-  'overview.stat.pool': 'в очереди',
-  'overview.discovered': 'Открыто',
-  'overview.discoveredOf': '{found} из {total} самых частых слов',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Частотный список не загружен, поэтому новые карточки вводятся в том порядке, в каком вы их нашли, и прогресс не с чем сравнивать. Загрузите список из раздела {data} — там написано, где его взять.',
+  'pill.notInstalled': 'не установлен',
+  'pill.addLanguage': 'Добавить язык',
+
+  'learn.title': 'Ваш путь',
+  'learn.blurb':
+    'Кружки по восемь слов в порядке частотности. Кружок открывается, когда все его слова попадают в вашу колоду, \u2014 дорогу строит просмотр.',
+  'learn.needList.title': 'Путь строится из частотного списка.',
+  'learn.needList.body':
+    'Пока ничего не ранжировано, и идти не по чему. Мастер настройки установит список вместе со словарём.',
+  'learn.needList.action': 'Открыть настройку',
+  'learn.noList.title': 'Для этого языка частотного списка пока нет.',
+  'learn.noList.body':
+    'Пути нужен список, чтобы расставить слова по порядку, а для этого языка его пока нет. Повторение по-прежнему планирует всё, что вы собрали.',
+  'learn.review': 'К повторению',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Раздел {n}',
+  'path.sectionProgress': '{done} из {total} освоено',
+  'path.unit': 'Блок {n}',
+  'path.circleWords': 'Слова {from}\u2013{to}',
+  'path.circleLabel': 'Слова {from}\u2013{to}, {status}',
+  'path.status.locked': 'закрыт',
+  'path.status.ready': 'готов',
+  'path.status.taken': 'пройден',
+  'path.status.mastered': 'освоен',
+  'path.earlier': 'Предыдущие блоки',
+  'path.more': {
+    one: 'Ещё {count} блок',
+    few: 'Ещё {count} блока',
+    many: 'Ещё {count} блоков',
+    other: 'Ещё {count} блока',
+  },
+  'path.foot': {
+    one: 'Всего {count} ранжированное слово',
+    few: 'Всего {count} ранжированных слова',
+    many: 'Всего {count} ранжированных слов',
+    other: 'Всего {count} ранжированных слова',
+  },
+  'path.met': '{met} из {total} встречено',
+  'path.lockedHint':
+    'Встретьте остальные во время просмотра или добавьте их из словаря сейчас \u2014 редкое слово не должно запирать кружок на месяц.',
+  'path.add': {
+    one: 'Добавить {count} слово из словаря',
+    few: 'Добавить {count} слова из словаря',
+    many: 'Добавить {count} слов из словаря',
+    other: 'Добавить {count} слова из словаря',
+  },
+  'path.adding': 'Добавляем\u2026',
+  'path.readyHint': {
+    one: '{count} слово: сначала показываем, потом спрашиваем.',
+    few: '{count} слова: каждое сначала показываем, потом спрашиваем.',
+    many: '{count} слов: каждое сначала показываем, потом спрашиваем.',
+    other: '{count} слова: каждое сначала показываем, потом спрашиваем.',
+  },
+  'path.start': 'Начать этот кружок',
+  'path.takenHint':
+    'Пройден. Повторение будет возвращать эти слова \u2014 кружок не проходят дважды.',
+  'path.masteredHint':
+    'Освоен. Каждое слово здесь перешагнуло интервал, после которого субтитры перестают его подписывать.',
+
+  'aside.today': 'Сегодня',
+  'aside.streakDays': {
+    one: 'день подряд',
+    few: 'дня подряд',
+    many: 'дней подряд',
+    other: 'дня подряд',
+  },
+  'aside.reviewsToday': {
+    one: 'повторение сегодня',
+    few: 'повторения сегодня',
+    many: 'повторений сегодня',
+    other: 'повторения сегодня',
+  },
+  'aside.deck': 'Ваша колода',
+  'aside.stat.words': 'слов собрано',
+  'aside.stat.known': 'слов известно',
+  'aside.stat.sentences': 'предложений',
+  'aside.stat.grammar': 'конструкций',
+  'aside.stat.toStudy': 'изучить',
+  'aside.stat.pool': 'строк в очереди',
+  'aside.discovered': 'Открыто',
+  'aside.discoveredOf': '{found} из {total} самых частых слов',
+  'aside.waiting': 'Слова в очереди',
+  'aside.nextCircle': 'Ближайший кружок: {met} из {total}',
+  'aside.openPath': 'Открыть путь',
+  'aside.waitingEmpty': 'Ничего не ждёт \u2014 всё собранное уже в работе.',
+  'aside.startReview': 'Повторить сейчас',
+  'aside.fromVideos': 'Из ваших видео',
+  'aside.videoWords': {
+    one: '{count} слово',
+    few: '{count} слова',
+    many: '{count} слов',
+    other: '{count} слова',
+  },
+  'aside.noVideos': 'Из видео пока ничего не собрано.',
 
   'mastery.known': 'Известно — вы отметили это сами',
   'mastery.mastered': 'Освоено — {level} из {max}',
@@ -191,6 +271,12 @@ export const ru: Messages = {
   },
   'review.breakdown': '{scheduled} по плану, {drilled} на закрепление',
   'review.waiting': '{count} в очереди',
+  'review.teaching': {
+    one: '{count} новое слово, сначала показываем',
+    few: '{count} новых слова, сначала показываем',
+    many: '{count} новых слов, сначала показываем',
+    other: '{count} новых слова, сначала показываем',
+  },
   'review.shortfall.words': 'это все готовые слова — включите ещё и фразы, чтобы их было больше',
   'review.shortfall.sentences':
     'это все готовые фразы — включите ещё и слова, чтобы их было больше',
@@ -294,6 +380,7 @@ export const ru: Messages = {
     other: 'Всё ещё к повторению через {count} дня',
   },
   'session.practice': 'Закрепление · {when}',
+  'task.introduce': 'Новое слово',
   'task.pattern.tiles': 'Соберите фразу по этой конструкции',
   'task.audio.word': 'Наберите то, что слышите',
   'task.audio.line': 'Соберите то, что слышите',
@@ -420,6 +507,7 @@ export const ru: Messages = {
   'wizard.updateAvailable': 'Доступна более новая версия — установите её выше.',
   'wizard.noChange': 'Скачано заново — по сравнению с установленным ничего не изменилось.',
   'wizard.installFailed': 'Не удалось скачать словарь. Проверьте соединение и попробуйте снова.',
+  'wizard.listFailed': 'Не удалось скачать список слов. Проверьте соединение и попробуйте снова.',
   'wizard.optional':
     'Необязательно: локальная LLM для чата и перевода, распознавание речи для видео без субтитров, yt-dlp для звука с YouTube, встроенный переводчик Chrome, китайский голос синтеза речи и разрешение чтения по сайтам. Всё это настраивается в «Настройках» после установки словаря выше — для начала работы ничего из этого не нужно.',
   'wizard.done': 'Готово',
@@ -452,7 +540,7 @@ export const ru: Messages = {
   'data.lists.frequencyBlurb':
     'Задаёт порядок, в котором вы встречаете новые слова, и даёт прогрессу знаменатель.',
   'data.lists.levelsBlurb':
-    'Группирует словарь по уровням {standard} и добавляет полосы прогресса в «Обзор».',
+    'Группирует словарь по уровням {standard}, чтобы колоду можно было мерить по уровням.',
   'data.lists.loaded': '{name} — слов: {count}, добавлено {date}',
   'data.lists.install': 'Установить {name}',
   'data.lists.downloading': 'Загрузка',

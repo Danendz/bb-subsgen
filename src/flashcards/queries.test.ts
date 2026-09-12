@@ -65,7 +65,7 @@ describe('deckCounts', () => {
   })
 
   test('a word never studied still counts as collected', () => {
-    // The Overview's "words collected" is about what capture has found, not
+    // The aside's "words collected" is about what capture has found, not
     // about what has been met.
     expect(deckCounts([word('忧郁')])).toMatchObject({ words: 1, known: 0 })
   })
@@ -126,7 +126,7 @@ describe('deckCounts with grammar', () => {
   })
 
   // Grammar used to fall through to the sentence branch, which made the
-  // Overview's "sentences" tile silently count structures as lines.
+  // aside's "sentences" tile silently count structures as lines.
   test('counts patterns as their own kind, not as lines', () => {
     const counts = deckCounts([
       item({ id: 's:1', kind: 'sentence', text: '我很累。' }),

@@ -11,16 +11,16 @@
 // wiring a table into them would cost a bundle and buy a word.
 
 export const en = {
-  // --- App shell (src/app/App.tsx) ---
+  // --- App shell (src/app/Shell.tsx) ---
   'app.title': 'Flashcards',
-  'app.subtitle': 'Everything bb-subsgen has collected while you were reading.',
-  'app.tab.overview': 'Overview',
-  'app.tab.review': 'Review',
-  'app.tab.chat': 'Chat',
-  'app.tab.dictionary': 'Dictionary',
-  'app.tab.videos': 'Videos',
-  'app.tab.data': 'Data',
-  'app.tab.settings': 'Settings',
+  'app.nav.label': 'Main navigation',
+  'app.nav.learn': 'Learn',
+  'app.nav.review': 'Review',
+  'app.nav.chat': 'Chat',
+  'app.nav.dictionary': 'Dictionary',
+  'app.nav.videos': 'Videos',
+  'app.nav.data': 'Data',
+  'app.nav.settings': 'Settings',
 
   // --- Language filter (src/settings/LanguageFilter.tsx) ---
   'filter.studying': 'Studying',
@@ -160,22 +160,74 @@ export const en = {
   'settings.dicts.manage': 'Manage dictionaries',
   'settings.dicts.hint': 'Add a language you study, or check an installed one for an update.',
 
-  // --- Overview (src/app/Overview.tsx) ---
-  'overview.nothingToShow': 'Nothing to show yet.',
-  'overview.emptyTitle': 'Nothing collected yet.',
-  'overview.emptyBody':
-    'Watch a subtitled Bilibili video, or hold the reader key on a page you have enabled, and the words you look up will land here.',
-  'overview.stat.words': 'words collected',
-  'overview.stat.known': 'words known',
-  'overview.stat.sentences': 'sentences',
-  'overview.stat.grammar': 'patterns',
-  'overview.stat.pool': 'waiting',
-  'overview.discovered': 'Discovered',
-  'overview.discoveredOf': '{found} of the {total} most common words',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'No word list loaded, so new cards are introduced in the order you found them and there is no denominator to measure progress against. Load one from {data} \u2014 it explains where to get one.',
+  // --- Language pill (src/app/LanguagePill.tsx) ---
+  'pill.notInstalled': 'not installed',
+  'pill.addLanguage': 'Add a language',
+
+  // --- Learn (src/app/Learn.tsx) ---
+  'learn.title': 'Your path',
+  'learn.blurb':
+    'Circles of eight words in frequency order. A circle opens once every one of its words is in your deck \u2014 watching is what builds the road.',
+  'learn.needList.title': 'The path is built from a frequency list.',
+  'learn.needList.body':
+    'Nothing is ranked yet, so there is no order to walk. The setup wizard installs the list beside the dictionary.',
+  'learn.needList.action': 'Open setup',
+  'learn.noList.title': 'No frequency list for this language yet.',
+  'learn.noList.body':
+    'The path needs one to put words in order, and there is not one for this language yet. Review still schedules everything you capture.',
+  'learn.review': 'Go to review',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Section {n}',
+  'path.sectionProgress': '{done} of {total} mastered',
+  'path.unit': 'Unit {n}',
+  'path.circleWords': 'Words {from}\u2013{to}',
+  'path.circleLabel': 'Words {from}\u2013{to}, {status}',
+  'path.status.locked': 'locked',
+  'path.status.ready': 'ready',
+  'path.status.taken': 'taken in',
+  'path.status.mastered': 'mastered',
+  'path.earlier': 'Earlier units',
+  'path.more': { one: '{count} more unit', other: '{count} more units' },
+  'path.foot': { one: '{count} ranked word in all', other: '{count} ranked words in all' },
+  'path.met': '{met} of {total} met',
+  'path.lockedHint':
+    'Meet the rest while you watch, or add them from the dictionary now \u2014 a rare word should not block a circle for a month.',
+  'path.add': {
+    one: 'Add {count} word from the dictionary',
+    other: 'Add {count} words from the dictionary',
+  },
+  'path.adding': 'Adding\u2026',
+  'path.readyHint': {
+    one: '{count} word, taught and then asked once.',
+    other: '{count} words, each taught and then asked once.',
+  },
+  'path.start': 'Start this circle',
+  'path.takenHint': 'Taken in. Review keeps these coming back \u2014 a circle is not run twice.',
+  'path.masteredHint':
+    'Mastered. Every word here has gone past the interval that stops the subtitles annotating it.',
+
+  // --- The aside (src/app/Aside.tsx) ---
+  'aside.today': 'Today',
+  'aside.streakDays': { one: 'day streak', other: 'day streak' },
+  'aside.reviewsToday': { one: 'review today', other: 'reviews today' },
+  'aside.deck': 'Your deck',
+  'aside.stat.words': 'words collected',
+  'aside.stat.known': 'words known',
+  'aside.stat.sentences': 'sentences',
+  'aside.stat.grammar': 'patterns',
+  'aside.stat.toStudy': 'to study',
+  'aside.stat.pool': 'lines waiting',
+  'aside.discovered': 'Discovered',
+  'aside.discoveredOf': '{found} of the {total} most common words',
+  'aside.waiting': 'Words waiting',
+  'aside.nextCircle': 'Nearest circle: {met} of {total} met',
+  'aside.openPath': 'Open the path',
+  'aside.waitingEmpty': 'Nothing waiting \u2014 everything you have collected is in hand.',
+  'aside.startReview': 'Review now',
+  'aside.fromVideos': 'From your videos',
+  'aside.videoWords': { one: '{count} word', other: '{count} words' },
+  'aside.noVideos': 'Nothing captured from a video yet.',
 
   // --- Mastery pips (src/app/mastery.tsx) ---
   'mastery.known': 'Known \u2014 you marked this one yourself',
@@ -199,6 +251,10 @@ export const en = {
   'review.cards': { one: '{count} card', other: '{count} cards' },
   'review.breakdown': '{scheduled} scheduled, {drilled} practice',
   'review.waiting': '{count} waiting',
+  'review.teaching': {
+    one: '{count} new word, taught first',
+    other: '{count} new words, taught first',
+  },
   'review.shortfall.words': 'that is every word ready \u2014 switch to lines too for more',
   'review.shortfall.sentences': 'that is every line ready \u2014 switch to words too for more',
   'review.shortfall.all': 'that is everything ready',
@@ -294,6 +350,7 @@ export const en = {
   'session.backIn': { one: 'Back in {count} day', other: 'Back in {count} days' },
   'session.stillDueIn': { one: 'Still due in {count} day', other: 'Still due in {count} days' },
   'session.practice': 'Practice \u00b7 {when}',
+  'task.introduce': 'A new word',
   'task.pattern.tiles': 'Build this line using the shape',
   'task.audio.word': 'Type what you hear',
   'task.audio.line': 'Build what you hear',
@@ -413,6 +470,7 @@ export const en = {
   'wizard.updateAvailable': 'A newer export is available \u2014 install above to get it.',
   'wizard.noChange': 'Re-downloaded \u2014 no change from what was installed.',
   'wizard.installFailed': 'Could not download the dictionary. Check your connection and try again.',
+  'wizard.listFailed': 'Could not download the word list. Check your connection and try again.',
   'wizard.optional':
     "Optional: a local LLM for chat and translation, ASR for videos with no subtitles, yt-dlp for YouTube audio, Chrome's built-in Translator, a Chinese TTS voice, and per-site reader permission. Each is configured from Settings once the dictionary above is installed \u2014 none of them are required to get started.",
   'wizard.done': 'Done',
@@ -447,7 +505,7 @@ export const en = {
   'data.lists.frequencyBlurb':
     'Orders which new words you meet first, and gives progress a denominator.',
   'data.lists.levelsBlurb':
-    'Groups the dictionary by {standard} level and adds the progress bars on Overview.',
+    'Groups the dictionary by {standard} level, so the deck can be measured a level at a time.',
   'data.lists.loaded': '{name} \u2014 {count} words, added {date}',
   'data.lists.install': 'Install {name}',
   'data.lists.downloading': 'Downloading',

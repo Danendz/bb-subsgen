@@ -1,4 +1,5 @@
-// The setup wizard: pick what you study, then get its dictionary onto disk.
+// The setup wizard: pick what you study, then get its dictionary and its
+// frequency list onto disk.
 //
 // Runs the download itself, on this page, rather than asking the worker to do
 // it: the import is seconds of solid CPU across ~198k headwords, and an MV3
@@ -17,6 +18,9 @@ import { useSettings } from '../settings/useSettings'
 import { DICT_SOURCES, type DictSource } from '../dict/sources'
 import { dictDb, getMetaIn, type DictMeta } from '../dict/store'
 import { installDictionary, type InstallProgress } from '../dict/install'
+import { installWordList, type WordListProgress } from '../flashcards/wordlist-install'
+import { sourcesFor, type WordListSource } from '../flashcards/wordlist-sources'
+import { wordListMeta, type WordListMeta } from '../background/flashcards-store'
 import { navigate } from './hooks'
 import { Flag } from './flags'
 import { gapSummary } from '../lang/gaps'
@@ -40,6 +44,10 @@ function formatDate(ms: number, lang: string): string {
 
 interface LangState {
   meta: DictMeta | null
+  /** The installed frequency list, if there is one. See `WordListRow`. */
+  list: WordListMeta | null
+  listProgress: WordListProgress | null
+  listError: string | null
   progress: InstallProgress | null
   error: string | null
   checking: boolean
@@ -51,6 +59,9 @@ interface LangState {
 
 const EMPTY_LANG_STATE: LangState = {
   meta: null,
+  list: null,
+  listProgress: null,
+  listError: null,
   progress: null,
   error: null,
   checking: false,
@@ -177,6 +188,79 @@ function RequirementRow({
   )
 }
 
+/**
+ * The frequency list for a language, if one exists to download.
+ *
+ * Second requirement rather than an optional extra, because it is what orders
+ * everything the deck does with a word: `newWords()` puts frequency first, and
+ * with an empty rank store every word you ever captured ties on that key. It
+ * lived two screens down under Data, which nothing on a first run points at.
+ *
+ * A language with no source renders nothing at all — `sourcesFor` returning
+ * empty is a normal answer from the registry, and Japanese is the language that
+ * gives it. A step offering a button that installs nothing is worse than no
+ * step: it promises a file that does not exist.
+ */
+function WordListRow({
+  source,
+  state,
+  onInstall,
+}: {
+  source: WordListSource
+  state: LangState
+  onInstall: () => void
+}) {
+  const { t, lang } = useT()
+  const { list, listProgress, listError } = state
+  const busy = listProgress !== null
+
+  return (
+    <div class="wizard-requirement">
+      <div class="wizard-requirement-head">
+        <span class="grow">{source.label}</span>
+        {list && (
+          <span class="muted small">
+            {t('wizard.installedOn', { date: formatDate(list.uploadedAt, lang) })}
+          </span>
+        )}
+      </div>
+
+      <p class="hint small">{source.blurb}</p>
+
+      {busy && (
+        <div
+          class="bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={listProgress.total ?? 0}
+          aria-valuenow={listProgress.loaded}
+          aria-label={t('wizard.downloading')}
+        >
+          <i
+            style={{
+              width: listProgress.total
+                ? `${Math.min(100, (listProgress.loaded / listProgress.total) * 100)}%`
+                : '100%',
+            }}
+          />
+        </div>
+      )}
+
+      {listError && <p class="hint verdict no">{listError}</p>}
+
+      <div class="toolbar">
+        <button class="primary" disabled={busy} onClick={onInstall}>
+          {busy ? t('wizard.downloadingBusy') : t(list ? 'wizard.redownload' : 'wizard.install')}
+        </button>
+      </div>
+
+      {/* The licence rule applies to the surface that shows the data, and this
+          is where it is downloaded. */}
+      <p class="hint small">{source.attribution}</p>
+    </div>
+  )
+}
+
 export function SetupWizard() {
   const { t } = useT()
   const { settings, loaded, update } = useSettings()
@@ -194,7 +278,8 @@ export function SetupWizard() {
       const db = await dictDb()
       for (const lang of enabled) {
         const meta = await getMetaIn(db, lang)
-        if (live) patch(lang, { meta })
+        const list = (await wordListMeta(lang)).frequency ?? null
+        if (live) patch(lang, { meta, list })
       }
     })()
     return () => {
@@ -246,6 +331,31 @@ export function SetupWizard() {
     }
   }
 
+  /**
+   * Downloads the frequency list.
+   *
+   * No confirmation step, for the reason `Data.tsx` records against the upload
+   * path: that step exists to show a *guess* at a file's shape to someone who
+   * can check it, and a pinned commit of a known payload has no guess in it.
+   */
+  const installList = async (source: WordListSource) => {
+    patch(source.lang, { listProgress: { loaded: 0, total: null }, listError: null })
+    try {
+      await installWordList({
+        source,
+        fetch,
+        onProgress: (listProgress) => patch(source.lang, { listProgress }),
+      })
+      patch(source.lang, {
+        list: (await wordListMeta(source.lang)).frequency ?? null,
+        listProgress: null,
+      })
+    } catch (e) {
+      console.warn('[bb-subsgen] word list install failed', e)
+      patch(source.lang, { listProgress: null, listError: t('wizard.listFailed') })
+    }
+  }
+
   const checkForUpdate = async (source: DictSource) => {
     patch(source.lang, { checking: true })
     try {
@@ -274,14 +384,23 @@ export function SetupWizard() {
           {enabled.map((lang) => {
             const source = DICT_SOURCES[lang]
             if (!source) return null
+            const [list] = sourcesFor(lang, 'frequency')
             return (
-              <RequirementRow
-                key={lang}
-                source={source}
-                state={at(lang)}
-                onInstall={() => void install(source)}
-                onCheck={() => void checkForUpdate(source)}
-              />
+              <div class="wizard-lang" key={lang}>
+                <RequirementRow
+                  source={source}
+                  state={at(lang)}
+                  onInstall={() => void install(source)}
+                  onCheck={() => void checkForUpdate(source)}
+                />
+                {list && (
+                  <WordListRow
+                    source={list}
+                    state={at(lang)}
+                    onInstall={() => void installList(list)}
+                  />
+                )}
+              </div>
             )
           })}
 

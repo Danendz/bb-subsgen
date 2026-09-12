@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const fr: Messages = {
   'app.title': 'Cartes',
-  'app.subtitle': 'Tout ce que bb-subsgen a recueilli pendant que vous lisiez.',
-  'app.tab.overview': 'Aperçu',
-  'app.tab.review': 'Révision',
-  'app.tab.chat': 'Discussion',
-  'app.tab.dictionary': 'Dictionnaire',
-  'app.tab.videos': 'Vidéos',
-  'app.tab.data': 'Données',
-  'app.tab.settings': 'Réglages',
+  'app.nav.label': 'Navigation principale',
+  'app.nav.learn': 'Apprendre',
+  'app.nav.review': 'Révision',
+  'app.nav.chat': 'Discussion',
+  'app.nav.dictionary': 'Dictionnaire',
+  'app.nav.videos': 'Vidéos',
+  'app.nav.data': 'Données',
+  'app.nav.settings': 'Réglages',
 
   'filter.studying': 'J’étudie',
   'filter.all': 'Toutes les langues',
@@ -141,21 +141,71 @@ export const fr: Messages = {
   'settings.dicts.hint':
     'Ajoutez une langue que vous étudiez, ou vérifiez la mise à jour d’une langue installée.',
 
-  'overview.nothingToShow': 'Rien à afficher pour l’instant.',
-  'overview.emptyTitle': 'Rien de recueilli pour l’instant.',
-  'overview.emptyBody':
-    'Regardez une vidéo Bilibili sous-titrée, ou maintenez la touche du lecteur sur une page que vous avez activée, et les mots que vous consultez arriveront ici.',
-  'overview.stat.words': 'mots recueillis',
-  'overview.stat.known': 'mots connus',
-  'overview.stat.sentences': 'phrases',
-  'overview.stat.grammar': 'structures',
-  'overview.stat.pool': 'en attente',
-  'overview.discovered': 'Découverts',
-  'overview.discoveredOf': '{found} des {total} mots les plus fréquents',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Aucune liste de mots n’est chargée : les nouvelles cartes sont donc introduites dans l’ordre où vous les avez trouvées, et il n’y a pas de dénominateur pour mesurer la progression. Chargez-en une depuis {data} — on y explique où en trouver une.',
+  'pill.notInstalled': 'non installé',
+  'pill.addLanguage': 'Ajouter une langue',
+
+  'learn.title': 'Votre parcours',
+  'learn.blurb':
+    'Des cercles de huit mots par ordre de fréquence. Un cercle s\u2019ouvre quand tous ses mots sont dans votre paquet \u2014 c\u2019est le visionnage qui construit la route.',
+  'learn.needList.title': 'Le parcours se construit à partir d\u2019une liste de fréquence.',
+  'learn.needList.body':
+    'Rien n\u2019est encore classé, il n\u2019y a donc pas d\u2019ordre à suivre. L\u2019assistant d\u2019installation pose la liste à côté du dictionnaire.',
+  'learn.needList.action': 'Ouvrir l\u2019installation',
+  'learn.noList.title': 'Pas encore de liste de fréquence pour cette langue.',
+  'learn.noList.body':
+    'Le parcours en a besoin pour ordonner les mots, et il n\u2019y en a pas encore pour cette langue. La révision planifie toujours tout ce que vous captez.',
+  'learn.review': 'Aller aux révisions',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Section {n}',
+  'path.sectionProgress': '{done} sur {total} maîtrisés',
+  'path.unit': 'Unité {n}',
+  'path.circleWords': 'Mots {from}\u2013{to}',
+  'path.circleLabel': 'Mots {from}\u2013{to}, {status}',
+  'path.status.locked': 'verrouillé',
+  'path.status.ready': 'prêt',
+  'path.status.taken': 'parcouru',
+  'path.status.mastered': 'maîtrisé',
+  'path.earlier': 'Unités précédentes',
+  'path.more': { one: '{count} unité de plus', other: '{count} unités de plus' },
+  'path.foot': { one: '{count} mot classé en tout', other: '{count} mots classés en tout' },
+  'path.met': '{met} sur {total} rencontrés',
+  'path.lockedHint':
+    'Rencontrez les autres en regardant, ou ajoutez-les depuis le dictionnaire : un mot rare ne devrait pas bloquer un cercle pendant un mois.',
+  'path.add': {
+    one: 'Ajouter {count} mot du dictionnaire',
+    other: 'Ajouter {count} mots du dictionnaire',
+  },
+  'path.adding': 'Ajout\u2026',
+  'path.readyHint': {
+    one: '{count} mot, montré puis demandé une fois.',
+    other: '{count} mots, chacun montré puis demandé une fois.',
+  },
+  'path.start': 'Commencer ce cercle',
+  'path.takenHint': 'Parcouru. La révision les fera revenir \u2014 un cercle ne se refait pas.',
+  'path.masteredHint':
+    'Maîtrisé. Chaque mot ici a dépassé l\u2019intervalle à partir duquel les sous-titres cessent de l\u2019annoter.',
+
+  'aside.today': 'Aujourd’hui',
+  'aside.streakDays': { one: 'jour d’affilée', other: 'jours d’affilée' },
+  'aside.reviewsToday': { one: 'révision aujourd’hui', other: 'révisions aujourd’hui' },
+  'aside.deck': 'Votre paquet',
+  'aside.stat.words': 'mots recueillis',
+  'aside.stat.known': 'mots connus',
+  'aside.stat.sentences': 'phrases',
+  'aside.stat.grammar': 'structures',
+  'aside.stat.toStudy': 'à étudier',
+  'aside.stat.pool': 'phrases en attente',
+  'aside.discovered': 'Découverts',
+  'aside.discoveredOf': '{found} des {total} mots les plus fréquents',
+  'aside.waiting': 'Mots en attente',
+  'aside.nextCircle': 'Cercle le plus proche : {met} sur {total}',
+  'aside.openPath': 'Ouvrir le parcours',
+  'aside.waitingEmpty': 'Rien en attente \u2014 tout ce que vous avez recueilli est en cours.',
+  'aside.startReview': 'Réviser maintenant',
+  'aside.fromVideos': 'De vos vidéos',
+  'aside.videoWords': { one: '{count} mot', other: '{count} mots' },
+  'aside.noVideos': 'Rien encore recueilli depuis une vidéo.',
 
   'mastery.known': 'Connu — vous l’avez marqué vous-même',
   'mastery.mastered': 'Maîtrisé — {level} sur {max}',
@@ -177,6 +227,10 @@ export const fr: Messages = {
   'review.cards': { one: '{count} carte', other: '{count} cartes' },
   'review.breakdown': '{scheduled} programmées, {drilled} d’entraînement',
   'review.waiting': '{count} en attente',
+  'review.teaching': {
+    one: '{count} nouveau mot, présenté d’abord',
+    other: '{count} nouveaux mots, présentés d’abord',
+  },
   'review.shortfall.words':
     'c’est tout ce qui est prêt côté mots — activez aussi les phrases pour en avoir plus',
   'review.shortfall.sentences':
@@ -276,6 +330,7 @@ export const fr: Messages = {
     other: 'Toujours à réviser dans {count} jours',
   },
   'session.practice': 'Entraînement · {when}',
+  'task.introduce': 'Un nouveau mot',
   'task.pattern.tiles': 'Construisez cette phrase avec la structure',
   'task.audio.word': 'Tapez ce que vous entendez',
   'task.audio.line': 'Construisez ce que vous entendez',
@@ -396,6 +451,8 @@ export const fr: Messages = {
   'wizard.noChange': 'Retéléchargé — aucun changement par rapport à ce qui était installé.',
   'wizard.installFailed':
     'Impossible de télécharger le dictionnaire. Vérifiez votre connexion et réessayez.',
+  'wizard.listFailed':
+    'Impossible de télécharger la liste de mots. Vérifiez votre connexion et réessayez.',
   'wizard.optional':
     'Facultatif : un LLM local pour la discussion et la traduction, la reconnaissance vocale pour les vidéos sans sous-titres, yt-dlp pour l’audio YouTube, le traducteur intégré de Chrome, une voix de synthèse chinoise et l’autorisation du lecteur par site. Tout cela se configure depuis les Réglages une fois le dictionnaire ci-dessus installé — rien de tout cela n’est nécessaire pour commencer.',
   'wizard.done': 'Terminé',
@@ -429,7 +486,7 @@ export const fr: Messages = {
   'data.lists.frequencyBlurb':
     'Détermine l’ordre dans lequel vous rencontrez les nouveaux mots, et donne un dénominateur à la progression.',
   'data.lists.levelsBlurb':
-    'Regroupe le dictionnaire par niveau {standard} et ajoute les barres de progression de l’Aperçu.',
+    'Regroupe le dictionnaire par niveau {standard}, pour mesurer le paquet niveau par niveau.',
   'data.lists.loaded': '{name} — {count} mots, ajoutée le {date}',
   'data.lists.install': 'Installer {name}',
   'data.lists.downloading': 'Téléchargement',

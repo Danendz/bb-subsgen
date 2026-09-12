@@ -200,6 +200,35 @@ export interface Entry {
  */
 export type Gap = 'patterns' | 'onDeviceTranslation'
 
+/**
+ * How a language's frequency order groups into sections on the path.
+ *
+ * Sections are cut out of the ranked word list by size rather than by each
+ * word's own level, and that is the decision worth recording. The setup wizard
+ * installs the frequency list alone — the level list is a separate, optional
+ * install — so the deck most people have carries no level on any row, and a
+ * scheme reading `Rank.hsk` would put every word into one undifferentiated
+ * section for them. Cutting the ranked list at the published band sizes works
+ * on the list everyone has, and it lands close: the dataset *is* exam
+ * vocabulary, and the bands are themselves roughly ordered by frequency.
+ *
+ * A capability, not a `Gap`: a language either has an exam scale to name its
+ * sections after or it does not, and one that does not falls back to plain rank
+ * bands rather than waiting for work that is coming.
+ */
+export interface SectionScheme {
+  /**
+   * How many words each section holds, in frequency order, lowest first.
+   *
+   * The last entry is a floor rather than a size: whatever is left over past
+   * the sum joins it, so a list longer than the scheme expects still ends in
+   * one section instead of trailing off into unnamed ones.
+   */
+  readonly sizes: readonly number[]
+  /** What section `index` is called — 'HSK 3'. Zero-based. */
+  name(index: number): string
+}
+
 export interface LanguagePack {
   /** The BCP-47 code the dictionary store, the settings and `DICT_SOURCES` key on. */
   readonly code: string
@@ -269,6 +298,16 @@ export interface LanguagePack {
    * empty table as a valid answer, not as a gap.
    */
   readonly comingSoon: readonly Gap[]
+
+  /**
+   * How this language's ranked words divide into sections on the path.
+   *
+   * Optional: a language with no exam scale has no bands to name, and the path
+   * falls back to plain rank bands rather than inventing some. Here rather than
+   * in `src/app/path/` because "a section is an HSK level" is a Chinese
+   * assumption, and `architecture.md` keeps those inside `src/lang/zh/`.
+   */
+  readonly sections?: SectionScheme
 
   /** Whether this character is one the dictionary could be asked about. */
   inScript(char: string): boolean

@@ -6,14 +6,14 @@ import type { Messages } from './keys'
 
 export const de: Messages = {
   'app.title': 'Karteikarten',
-  'app.subtitle': 'Alles, was bb-subsgen beim Lesen für dich gesammelt hat.',
-  'app.tab.overview': 'Überblick',
-  'app.tab.review': 'Wiederholen',
-  'app.tab.chat': 'Chat',
-  'app.tab.dictionary': 'Wörterbuch',
-  'app.tab.videos': 'Videos',
-  'app.tab.data': 'Daten',
-  'app.tab.settings': 'Einstellungen',
+  'app.nav.label': 'Hauptnavigation',
+  'app.nav.learn': 'Lernen',
+  'app.nav.review': 'Wiederholen',
+  'app.nav.chat': 'Chat',
+  'app.nav.dictionary': 'Wörterbuch',
+  'app.nav.videos': 'Videos',
+  'app.nav.data': 'Daten',
+  'app.nav.settings': 'Einstellungen',
 
   'filter.studying': 'Ich lerne',
   'filter.all': 'Alle Sprachen',
@@ -143,21 +143,75 @@ export const de: Messages = {
   'settings.dicts.hint':
     'Füge eine Sprache hinzu, die du lernst, oder prüfe ein installiertes Wörterbuch auf Aktualisierungen.',
 
-  'overview.nothingToShow': 'Noch nichts zu zeigen.',
-  'overview.emptyTitle': 'Noch nichts gesammelt.',
-  'overview.emptyBody':
-    'Sieh dir ein Bilibili-Video mit Untertiteln an oder halte die Lesertaste auf einer freigeschalteten Seite — die Wörter, die du nachschlägst, landen hier.',
-  'overview.stat.words': 'Wörter gesammelt',
-  'overview.stat.known': 'Wörter bekannt',
-  'overview.stat.sentences': 'Sätze',
-  'overview.stat.grammar': 'Muster',
-  'overview.stat.pool': 'in der Warteschlange',
-  'overview.discovered': 'Entdeckt',
-  'overview.discoveredOf': '{found} der {total} häufigsten Wörter',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Es ist keine Wortliste geladen, deshalb kommen neue Karten in der Reihenfolge dran, in der du sie gefunden hast, und es gibt keinen Nenner, an dem sich der Fortschritt messen ließe. Lade eine unter {data} — dort steht, wo du eine bekommst.',
+  'pill.notInstalled': 'nicht installiert',
+  'pill.addLanguage': 'Sprache hinzufügen',
+
+  'learn.title': 'Dein Weg',
+  'learn.blurb':
+    'Kreise aus acht Wörtern in Häufigkeitsreihenfolge. Ein Kreis öffnet sich, sobald alle seine Wörter in deinem Stapel sind \u2014 Schauen baut die Straße.',
+  'learn.needList.title': 'Der Weg entsteht aus einer Häufigkeitsliste.',
+  'learn.needList.body':
+    'Noch ist nichts eingestuft, es gibt also keine Reihenfolge zum Gehen. Der Einrichtungsassistent installiert die Liste gleich neben dem Wörterbuch.',
+  'learn.needList.action': 'Einrichtung öffnen',
+  'learn.noList.title': 'Für diese Sprache gibt es noch keine Häufigkeitsliste.',
+  'learn.noList.body':
+    'Der Weg braucht eine, um Wörter zu ordnen, und für diese Sprache gibt es noch keine. Die Wiederholung plant weiterhin alles, was du sammelst.',
+  'learn.review': 'Zum Wiederholen',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Abschnitt {n}',
+  'path.sectionProgress': '{done} von {total} gemeistert',
+  'path.unit': 'Einheit {n}',
+  'path.circleWords': 'Wörter {from}\u2013{to}',
+  'path.circleLabel': 'Wörter {from}\u2013{to}, {status}',
+  'path.status.locked': 'gesperrt',
+  'path.status.ready': 'bereit',
+  'path.status.taken': 'durchgenommen',
+  'path.status.mastered': 'gemeistert',
+  'path.earlier': 'Frühere Einheiten',
+  'path.more': { one: '{count} weitere Einheit', other: '{count} weitere Einheiten' },
+  'path.foot': {
+    one: 'Insgesamt {count} eingestuftes Wort',
+    other: 'Insgesamt {count} eingestufte Wörter',
+  },
+  'path.met': '{met} von {total} getroffen',
+  'path.lockedHint':
+    'Triff die übrigen beim Schauen, oder hol sie jetzt aus dem Wörterbuch \u2014 ein seltenes Wort sollte einen Kreis nicht einen Monat lang blockieren.',
+  'path.add': {
+    one: '{count} Wort aus dem Wörterbuch hinzufügen',
+    other: '{count} Wörter aus dem Wörterbuch hinzufügen',
+  },
+  'path.adding': 'Wird hinzugefügt\u2026',
+  'path.readyHint': {
+    one: '{count} Wort, erst gezeigt, dann einmal abgefragt.',
+    other: '{count} Wörter, jedes erst gezeigt, dann einmal abgefragt.',
+  },
+  'path.start': 'Diesen Kreis starten',
+  'path.takenHint':
+    'Durchgenommen. Die Wiederholung bringt sie zurück \u2014 ein Kreis wird nicht zweimal gelaufen.',
+  'path.masteredHint':
+    'Gemeistert. Jedes Wort hier hat das Intervall überschritten, ab dem die Untertitel es nicht mehr annotieren.',
+
+  'aside.today': 'Heute',
+  'aside.streakDays': { one: 'Tag in Folge', other: 'Tage in Folge' },
+  'aside.reviewsToday': { one: 'Wiederholung heute', other: 'Wiederholungen heute' },
+  'aside.deck': 'Dein Deck',
+  'aside.stat.words': 'Wörter gesammelt',
+  'aside.stat.known': 'Wörter bekannt',
+  'aside.stat.sentences': 'Sätze',
+  'aside.stat.grammar': 'Muster',
+  'aside.stat.toStudy': 'zu lernen',
+  'aside.stat.pool': 'Zeilen warten',
+  'aside.discovered': 'Entdeckt',
+  'aside.discoveredOf': '{found} der {total} häufigsten Wörter',
+  'aside.waiting': 'Wartende Wörter',
+  'aside.nextCircle': 'Nächster Kreis: {met} von {total}',
+  'aside.openPath': 'Weg öffnen',
+  'aside.waitingEmpty': 'Nichts wartet \u2014 alles Gesammelte ist in Arbeit.',
+  'aside.startReview': 'Jetzt wiederholen',
+  'aside.fromVideos': 'Aus deinen Videos',
+  'aside.videoWords': { one: '{count} Wort', other: '{count} Wörter' },
+  'aside.noVideos': 'Noch nichts aus einem Video erfasst.',
 
   'mastery.known': 'Bekannt — das hast du selbst markiert',
   'mastery.mastered': 'Beherrscht — {level} von {max}',
@@ -179,6 +233,10 @@ export const de: Messages = {
   'review.cards': { one: '{count} Karte', other: '{count} Karten' },
   'review.breakdown': '{scheduled} geplant, {drilled} zur Übung',
   'review.waiting': '{count} warten',
+  'review.teaching': {
+    one: '{count} neues Wort, zuerst erklärt',
+    other: '{count} neue Wörter, zuerst erklärt',
+  },
   'review.shortfall.words':
     'das sind alle Wörter, die bereit sind — nimm auch Sätze dazu, wenn du mehr willst',
   'review.shortfall.sentences':
@@ -275,6 +333,7 @@ export const de: Messages = {
     other: 'Immer noch fällig in {count} Tagen',
   },
   'session.practice': 'Übung · {when}',
+  'task.introduce': 'Ein neues Wort',
   'task.pattern.tiles': 'Bau diesen Satz mit dem Muster',
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',
@@ -393,6 +452,8 @@ export const de: Messages = {
   'wizard.noChange': 'Erneut heruntergeladen — keine Änderung gegenüber dem Installierten.',
   'wizard.installFailed':
     'Das Wörterbuch ließ sich nicht herunterladen. Prüf deine Verbindung und versuch es noch einmal.',
+  'wizard.listFailed':
+    'Die Wortliste ließ sich nicht herunterladen. Prüf deine Verbindung und versuch es noch einmal.',
   'wizard.optional':
     'Optional: ein lokales LLM für Chat und Übersetzung, Spracherkennung für Videos ohne Untertitel, yt-dlp für YouTube-Ton, der eingebaute Übersetzer von Chrome, eine chinesische Sprachausgabe und die Leser-Berechtigung pro Seite. All das richtest du in den Einstellungen ein, sobald das Wörterbuch oben installiert ist — zum Anfangen brauchst du nichts davon.',
   'wizard.done': 'Fertig',
@@ -426,7 +487,7 @@ export const de: Messages = {
   'data.lists.frequencyBlurb':
     'Bestimmt, welche neuen Wörter dir zuerst begegnen, und gibt dem Fortschritt einen Nenner.',
   'data.lists.levelsBlurb':
-    'Gruppiert das Wörterbuch nach {standard}-Stufe und ergänzt die Fortschrittsbalken im Überblick.',
+    'Gruppiert das Wörterbuch nach {standard}-Stufe, sodass sich das Deck Stufe für Stufe messen lässt.',
   'data.lists.loaded': '{name} — {count} Wörter, hinzugefügt am {date}',
   'data.lists.install': '{name} installieren',
   'data.lists.downloading': 'Lade herunter',

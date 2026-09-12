@@ -29,12 +29,25 @@
 //
 // With that path cued, nothing self-grades any more, and `Response` has no
 // `reveal` in it.
+//
+// The same rule is what puts a teach screen at the bottom. A word served for
+// the first time was *tested* — four English meanings for characters nobody had
+// ever shown you — which is the guess this module exists to refuse, and no
+// question could fix it because the card had nothing to recall yet. So the
+// first screen a word gets asks nothing: it says what the word is, and the
+// question follows it in the same sitting.
 
 import { levelOf } from './scheduler'
 import type { Item, ReviewStyle, StudyMode } from './types'
 
 /** What the question gives you. */
 export type Cue =
+  /**
+   * Everything — the characters, the reading, the meaning and a line the word
+   * was met in. Not a question at all, which is the point: it is the one screen
+   * here that tells you something rather than asking.
+   */
+  | 'introduce'
   /** The characters themselves — recall what they mean. */
   | 'hanzi'
   /** The English gloss — produce the word. */
@@ -54,6 +67,8 @@ export type Cue =
 
 /** What the question wants back. */
 export type Response =
+  /** Nothing. The screen is telling you something, and Continue acknowledges it. */
+  | 'none'
   /** Type the characters. */
   | 'text'
   /** Tap tiles into order. */
@@ -61,14 +76,31 @@ export type Response =
   /** Pick the meaning out of several. The app grades it. */
   | 'choice'
 
-export interface Exercise {
+/**
+ * A question, and how it will be logged when it is answered.
+ *
+ * `style` is not optional here and is absent from `Introduction` below rather
+ * than being given a placeholder value: the review log is append-only, and a
+ * `ReviewStyle` invented for a screen that writes no row would be a value the
+ * log's own readers would have to learn to ignore.
+ */
+export interface Question {
   /** Logged on the review, so recognition and production stay separable later. */
   style: ReviewStyle
-  cue: Cue
-  response: Response
+  cue: Exclude<Cue, 'introduce'>
+  response: Exclude<Response, 'none'>
   /** Whether the prompt speaks itself. The audio *is* the question, so it cannot wait for a button. */
   autoSpeak: boolean
 }
+
+/** The teach screen. Nothing is asked, so nothing is graded and nothing is logged. */
+export interface Introduction {
+  cue: 'introduce'
+  response: 'none'
+  autoSpeak: false
+}
+
+export type Exercise = Question | Introduction
 
 /** What a card is capable of being asked. */
 export interface Capability {
@@ -108,7 +140,7 @@ export interface Capability {
  * would make every sitting uniformly hard and would stop keeping the easy
  * reading warm.
  */
-export type Tier = 'recognition' | 'production' | 'contextual'
+export type Tier = 'introduce' | 'recognition' | 'production' | 'contextual'
 
 /**
  * The rung each tier unlocks at, on `LADDER` in scheduler.ts.
@@ -135,9 +167,39 @@ const UNLOCKS: ReadonlyArray<readonly [Tier, number]> = [
  * a lapse genuinely re-eases the next question — the card drops a rung, and the
  * tier it lost goes with it.
  */
-export function tiersFor(item: Pick<Item, 'interval' | 'level'>): Tier[] {
+export function tiersFor(item: Introducible): Tier[] {
   const level = levelOf(item)
-  return UNLOCKS.filter(([, at]) => level >= at).map(([tier]) => tier)
+  const earned = UNLOCKS.filter(([, at]) => level >= at).map(([tier]) => tier)
+  return needsIntroducing(item) ? ['introduce', ...earned] : earned
+}
+
+/**
+ * What `tiersFor` needs to know: the rung, and whether the card has been met.
+ *
+ * The last two are optional so that a caller asking only what a rung earns can
+ * pass a bare interval, which is what the level-derivation tests do. Naming
+ * neither answers "a card that has been introduced", because the tier below is
+ * a thing only a word that nobody has seen yet can be in.
+ */
+type Introducible = Pick<Item, 'interval' | 'level'> & Partial<Pick<Item, 'introducedAt' | 'kind'>>
+
+/**
+ * Whether this card has never been put in front of anyone.
+ *
+ * Gated on `introducedAt` rather than on a rung, because being introduced is an
+ * event and not a level — the ladder has nothing below its own bottom rung, and
+ * a tier that unlocked at level 0 would fire again every time a card lapsed
+ * back to it.
+ *
+ * Words only. A line card's introduction *is* its recognition question — the
+ * sentence and what it means, with the sentence pool already ordered so that
+ * the one you meet next has a single unknown word in it — and a pattern card
+ * explains itself on the reveal. It is the word that arrives with nothing: four
+ * English options for characters nobody has ever shown you is a guess, and a
+ * guess teaches nothing however well it is scheduled.
+ */
+function needsIntroducing(item: Introducible): boolean {
+  return item.kind === 'word' && item.introducedAt === undefined
 }
 
 /**
@@ -148,7 +210,7 @@ export function tiersFor(item: Pick<Item, 'interval' | 'level'>): Tier[] {
  * reader expressed once; an ask is what this card, at this rung, is actually
  * put on screen as.
  */
-export type Ask = 'remember' | 'type' | 'audio' | 'context'
+export type Ask = 'introduce' | 'remember' | 'type' | 'audio' | 'context'
 
 /**
  * Every ask, the mode that reaches it and the tier that unlocks it.
@@ -184,7 +246,7 @@ const ASKS: ReadonlyArray<{
 ]
 
 /** What `askFor` chooses between. */
-type Asked = Pick<Item, 'reps' | 'interval' | 'level' | 'kind'>
+type Asked = Pick<Item, 'reps' | 'interval' | 'level' | 'kind' | 'introducedAt'>
 
 /**
  * Which angle a card is met from.
@@ -205,6 +267,11 @@ type Asked = Pick<Item, 'reps' | 'interval' | 'level' | 'kind'>
  */
 export function askFor(item: Asked, mode: StudyMode, canSpeak: boolean): Ask {
   const tiers = tiersFor(item)
+  // Ahead of the mode and ahead of the rotation, and it takes nothing away: the
+  // tiers the card has earned are all still in `tiers`, and the first of them
+  // is what it is asked the moment it has been shown — in this same sitting,
+  // since the screen re-serves the card rather than advancing past it.
+  if (tiers.includes('introduce')) return 'introduce'
   const unlocked = ASKS.filter(
     (a) =>
       tiers.includes(a.tier) &&
@@ -281,6 +348,12 @@ function cloze(can: Capability): Exercise {
 export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exercise {
   const ask = askFor(item, mode, can.canSpeak)
   const producing = tiersFor(item).includes('production')
+
+  // Independent of everything below it. What can be put on screen does not
+  // narrow what can be *told*: a word with no definition, no line and no voice
+  // still has its own characters and a reading to show, and the teach screen
+  // prints whatever of the rest it has.
+  if (ask === 'introduce') return { cue: 'introduce', response: 'none', autoSpeak: false }
 
   // A pattern has no sound of its own — a skeleton is not a sentence — so the
   // audio rotation never reaches it and it is never spoken. In recall it asks

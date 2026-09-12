@@ -12,6 +12,7 @@ import { Pinyin } from './pinyin'
 import { masteryOf, masteryTitle, Pips } from './mastery'
 import type { Entry, LanguagePack, ReadingPart } from '../lang/pack'
 import type { Item } from '../flashcards/types'
+import { deckChanged, useDeckChanged } from './deck-signal'
 import { useAsync } from './hooks'
 import { useSettings } from '../settings/useSettings'
 import { canSpeak, speak } from '../shared/speak'
@@ -90,6 +91,7 @@ export function Dictionary() {
     }
   }, [lang])
   const { data, loading, reload } = useAsync(load)
+  useDeckChanged(reload)
 
   // The list underneath is a different list now, and page 4 of it means
   // nothing — the same reset the filter buttons do.
@@ -162,12 +164,12 @@ export function Dictionary() {
 
   const toggleKnown = async (item: Item) => {
     await markKnown(item.lang, item.text, !isKnown(item))
-    reload()
+    deckChanged()
   }
 
   const add = async (headword: string) => {
     await discoverWord(lang, headword)
-    reload()
+    deckChanged()
   }
 
   return (

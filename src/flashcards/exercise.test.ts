@@ -18,6 +18,10 @@ function make(partial: Partial<Item> & Pick<Item, 'kind' | 'text'>): Item {
     // block below; everywhere else the card being asked has earned the question
     // and what is under test is the matrix.
     level: 3,
+    // And met before by default, for the same reason: an unintroduced word is
+    // taught rather than asked, which would otherwise be the answer to every
+    // case in this file.
+    introducedAt: 1,
     ...partial,
   }
 }
@@ -125,7 +129,7 @@ describe('exerciseFor: word cards', () => {
   // The log is append-only: a row written before options existed says
   // `recognise`, and this card is asking the same question it always was.
   test('still logs a recognition review, so the history keeps meaning what it meant', () => {
-    expect(exerciseFor(word(), 'remember', able).style).toBe('recognise')
+    expect(exerciseFor(word(), 'remember', able)).toMatchObject({ style: 'recognise' })
   })
 
   test('producing one prompts with the gloss and takes tiles', () => {
@@ -205,7 +209,7 @@ describe('every prompt carries a cue', () => {
     })
     expect(exercise.cue).toBe('cloze')
     expect(exercise.autoSpeak).toBe(true)
-    expect(exercise.style).toBe('cloze')
+    expect(exercise).toMatchObject({ style: 'cloze' })
   })
 
   // The card this whole slice exists for. The blank used to need the spoken
@@ -323,7 +327,7 @@ describe('grammar cards', () => {
     const exercise = exerciseFor(pattern(), 'type', able)
     expect(exercise.cue).toBe('pattern')
     expect(exercise.response).toBe('tiles')
-    expect(exercise.style).toBe('type')
+    expect(exercise).toMatchObject({ style: 'type' })
   })
 
   // Without a translated example there is nothing to prompt production with —
@@ -442,6 +446,70 @@ describe('the rung decides what a card may be asked', () => {
     ).toMatchObject({ cue: 'cloze' })
     expect(exerciseFor(word({ level: 0 }), 'audio', { ...able, hasChoices: false })).toMatchObject({
       cue: 'cloze',
+    })
+  })
+})
+
+describe('the introduce tier', () => {
+  // The complaint that started this: the first time a word was ever served it
+  // was tested, with four English meanings for characters nobody had shown you.
+  test('a word nobody has met is told, not asked', () => {
+    for (const mode of ['remember', 'type', 'audio', 'mixed'] as const) {
+      expect(exerciseFor(word({ introducedAt: undefined }), mode, able)).toEqual({
+        cue: 'introduce',
+        response: 'none',
+        autoSpeak: false,
+      })
+    }
+  })
+
+  // Nothing on the teach screen depends on the dictionary, the line or the
+  // machine having a voice: the characters are always there to show.
+  test('a word with no gloss, no line and no voice is still introduced', () => {
+    expect(
+      exerciseFor(word({ introducedAt: undefined }), 'mixed', {
+        canSpeak: false,
+        hasTranslation: false,
+        hasTarget: false,
+        hasChoices: false,
+      }),
+    ).toMatchObject({ cue: 'introduce' })
+  })
+
+  test('and once it has been shown, the question under it follows', () => {
+    expect(exerciseFor(word({ level: 0, introducedAt: 1 }), 'remember', able)).toMatchObject({
+      cue: 'hanzi',
+      response: 'choice',
+    })
+  })
+
+  // It is a one-time event rather than a rung, so a card that lapses all the way
+  // back to level 0 is not re-taught — it has been met, and what it needs is the
+  // question again.
+  test('a lapsed card is not introduced a second time', () => {
+    expect(tiersFor(word({ level: 0, introducedAt: 1 }))).not.toContain('introduce')
+  })
+
+  // Gated on the event, so it adds a tier rather than replacing the ones the
+  // card has earned. Nothing below has to change when it fires.
+  test('it never displaces a tier the card has earned', () => {
+    expect(tiersFor(word({ level: 4, introducedAt: undefined }))).toEqual([
+      'introduce',
+      'recognition',
+      'production',
+      'contextual',
+    ])
+  })
+
+  // A line's introduction is its recognition question — the sentence and what it
+  // means — and the pool already hands you the one with a single unknown in it.
+  // It is the word that arrives with nothing to go on.
+  test('lines and patterns are not taught first, because they teach as they ask', () => {
+    expect(exerciseFor(line({ introducedAt: undefined }), 'remember', able)).toMatchObject({
+      cue: 'hanzi',
+    })
+    expect(exerciseFor(pattern({ introducedAt: undefined }), 'remember', able)).toMatchObject({
+      cue: 'pattern',
     })
   })
 })

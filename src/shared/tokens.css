@@ -12,13 +12,21 @@
  * makes that deliberate: colour means tone, the app and the overlay cannot
  * drift apart, and a learner reads the same signal in both places.
  *
- * The one colour from outside that system is Bilibili's pink, reserved for the
- * action you take. It is the only thing on screen that is not either a tone or
- * a surface, which is what makes it read as "press this".
+ * The one colour from outside that system is the action you take, and it is
+ * violet because violet is the one wide gap left on the hue wheel once the
+ * tones have taken coral, amber, mint and blue. An action can therefore never
+ * be misread as a tone. It used to be Bilibili's pink; that tie was worth
+ * keeping while the extension was one site's subtitle overlay and is not worth
+ * keeping now that it also covers YouTube, arbitrary pages and a trainer.
+ *
+ * The surfaces are low-chroma slate, and the steps between them are small.
+ * Three of them, not two: a panel sitting on a panel — the session card, the
+ * open chat against the chat list, the section rail against its pane — needs a
+ * level of its own or the nesting is invisible.
  *
  * Not shared with src/content/ or src/reader/, and not by oversight. Those draw
  * over somebody else's moving video and need a near-neutral scrim to stay
- * legible against arbitrary imagery; a warm purple would be unifying two
+ * legible against arbitrary imagery; a surface palette would be unifying two
  * surfaces that are solving different problems. What they do share is the part
  * that carries meaning — the tones.
  */
@@ -34,7 +42,7 @@
 :root {
   /* Declares the page as already dark. Without this Chrome's auto dark mode
      rewrites every colour it thinks is too light — it was turning the action
-     pink into a muddy crimson — and form controls render in the light theme. */
+     colour into a muddy bruise — and form controls render in the light theme. */
   color-scheme: dark;
 
   /* Tones. Identical to TONE_COLORS in src/lang/reading.ts — change both or neither. */
@@ -52,23 +60,25 @@
   /* Deep enough to read as an edge against --raised rather than as a glow. */
   --right-deep: #2f5a44;
 
-  /* Action. */
-  --action: #fb7299;
-  --action-deep: #b84a70;
-  --action-hot: #fc85a7;
-  --action-ink: #24101a;
+  /* Action. The one hue here that is neither a tone nor a surface. */
+  --action: #8b7bf0;
+  --action-deep: #5f4fb0;
+  --action-hot: #a798f5;
+  --action-ink: #100c1e;
 
-  /* Surfaces: warm ink, with enough distance between them to read as depth. */
-  --ink: #17131d;
-  --raised: #221c2b;
-  --raised-hot: #291f33;
-  --inset: #1b1624;
-  --edge: #332a40;
-  --edge-lit: #4c3e5e;
+  /* Surfaces: slate, close together. Small steps are what make a dark page
+     restful; --lifted is the third level, for a panel on a panel. */
+  --ink: #12161a;
+  --raised: #1a2026;
+  --raised-hot: #212a31;
+  --lifted: #27323a;
+  --inset: #0e1215;
+  --edge: #2b353d;
+  --edge-lit: #3d4a54;
 
-  --text: #f3eefa;
-  --text-2: #c8bed6;
-  --text-3: #9285a6;
+  --text: #eef2f5;
+  --text-2: #b0bcc6;
+  --text-3: #7a8894;
 
   --r-sm: 8px;
   --r: 14px;
@@ -89,6 +99,12 @@
      popup row, and these are the whole difference between the two. Defaults are
      the page's; src/popup/style.css tightens them. */
   --rail-w: 180px;
+  /* The study app's three columns. Here rather than in its own stylesheet for
+     the reason the rest of this block is: a width repeated in a media query and
+     in a grid is two places to disagree. The popup declares no shell and simply
+     never reads them. */
+  --nav-w: 210px;
+  --aside-w: 290px;
   --row-y: 10px;
   --btn-size: 14px;
   --btn-pad: 8px 14px;

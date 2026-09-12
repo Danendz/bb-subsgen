@@ -203,12 +203,15 @@ a:focus-visible {
   font-size: 13px;
   max-width: 60%;
 }
-/* Both controls take the action colour rather than the browser's blue, which is
-   the one hue on this page that belongs to nothing else in the palette. */
+/* Neither control takes the browser's blue, which reads as a foreign UI dropped
+   into the page. The checkbox takes the action colour — ticking one is a thing
+   you do — and the range does not: dragging a slider is adjusting rather than
+   acting, and a thumb shouting in the same colour as the primary button stops
+   either of them meaning "press this". */
 .settings-group input[type='range'] {
   width: var(--range-w);
   flex: none;
-  accent-color: var(--action);
+  accent-color: var(--text-2);
 }
 /* An address, not a search box: `input[type=text]` is full-width by default and
    would push the label off the row. */
@@ -329,6 +332,7 @@ select.model {
   align-items: start;
 }
 .section-rail {
+  background: var(--lifted);
   padding: 8px 10px;
   position: sticky;
   top: 16px;

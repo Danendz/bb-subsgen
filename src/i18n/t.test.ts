@@ -70,8 +70,6 @@ describe('translateIn', () => {
 /** Keys whose English value legitimately survives translation into some target. */
 const SAME_IN_SOME_TARGET = new Set<keyof typeof en>([
   // Proper nouns and number templates.
-  'overview.hsk',
-  'overview.hskLevel',
   'session.score',
   'videos.times',
   'dict.times',
@@ -79,8 +77,8 @@ const SAME_IN_SOME_TARGET = new Set<keyof typeof en>([
   'data.conflicts.more',
   'popup.coveragePercent',
   // Words borrowed unchanged by at least one target.
-  'app.tab.chat',
-  'app.tab.videos',
+  'app.nav.chat',
+  'app.nav.videos',
   'log.kind.chat',
   'settings.server',
   'settings.rail.general',
@@ -89,6 +87,7 @@ const SAME_IN_SOME_TARGET = new Set<keyof typeof en>([
   'session.structure',
   'videos.back',
   'data.rail.diagnostics',
+  'path.section',
 ])
 
 describe('the locale tables', () => {

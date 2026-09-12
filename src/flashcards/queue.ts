@@ -293,6 +293,47 @@ export function buildSession({
   return { cards: [...cards, ...drilled], extra: new Set(drilled.map((item) => item.id)) }
 }
 
+export interface IntakeInput {
+  /** The circle's headwords, in rank order. */
+  words: readonly string[]
+  /** The deck to find them in. Only word cards are looked at. */
+  items: readonly Item[]
+}
+
+/**
+ * One circle's words, in the order the path lists them.
+ *
+ * A second builder beside `buildSession` rather than an option on it, because
+ * the two answer different questions. `buildSession` answers "what is owed",
+ * which is the whole deck's due cards, today's intake and practice to fill the
+ * gap; this answers "what is in circle 37", which is eight named words and
+ * nothing else. Learn adds and Review maintains — mixing due cards in would
+ * leave you pressing a circle labelled `ranks 281-288` and being asked six
+ * words from elsewhere, which makes the circle a progress bar in a costume.
+ *
+ * Nothing here teaches: a word nobody has met has no `introducedAt`, and
+ * `exerciseFor` puts the teach screen in front of it wherever it is served. So
+ * the intake is teach-then-test for each new word and a plain question for any
+ * word a previous sitting already introduced, without this module knowing what
+ * either looks like.
+ *
+ * No `extra`: every card here is one the circle promised, so none of them is
+ * practice, and a wrong answer moves the card the way any owed card's does.
+ */
+export function buildIntake({ words, items }: IntakeInput): QueueSession {
+  const deck = new Map(items.flatMap((item) => (item.kind === 'word' ? [[item.text, item]] : [])))
+  return {
+    // A missing word cannot happen for a circle the path calls ready, and it
+    // drops out rather than throwing if it does: a card deleted between the
+    // render and the press is a shorter session, not a broken screen.
+    cards: words.flatMap((word) => {
+      const item = deck.get(word)
+      return item ? [item] : []
+    }),
+    extra: new Set(),
+  }
+}
+
 /** The session's cards alone, for callers with no use for what came from where. */
 export function buildQueue(input: QueueInput): Item[] {
   return buildSession(input).cards

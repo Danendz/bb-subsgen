@@ -67,7 +67,7 @@ function hsk30(raw: string, kind: ListKind): WordListRow[] {
   if (kind === 'frequency') {
     // Re-ranked by position rather than kept as `q`, which is a raw SUBTLEX-CH
     // rank: it has gaps, and 11,377 words share only 9,113 distinct values. Used
-    // as-is it would tell the Overview bar there are a million words to learn.
+    // as-is it would tell the discovered bar there are a million words to learn.
     // This is the same rule `byPosition` applies to an uploaded file.
     return entries
       .filter((entry) => entry.q < NO_FREQUENCY)

@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const es: Messages = {
   'app.title': 'Tarjetas',
-  'app.subtitle': 'Todo lo que bb-subsgen ha recogido mientras leías.',
-  'app.tab.overview': 'Resumen',
-  'app.tab.review': 'Repaso',
-  'app.tab.chat': 'Chat',
-  'app.tab.dictionary': 'Diccionario',
-  'app.tab.videos': 'Vídeos',
-  'app.tab.data': 'Datos',
-  'app.tab.settings': 'Ajustes',
+  'app.nav.label': 'Navegación principal',
+  'app.nav.learn': 'Aprender',
+  'app.nav.review': 'Repaso',
+  'app.nav.chat': 'Chat',
+  'app.nav.dictionary': 'Diccionario',
+  'app.nav.videos': 'Vídeos',
+  'app.nav.data': 'Datos',
+  'app.nav.settings': 'Ajustes',
 
   'filter.studying': 'Estudiando',
   'filter.all': 'Todos los idiomas',
@@ -141,21 +141,74 @@ export const es: Messages = {
   'settings.dicts.hint':
     'Añade un idioma que estudies, o comprueba si hay actualización de uno instalado.',
 
-  'overview.nothingToShow': 'Todavía no hay nada que mostrar.',
-  'overview.emptyTitle': 'Todavía no has recogido nada.',
-  'overview.emptyBody':
-    'Mira un vídeo de Bilibili con subtítulos, o mantén la tecla del lector en una página que hayas activado, y las palabras que consultes acabarán aquí.',
-  'overview.stat.words': 'palabras recogidas',
-  'overview.stat.known': 'palabras conocidas',
-  'overview.stat.sentences': 'frases',
-  'overview.stat.grammar': 'estructuras',
-  'overview.stat.pool': 'en espera',
-  'overview.discovered': 'Descubiertas',
-  'overview.discoveredOf': '{found} de las {total} palabras más frecuentes',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'No hay ninguna lista de palabras cargada, así que las tarjetas nuevas se introducen en el orden en que las encontraste y no hay denominador con el que medir el progreso. Carga una desde {data}: allí se explica dónde conseguirla.',
+  'pill.notInstalled': 'no instalado',
+  'pill.addLanguage': 'Añadir un idioma',
+
+  'learn.title': 'Tu camino',
+  'learn.blurb':
+    'Círculos de ocho palabras en orden de frecuencia. Un círculo se abre cuando todas sus palabras están en tu mazo: ver vídeos es lo que construye el camino.',
+  'learn.needList.title': 'El camino se construye a partir de una lista de frecuencia.',
+  'learn.needList.body':
+    'Todavía no hay nada ordenado, así que no hay camino que recorrer. El asistente de configuración instala la lista junto al diccionario.',
+  'learn.needList.action': 'Abrir la configuración',
+  'learn.noList.title': 'Aún no hay lista de frecuencia para este idioma.',
+  'learn.noList.body':
+    'El camino la necesita para ordenar las palabras, y para este idioma todavía no existe. El repaso sigue programando todo lo que captures.',
+  'learn.review': 'Ir a repasar',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Sección {n}',
+  'path.sectionProgress': '{done} de {total} dominados',
+  'path.unit': 'Unidad {n}',
+  'path.circleWords': 'Palabras {from}\u2013{to}',
+  'path.circleLabel': 'Palabras {from}\u2013{to}, {status}',
+  'path.status.locked': 'bloqueado',
+  'path.status.ready': 'listo',
+  'path.status.taken': 'visto',
+  'path.status.mastered': 'dominado',
+  'path.earlier': 'Unidades anteriores',
+  'path.more': { one: '{count} unidad más', other: '{count} unidades más' },
+  'path.foot': {
+    one: '{count} palabra ordenada en total',
+    other: '{count} palabras ordenadas en total',
+  },
+  'path.met': '{met} de {total} encontradas',
+  'path.lockedHint':
+    'Encuentra las demás viendo vídeos, o añádelas del diccionario ahora: una palabra rara no debería bloquear un círculo durante un mes.',
+  'path.add': {
+    one: 'Añadir {count} palabra del diccionario',
+    other: 'Añadir {count} palabras del diccionario',
+  },
+  'path.adding': 'Añadiendo\u2026',
+  'path.readyHint': {
+    one: '{count} palabra, se enseña y luego se pregunta una vez.',
+    other: '{count} palabras, cada una se enseña y luego se pregunta una vez.',
+  },
+  'path.start': 'Empezar este círculo',
+  'path.takenHint': 'Visto. El repaso las irá devolviendo: un círculo no se hace dos veces.',
+  'path.masteredHint':
+    'Dominado. Cada palabra de aquí ha pasado el intervalo tras el cual los subtítulos dejan de anotarla.',
+
+  'aside.today': 'Hoy',
+  'aside.streakDays': { one: 'día seguido', other: 'días seguidos' },
+  'aside.reviewsToday': { one: 'repaso hoy', other: 'repasos hoy' },
+  'aside.deck': 'Tu mazo',
+  'aside.stat.words': 'palabras recogidas',
+  'aside.stat.known': 'palabras conocidas',
+  'aside.stat.sentences': 'frases',
+  'aside.stat.grammar': 'estructuras',
+  'aside.stat.toStudy': 'por estudiar',
+  'aside.stat.pool': 'frases en espera',
+  'aside.discovered': 'Descubiertas',
+  'aside.discoveredOf': '{found} de las {total} palabras más frecuentes',
+  'aside.waiting': 'Palabras en espera',
+  'aside.nextCircle': 'Círculo más cercano: {met} de {total}',
+  'aside.openPath': 'Abrir el camino',
+  'aside.waitingEmpty': 'Nada en espera: todo lo que has recogido está en marcha.',
+  'aside.startReview': 'Repasar ahora',
+  'aside.fromVideos': 'De tus vídeos',
+  'aside.videoWords': { one: '{count} palabra', other: '{count} palabras' },
+  'aside.noVideos': 'Todavía no has capturado nada de un vídeo.',
 
   'mastery.known': 'Conocida — la marcaste tú',
   'mastery.mastered': 'Dominada — {level} de {max}',
@@ -177,6 +230,10 @@ export const es: Messages = {
   'review.cards': { one: '{count} tarjeta', other: '{count} tarjetas' },
   'review.breakdown': '{scheduled} programadas, {drilled} de práctica',
   'review.waiting': '{count} en espera',
+  'review.teaching': {
+    one: '{count} palabra nueva, se presenta primero',
+    other: '{count} palabras nuevas, se presentan primero',
+  },
   'review.shortfall.words':
     'eso es toda la palabra lista — activa también las frases para tener más',
   'review.shortfall.sentences':
@@ -273,6 +330,7 @@ export const es: Messages = {
     other: 'Sigue pendiente dentro de {count} días',
   },
   'session.practice': 'Práctica · {when}',
+  'task.introduce': 'Una palabra nueva',
   'task.pattern.tiles': 'Construye esta frase con la estructura',
   'task.audio.word': 'Escribe lo que oyes',
   'task.audio.line': 'Construye lo que oyes',
@@ -391,6 +449,8 @@ export const es: Messages = {
   'wizard.noChange': 'Descargado de nuevo: sin cambios respecto a lo instalado.',
   'wizard.installFailed':
     'No se ha podido descargar el diccionario. Comprueba tu conexión e inténtalo de nuevo.',
+  'wizard.listFailed':
+    'No se ha podido descargar la lista de palabras. Comprueba tu conexión e inténtalo de nuevo.',
   'wizard.optional':
     'Opcional: un LLM local para el chat y la traducción, reconocimiento de voz para los vídeos sin subtítulos, yt-dlp para el audio de YouTube, el traductor integrado de Chrome, una voz china de síntesis y el permiso del lector por sitio. Todo eso se configura desde Ajustes una vez instalado el diccionario de arriba: nada de ello hace falta para empezar.',
   'wizard.done': 'Hecho',
@@ -424,7 +484,7 @@ export const es: Messages = {
   'data.lists.frequencyBlurb':
     'Ordena qué palabras nuevas encuentras primero, y le da un denominador al progreso.',
   'data.lists.levelsBlurb':
-    'Agrupa el diccionario por nivel {standard} y añade las barras de progreso del Resumen.',
+    'Agrupa el diccionario por nivel {standard}, para poder medir el mazo nivel a nivel.',
   'data.lists.loaded': '{name} — {count} palabras, añadida el {date}',
   'data.lists.install': 'Instalar {name}',
   'data.lists.downloading': 'Descargando',
