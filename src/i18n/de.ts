@@ -398,6 +398,8 @@ export const de: Messages = {
   'wizard.noChange': 'Erneut heruntergeladen — keine Änderung gegenüber dem Installierten.',
   'wizard.installFailed':
     'Das Wörterbuch ließ sich nicht herunterladen. Prüf deine Verbindung und versuch es noch einmal.',
+  'wizard.listFailed':
+    'Die Wortliste ließ sich nicht herunterladen. Prüf deine Verbindung und versuch es noch einmal.',
   'wizard.optional':
     'Optional: ein lokales LLM für Chat und Übersetzung, Spracherkennung für Videos ohne Untertitel, yt-dlp für YouTube-Ton, der eingebaute Übersetzer von Chrome, eine chinesische Sprachausgabe und die Leser-Berechtigung pro Seite. All das richtest du in den Einstellungen ein, sobald das Wörterbuch oben installiert ist — zum Anfangen brauchst du nichts davon.',
   'wizard.done': 'Fertig',

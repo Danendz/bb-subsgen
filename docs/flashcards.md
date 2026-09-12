@@ -82,8 +82,14 @@ still counts. You're only asked about words declared known on one side and not t
 
 ## Frequency lists
 
-None ships with the extension, but the app's **Data** screen will fetch one. For Chinese
-it offers two, both from [complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary)
+None ships with the extension. Setup offers the frequency list beside the dictionary, for
+every language one exists for — it is what decides which of the words you've captured you
+meet first, so it isn't really optional, and it used to sit two screens down where nothing
+pointed at it. A language with no list offers no step rather than a button that installs
+nothing; Japanese has none yet.
+
+The **Data** screen has the full set. For Chinese that is two lists, both from
+[complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary)
 (MIT): frequency order, and HSK 3.0 levels. Installing is one button and a few seconds.
 
 The frequency list is HSK vocabulary — about 11,000 words — ranked by how often each turns

@@ -398,6 +398,8 @@ export const pt: Messages = {
   'wizard.noChange': 'Transferido de novo — sem alterações face ao que estava instalado.',
   'wizard.installFailed':
     'Não foi possível transferir o dicionário. Verifique a sua ligação e tente outra vez.',
+  'wizard.listFailed':
+    'Não foi possível transferir a lista de palavras. Verifique a sua ligação e tente outra vez.',
   'wizard.optional':
     'Opcional: um LLM local para a conversa e a tradução, reconhecimento de voz para vídeos sem legendas, yt-dlp para o áudio do YouTube, o tradutor integrado do Chrome, uma voz chinesa de síntese e a permissão do leitor por site. Tudo isso se configura nas Definições depois de o dicionário acima estar instalado — nada disso é preciso para começar.',
   'wizard.done': 'Concluído',

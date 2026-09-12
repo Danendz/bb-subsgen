@@ -418,6 +418,7 @@ export const en = {
   'wizard.updateAvailable': 'A newer export is available \u2014 install above to get it.',
   'wizard.noChange': 'Re-downloaded \u2014 no change from what was installed.',
   'wizard.installFailed': 'Could not download the dictionary. Check your connection and try again.',
+  'wizard.listFailed': 'Could not download the word list. Check your connection and try again.',
   'wizard.optional':
     "Optional: a local LLM for chat and translation, ASR for videos with no subtitles, yt-dlp for YouTube audio, Chrome's built-in Translator, a Chinese TTS voice, and per-site reader permission. Each is configured from Settings once the dictionary above is installed \u2014 none of them are required to get started.",
   'wizard.done': 'Done',

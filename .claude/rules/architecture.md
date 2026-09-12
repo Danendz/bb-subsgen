@@ -179,9 +179,12 @@ Nothing here is a build step: it all runs in the extension at install time, from
 The same three-part shape as `src/dict/`, one level down and for the same reasons:
 `src/flashcards/wordlist-sources.ts` is the registry, `wordlist-readers.ts` is the seam that
 knows a payload's format, and `wordlist-install.ts` reads neither. `readerFor` is imported by
-the installer and nothing else — `Data.tsx` imports only the registry, to ask what exists for
-a language, so a reader hanging off `WordListSource` would pull every payload format into the
-app bundle.
+the installer and nothing else — `Data.tsx` and `SetupWizard.tsx` import only the registry, to
+ask what exists for a language, so a reader hanging off `WordListSource` would pull every
+payload format into the app bundle. The wizard installs the `frequency` list beside the
+dictionary, because an empty rank store is a deck with no order to it; `sourcesFor` returning
+empty is a normal answer and renders no step at all rather than a button that installs
+nothing.
 
 Two things here are deliberately *not* the dictionary's shape. There is no
 `DecompressionStream` and no incremental parser: these are ~3MB of plain JSON and `JSON.parse`

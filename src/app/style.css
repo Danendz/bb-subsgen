@@ -1282,6 +1282,15 @@ details.help p {
   gap: 16px;
 }
 
+/* One language's downloads, closer to each other than to the next language's:
+   the dictionary and the frequency list are two requirements of the same
+   choice, and the gap is the only thing saying so. */
+.wizard-lang {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .wizard-requirement {
   padding: 14px 16px;
   border: 1px solid var(--edge);

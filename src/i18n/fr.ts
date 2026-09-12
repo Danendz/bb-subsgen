@@ -401,6 +401,8 @@ export const fr: Messages = {
   'wizard.noChange': 'Retéléchargé — aucun changement par rapport à ce qui était installé.',
   'wizard.installFailed':
     'Impossible de télécharger le dictionnaire. Vérifiez votre connexion et réessayez.',
+  'wizard.listFailed':
+    'Impossible de télécharger la liste de mots. Vérifiez votre connexion et réessayez.',
   'wizard.optional':
     'Facultatif : un LLM local pour la discussion et la traduction, la reconnaissance vocale pour les vidéos sans sous-titres, yt-dlp pour l’audio YouTube, le traducteur intégré de Chrome, une voix de synthèse chinoise et l’autorisation du lecteur par site. Tout cela se configure depuis les Réglages une fois le dictionnaire ci-dessus installé — rien de tout cela n’est nécessaire pour commencer.',
   'wizard.done': 'Terminé',

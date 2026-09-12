@@ -396,6 +396,8 @@ export const es: Messages = {
   'wizard.noChange': 'Descargado de nuevo: sin cambios respecto a lo instalado.',
   'wizard.installFailed':
     'No se ha podido descargar el diccionario. Comprueba tu conexión e inténtalo de nuevo.',
+  'wizard.listFailed':
+    'No se ha podido descargar la lista de palabras. Comprueba tu conexión e inténtalo de nuevo.',
   'wizard.optional':
     'Opcional: un LLM local para el chat y la traducción, reconocimiento de voz para los vídeos sin subtítulos, yt-dlp para el audio de YouTube, el traductor integrado de Chrome, una voz china de síntesis y el permiso del lector por sitio. Todo eso se configura desde Ajustes una vez instalado el diccionario de arriba: nada de ello hace falta para empezar.',
   'wizard.done': 'Hecho',
