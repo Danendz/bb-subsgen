@@ -71,6 +71,10 @@ export const ru: Messages = {
     'Встроенный переводчик Chrome подключён только для китайского, поэтому строки на {language} переводит ваша локальная модель.',
   'gap.onDevice.noun': 'перевод на устройстве',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'китайский',
+  'language.ja': 'японский',
+
   'settings.llm.title': 'Локальная модель',
   'settings.llm.noModels': 'Подключено, но на сервере не загружено ни одной модели.',
   'settings.llm.needsPermission':
@@ -272,10 +276,7 @@ export const ru: Messages = {
   'session.translationsHidden': '— переводы останутся скрытыми',
   'session.asrWarning': 'Расшифровано со звука — фраза может быть распознана неверно.',
   'session.explain': 'Объяснить эту фразу',
-  'session.showAnswer': 'Показать ответ',
   'session.check': 'Проверить',
-  'session.didntKnow': 'Не знал',
-  'session.knewIt': 'Знал',
   'session.continue': 'Дальше',
   'session.cardsSettled': 'Карточек пройдено',
   'session.mastered': 'Освоено',
@@ -294,14 +295,16 @@ export const ru: Messages = {
   },
   'session.practice': 'Закрепление · {when}',
   'task.pattern.tiles': 'Соберите фразу по этой конструкции',
-  'task.pattern.reveal': 'Что делает эта конструкция?',
   'task.audio.word': 'Наберите то, что слышите',
   'task.audio.line': 'Соберите то, что слышите',
-  'task.gloss': 'Наберите иероглифы',
-  'task.translation': 'Соберите эту фразу по-китайски',
+  'task.gloss': 'Соберите слово',
+  'task.translation': 'Соберите эту фразу — язык: {language}',
   'task.cloze': 'Какого слова не хватает?',
   'task.meaning.word': 'Что это значит?',
   'task.meaning.line': 'Что значит эта фраза?',
+  'task.choice.word': 'Выберите значение',
+  'task.choice.line': 'Выберите, что значит эта фраза',
+  'task.choice.pattern': 'Выберите, что делает эта конструкция',
 
   'videos.verdict.comfortable': 'легко',
   'videos.verdict.stretch': 'на пределе',

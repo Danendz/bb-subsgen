@@ -11,6 +11,9 @@ import { knownSetOf, listExposures, listItems, studyStreak } from '../flashcards
 import { buildSession, queueCounts, type QueueSession } from '../flashcards/queue'
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankKey, rankMap } from '../background/flashcards-store'
+import type { Choice } from '../flashcards/choices'
+import { buildOptions } from './review/options'
+import { lookupDefs, translatedGlosses } from '../shared/dict-client'
 import { packFor } from '../lang/packs'
 import { dictDb, getLexiconIn } from '../dict/store'
 import { resolveStudyLang } from '../shared/settings'
@@ -76,6 +79,11 @@ export function Review() {
   const { data, loading, reload } = useAsync(load)
 
   const [session, setSession] = useState<QueueSession | null>(null)
+  // Resolved with the session rather than inside it, so no card pauses to fetch
+  // its own options and no option set renders half-translated. See
+  // `review/options.ts`.
+  const [choices, setChoices] = useState<ReadonlyMap<string, Choice[]>>(new Map())
+  const [building, setBuilding] = useState(false)
   const [editing, setEditing] = useState(false)
 
   const unknownCount = useCallback(
@@ -127,25 +135,68 @@ export function Review() {
 
   const distractorPool = useMemo(() => (data ? [...data.known] : []), [data])
 
+  // The whole deck's words, not the session's: how near two words sit in
+  // frequency is a better question the more words there are to ask it of.
+  const deckWords = useMemo(
+    () => (data ? data.items.flatMap((item) => (item.kind === 'word' ? [item.text] : [])) : []),
+    [data],
+  )
+
+  const rankOfWord = useCallback(
+    (headword: string) => data?.ranks.get(rankKey(data.lang, headword)),
+    [data],
+  )
+
   if (loading || !data || !counts || !setup) return <p class="muted">{t('common.loading')}</p>
   // Only reachable if the study language outlived its pack — `packs.test.ts`
   // holds the registries together, so this says which language rather than
   // pretending the screen is still loading.
   if (!data.words) return <p class="muted">{t('review.noPack', { lang: data.lang })}</p>
 
-  const start = () => {
-    setSession(
-      buildSession({
-        items: data.items,
-        now: Date.now(),
-        newSentencesPerDay: settings.newSentencesPerDay,
-        include: setup.studyInclude,
-        limit: setup.studySessionSize,
-        unknownCount,
-        rankOf,
-        seenCount,
-      }),
-    )
+  const words = data.words
+  const start = async () => {
+    if (building) return
+    const built = buildSession({
+      items: data.items,
+      now: Date.now(),
+      newSentencesPerDay: settings.newSentencesPerDay,
+      include: setup.studyInclude,
+      limit: setup.studySessionSize,
+      unknownCount,
+      rankOf,
+      seenCount,
+    })
+
+    setBuilding(true)
+    try {
+      setChoices(
+        await buildOptions(
+          built.cards,
+          {
+            deck: data.items,
+            patterns: words.pack.patterns,
+            rankOf: rankOfWord,
+          },
+          {
+            defs: (headwords) => lookupDefs(data.lang, headwords, settings.useTraditional),
+            // The sense the learner would have been shown, and only the first
+            // one: an option is a thing to pick between, and three senses each
+            // makes the card something to read instead.
+            glossOf: (entries, headword) =>
+              words.pack.rank(entries, headword)[0]?.senses[0]?.gloss ?? '',
+            // Words written with the same character as the target, which are
+            // the dictionary's nearest thing to a plausible wrong answer.
+            padding: (headword, exclude, count) =>
+              words.search(Array.from(headword)[0] ?? '', exclude, count),
+            translate: (requests) =>
+              translatedGlosses(data.lang, settings.translationLang, requests),
+          },
+        ),
+      )
+      setSession(built)
+    } finally {
+      setBuilding(false)
+    }
   }
 
   if (session && session.cards.length > 0) {
@@ -157,6 +208,9 @@ export function Review() {
         words={data.words}
         known={data.known}
         distractorPool={distractorPool}
+        deckWords={deckWords}
+        rankOf={rankOfWord}
+        choices={choices}
         mode={setup.studyMode}
         onFinish={() => {
           setSession(null)
@@ -238,8 +292,8 @@ export function Review() {
 
       {studying > 0 ? (
         <div class="start">
-          <button class="primary big" onClick={start}>
-            {t('review.start')}
+          <button class="primary big" disabled={building} onClick={() => void start()}>
+            {building ? t('common.loading') : t('review.start')}
           </button>
           <p class="small muted">{detail}</p>
         </div>

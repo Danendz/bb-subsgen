@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { PACKS, packsInScope } from './packs'
 import { DICT_SOURCES } from '../dict/sources'
+import { translateIn } from '../i18n/t'
+import { TRANSLATION_LANGS } from '../shared/settings'
 
 describe('PACKS', () => {
   // The two registries are separate modules on purpose and neither imports the
@@ -13,6 +15,19 @@ describe('PACKS', () => {
 
   test('a pack answers to the code it is filed under', () => {
     for (const [code, pack] of Object.entries(PACKS)) expect(pack.code).toBe(code)
+  })
+
+  // The compiler only says the key exists. What a task label needs is that it
+  // says something different per language in every locale — a table that
+  // answered 'Chinese' in Spanish, or the same word for both packs, would tell
+  // a Japanese deck to build its line in Chinese all over again.
+  test('every pack names itself, in each of the six languages the app is read in', () => {
+    for (const { code: lang } of TRANSLATION_LANGS) {
+      const t = translateIn(lang)
+      const names = Object.values(PACKS).map((pack) => t(pack.nameKey))
+      for (const name of names) expect(name).not.toBe('')
+      expect(new Set(names).size).toBe(names.length)
+    }
   })
 })
 

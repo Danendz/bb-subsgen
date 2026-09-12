@@ -71,6 +71,10 @@ export const de: Messages = {
     'Chromes eingebauter Übersetzer ist nur für Chinesisch angebunden, daher übersetzt dein lokales Modell die Zeilen auf {language}.',
   'gap.onDevice.noun': 'die Übersetzung auf dem Gerät',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'Chinesisch',
+  'language.ja': 'Japanisch',
+
   'settings.llm.title': 'Lokales Modell',
   'settings.llm.noModels': 'Verbunden, aber auf dem Server ist kein Modell geladen.',
   'settings.llm.needsPermission':
@@ -260,10 +264,7 @@ export const de: Messages = {
   'session.asrWarning':
     'Aus dem Ton transkribiert — dieser Satz kann falsch verstanden worden sein.',
   'session.explain': 'Diesen Satz erklären',
-  'session.showAnswer': 'Antwort zeigen',
   'session.check': 'Prüfen',
-  'session.didntKnow': 'Wusste ich nicht',
-  'session.knewIt': 'Wusste ich',
   'session.continue': 'Weiter',
   'session.cardsSettled': 'Erledigte Karten',
   'session.mastered': 'Beherrscht',
@@ -275,14 +276,16 @@ export const de: Messages = {
   },
   'session.practice': 'Übung · {when}',
   'task.pattern.tiles': 'Bau diesen Satz mit dem Muster',
-  'task.pattern.reveal': 'Was macht dieses Muster?',
   'task.audio.word': 'Tippe, was du hörst',
   'task.audio.line': 'Bau, was du hörst',
-  'task.gloss': 'Tippe die Zeichen',
-  'task.translation': 'Bau diesen Satz auf Chinesisch',
+  'task.gloss': 'Bau das Wort',
+  'task.translation': 'Bau diesen Satz auf {language}',
   'task.cloze': 'Welches Wort fehlt?',
   'task.meaning.word': 'Was heißt das?',
   'task.meaning.line': 'Was sagt dieser Satz?',
+  'task.choice.word': 'Wähle die Bedeutung',
+  'task.choice.line': 'Wähle, was dieser Satz sagt',
+  'task.choice.pattern': 'Wähle, was dieses Muster macht',
 
   'videos.verdict.comfortable': 'bequem',
   'videos.verdict.stretch': 'grenzwertig',

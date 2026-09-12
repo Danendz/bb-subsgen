@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { answerOf, buildBank, isCorrect, seedFor, shuffle } from './wordbank'
+import { answerOf, buildBank, distractorChars, isCorrect, seedFor, shuffle } from './wordbank'
 import type { Token } from '../lang/pack'
 
 const tokens = (...texts: string[]): Token[] =>
@@ -75,10 +75,10 @@ describe('buildBank', () => {
 })
 
 describe('isCorrect', () => {
-  const answer = ['我', '今天', '很', '累']
+  const answer = ['我今天很累']
 
   test('accepts the line in order', () => {
-    expect(isCorrect(answer, answer)).toBe(true)
+    expect(isCorrect(['我', '今天', '很', '累'], answer)).toBe(true)
   })
 
   test('rejects the wrong order', () => {
@@ -92,10 +92,40 @@ describe('isCorrect', () => {
   test('accepts a different segmentation of the same sentence', () => {
     // The user is being asked for the sentence, not for the segmenter's opinion
     // of where its word boundaries fall.
-    expect(isCorrect(['我们', '走'], ['我', '们', '走'])).toBe(true)
+    expect(isCorrect(['我们', '走'], ['我们走'])).toBe(true)
+  })
+
+  test('a kana answer settles a kanji card, for want of an IME', () => {
+    // The variant forms are answers in their own right, and the typing escape
+    // has to accept every one the word-typing path did.
+    expect(isCorrect(['たべる'], ['食べる', 'たべる'])).toBe(true)
   })
 
   test('nothing placed is not correct', () => {
     expect(isCorrect([], answer)).toBe(false)
+  })
+})
+
+describe('distractorChars', () => {
+  test('a two-character word gets something to place wrongly', () => {
+    // Laid out as exactly its own two tiles there is nothing to get wrong, and
+    // the card tests arrangement rather than recall.
+    expect(distractorChars(['学生', '老师'], 3)).toEqual(['学', '生', '老'])
+  })
+
+  test('stops at the count rather than emptying every word it was given', () => {
+    expect(distractorChars(['学生', '老师', '朋友', '医生'], 2)).toHaveLength(2)
+  })
+
+  test('a character met twice is offered once', () => {
+    // Two identical tiles make the check ambiguous, which is the same hazard
+    // `buildBank` drops duplicates for.
+    expect(distractorChars(['学生', '学校'], 4)).toEqual(['学', '生', '校'])
+  })
+
+  test('no near words means no extras, rather than a crash', () => {
+    // A first session on a deck of one word. The card is easier than it will be
+    // later, which is better than it not being askable.
+    expect(distractorChars([], 3)).toEqual([])
   })
 })

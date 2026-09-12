@@ -16,6 +16,7 @@ import { readingParts as parts } from '../lang/zh/reading'
 const fakePack = (): LanguagePack => ({
   code: 'xx',
   name: 'Test',
+  nameKey: 'language.zh',
   levelsName: 'Level',
   displaysTones: false,
   usesTraditional: false,

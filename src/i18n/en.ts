@@ -83,6 +83,10 @@ export const en = {
     "Chrome's on-device translator is only wired up for Chinese, so {language} lines are translated by your local model instead.",
   'gap.onDevice.noun': 'on-device translation',
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'Chinese',
+  'language.ja': 'Japanese',
+
   // --- Settings \u203a Local model ---
   'settings.llm.title': 'Local model',
   'settings.llm.noModels': 'Connected, but the server has no models loaded.',
@@ -282,10 +286,7 @@ export const en = {
   'session.translationsHidden': '\u2014 translations stay hidden',
   'session.asrWarning': 'Transcribed from the audio \u2014 this line may be misheard.',
   'session.explain': 'Explain this line',
-  'session.showAnswer': 'Show answer',
   'session.check': 'Check',
-  'session.didntKnow': 'I didn\u2019t know it',
-  'session.knewIt': 'I knew it',
   'session.continue': 'Continue',
   'session.cardsSettled': 'Cards settled',
   'session.mastered': 'Mastered',
@@ -294,14 +295,16 @@ export const en = {
   'session.stillDueIn': { one: 'Still due in {count} day', other: 'Still due in {count} days' },
   'session.practice': 'Practice \u00b7 {when}',
   'task.pattern.tiles': 'Build this line using the shape',
-  'task.pattern.reveal': 'What does this shape do?',
   'task.audio.word': 'Type what you hear',
   'task.audio.line': 'Build what you hear',
-  'task.gloss': 'Type the characters',
-  'task.translation': 'Build this line in Chinese',
+  'task.gloss': 'Build the word',
+  'task.translation': 'Build this line in {language}',
   'task.cloze': 'Which word is missing?',
   'task.meaning.word': 'What does this mean?',
   'task.meaning.line': 'What does this line mean?',
+  'task.choice.word': 'Pick the meaning',
+  'task.choice.line': 'Pick what this line means',
+  'task.choice.pattern': 'Pick what this shape does',
 
   // --- Videos tab (src/app/Videos.tsx) ---
   'videos.verdict.comfortable': 'comfortable',

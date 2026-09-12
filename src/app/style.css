@@ -426,6 +426,71 @@ button.speak.big {
   border-radius: var(--r);
 }
 
+/* Multiple choice ----------------------------------------------------------- */
+
+/* Scoped to the card, because the setup panel above got there first: its mode
+   buttons are `.choice` too, and an unscoped rule here relaid them out — a
+   stacked label and hint became a row, on a screen nobody had touched. */
+.card {
+  /* One column, not a two-by-two grid: the options are prose of unequal length,
+     and a grid sets the row height by the longest of them, which leaves the
+     short ones floating in a box that says "this one is different". */
+  & .choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 460px;
+    margin-top: 4px;
+  }
+
+  & .choice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 15px;
+    background: var(--raised);
+    border-radius: var(--r-sm);
+  }
+  & .choice.picked {
+    background: color-mix(in srgb, var(--action) 14%, var(--raised));
+    border-color: var(--edge-lit);
+  }
+  /* Both the right answer and what you actually picked, because seeing them
+     together is the part that teaches. */
+  & .choice.right:disabled {
+    opacity: 1;
+    background: color-mix(in srgb, var(--right) 18%, var(--raised));
+    border-color: var(--right);
+  }
+  & .choice.wrong:disabled {
+    opacity: 1;
+    background: color-mix(in srgb, var(--wrong) 16%, var(--raised));
+    border-color: var(--wrong);
+  }
+}
+
+/* The digit that answers this option from the keyboard, which is how the rest
+   of the session is answered too. */
+.choice-key {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--inset);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.choice-text {
+  flex: 1;
+}
+
 /* The word bank ------------------------------------------------------------- */
 
 .bank {
@@ -749,21 +814,6 @@ button.speak.big {
   max-width: 260px;
   padding: 14px;
   font-size: 16px;
-}
-
-button.right-btn {
-  background: var(--right);
-  color: var(--action-ink);
-  border-color: var(--right);
-  border-bottom-color: #4a9b6c;
-}
-button.right-btn:hover:not(:disabled) {
-  background: #94e8b8;
-}
-
-button.wrong-btn {
-  background: var(--inset);
-  color: var(--text-2);
 }
 
 /* The summary --------------------------------------------------------------- */

@@ -69,6 +69,10 @@ export const fr: Messages = {
     "Le traducteur intégré de Chrome n'est branché que pour le chinois, donc les lignes en {language} sont traduites par votre modèle local.",
   'gap.onDevice.noun': "la traduction sur l'appareil",
 
+  // --- Language names (src/lang/pack.ts, `nameKey`) ---
+  'language.zh': 'chinois',
+  'language.ja': 'japonais',
+
   'settings.llm.title': 'Modèle local',
   'settings.llm.noModels': 'Connecté, mais le serveur n’a chargé aucun modèle.',
   'settings.llm.needsPermission':
@@ -258,10 +262,7 @@ export const fr: Messages = {
   'session.translationsHidden': '— les traductions restent masquées',
   'session.asrWarning': 'Transcrit depuis l’audio — cette phrase a pu être mal entendue.',
   'session.explain': 'Expliquer cette phrase',
-  'session.showAnswer': 'Voir la réponse',
   'session.check': 'Vérifier',
-  'session.didntKnow': 'Je ne savais pas',
-  'session.knewIt': 'Je savais',
   'session.continue': 'Continuer',
   'session.cardsSettled': 'Cartes réglées',
   'session.mastered': 'Maîtrisée',
@@ -276,14 +277,16 @@ export const fr: Messages = {
   },
   'session.practice': 'Entraînement · {when}',
   'task.pattern.tiles': 'Construisez cette phrase avec la structure',
-  'task.pattern.reveal': 'Que fait cette structure ?',
   'task.audio.word': 'Tapez ce que vous entendez',
   'task.audio.line': 'Construisez ce que vous entendez',
-  'task.gloss': 'Tapez les caractères',
-  'task.translation': 'Construisez cette phrase en chinois',
+  'task.gloss': 'Construisez le mot',
+  'task.translation': 'Construisez cette phrase en {language}',
   'task.cloze': 'Quel mot manque ?',
   'task.meaning.word': 'Qu’est-ce que cela veut dire ?',
   'task.meaning.line': 'Que veut dire cette phrase ?',
+  'task.choice.word': 'Choisissez le sens',
+  'task.choice.line': 'Choisissez le sens de cette phrase',
+  'task.choice.pattern': 'Choisissez ce que fait cette structure',
 
   'videos.verdict.comfortable': 'confortable',
   'videos.verdict.stretch': 'un peu juste',
