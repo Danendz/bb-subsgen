@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const fr: Messages = {
   'app.title': 'Cartes',
-  'app.subtitle': 'Tout ce que bb-subsgen a recueilli pendant que vous lisiez.',
-  'app.tab.overview': 'Aperçu',
-  'app.tab.review': 'Révision',
-  'app.tab.chat': 'Discussion',
-  'app.tab.dictionary': 'Dictionnaire',
-  'app.tab.videos': 'Vidéos',
-  'app.tab.data': 'Données',
-  'app.tab.settings': 'Réglages',
+  'app.nav.label': 'Navigation principale',
+  'app.nav.learn': 'Apprendre',
+  'app.nav.review': 'Révision',
+  'app.nav.chat': 'Discussion',
+  'app.nav.dictionary': 'Dictionnaire',
+  'app.nav.videos': 'Vidéos',
+  'app.nav.data': 'Données',
+  'app.nav.settings': 'Réglages',
 
   'filter.studying': 'J’étudie',
   'filter.all': 'Toutes les langues',
@@ -141,21 +141,32 @@ export const fr: Messages = {
   'settings.dicts.hint':
     'Ajoutez une langue que vous étudiez, ou vérifiez la mise à jour d’une langue installée.',
 
-  'overview.nothingToShow': 'Rien à afficher pour l’instant.',
-  'overview.emptyTitle': 'Rien de recueilli pour l’instant.',
-  'overview.emptyBody':
-    'Regardez une vidéo Bilibili sous-titrée, ou maintenez la touche du lecteur sur une page que vous avez activée, et les mots que vous consultez arriveront ici.',
-  'overview.stat.words': 'mots recueillis',
-  'overview.stat.known': 'mots connus',
-  'overview.stat.sentences': 'phrases',
-  'overview.stat.grammar': 'structures',
-  'overview.stat.pool': 'en attente',
-  'overview.discovered': 'Découverts',
-  'overview.discoveredOf': '{found} des {total} mots les plus fréquents',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Aucune liste de mots n’est chargée : les nouvelles cartes sont donc introduites dans l’ordre où vous les avez trouvées, et il n’y a pas de dénominateur pour mesurer la progression. Chargez-en une depuis {data} — on y explique où en trouver une.',
+  'pill.notInstalled': 'non installé',
+  'pill.addLanguage': 'Ajouter une langue',
+
+  'learn.soonTitle': 'Votre parcours arrivera ici.',
+  'learn.soonBody':
+    'Des cercles de huit mots, chacun ouvert par la rencontre de ses mots pendant que vous regardez. En attendant, Révision programme toujours l’ensemble du paquet.',
+  'learn.review': 'Aller aux révisions',
+
+  'aside.today': 'Aujourd’hui',
+  'aside.streakDays': { one: 'jour d’affilée', other: 'jours d’affilée' },
+  'aside.reviewsToday': { one: 'révision aujourd’hui', other: 'révisions aujourd’hui' },
+  'aside.deck': 'Votre paquet',
+  'aside.stat.words': 'mots recueillis',
+  'aside.stat.known': 'mots connus',
+  'aside.stat.sentences': 'phrases',
+  'aside.stat.grammar': 'structures',
+  'aside.stat.toStudy': 'à étudier',
+  'aside.stat.pool': 'phrases en attente',
+  'aside.discovered': 'Découverts',
+  'aside.discoveredOf': '{found} des {total} mots les plus fréquents',
+  'aside.waiting': 'Mots en attente',
+  'aside.waitingEmpty': 'Rien en attente \u2014 tout ce que vous avez recueilli est en cours.',
+  'aside.startReview': 'Réviser maintenant',
+  'aside.fromVideos': 'De vos vidéos',
+  'aside.videoWords': { one: '{count} mot', other: '{count} mots' },
+  'aside.noVideos': 'Rien encore recueilli depuis une vidéo.',
 
   'mastery.known': 'Connu — vous l’avez marqué vous-même',
   'mastery.mastered': 'Maîtrisé — {level} sur {max}',
@@ -436,7 +447,7 @@ export const fr: Messages = {
   'data.lists.frequencyBlurb':
     'Détermine l’ordre dans lequel vous rencontrez les nouveaux mots, et donne un dénominateur à la progression.',
   'data.lists.levelsBlurb':
-    'Regroupe le dictionnaire par niveau {standard} et ajoute les barres de progression de l’Aperçu.',
+    'Regroupe le dictionnaire par niveau {standard}, pour mesurer le paquet niveau par niveau.',
   'data.lists.loaded': '{name} — {count} mots, ajoutée le {date}',
   'data.lists.install': 'Installer {name}',
   'data.lists.downloading': 'Téléchargement',

@@ -22,10 +22,24 @@ a {
   color: var(--link);
 }
 
+/* The shell: rail, work, aside (src/app/Shell.tsx) ------------------------- */
+
 .shell {
-  max-width: 900px;
+  display: grid;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--aside-w);
+  gap: 20px;
+  align-items: start;
+  max-width: 1420px;
   margin: 0 auto;
-  padding: 28px 24px 80px;
+  padding: 22px 24px 80px;
+}
+/* The setup wizard, which has no numbers worth putting beside a first run. */
+.shell.solo {
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  max-width: 1040px;
+}
+.main {
+  min-width: 0;
 }
 
 h1 {
@@ -33,37 +47,260 @@ h1 {
   margin: 0 0 2px;
   letter-spacing: -0.01em;
 }
-.subtitle {
-  margin: 0 0 22px;
-  color: var(--text-3);
-  font-size: 13px;
-}
 
 /* Navigation ---------------------------------------------------------------- */
 
-/* Scoped to `.tabs` rather than the bare element: the section rails beside Data
-   and Settings are navs too, and a flex row with a bottom border is the last
-   thing they want. */
-nav.tabs {
+/* Sticky rather than scrolling away: this is the one thing on the page that is
+   never what you came for and always where you go next. */
+.rail {
+  position: sticky;
+  top: 22px;
   display: flex;
+  flex-direction: column;
   gap: 4px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--edge);
 }
-nav.tabs a {
-  padding: 9px 14px;
-  border-bottom: 2px solid transparent;
+
+.rail-brand {
+  padding: 0 10px 12px;
+  font: 600 17px var(--display);
+  letter-spacing: -0.01em;
+  color: var(--text-2);
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The rule is the hierarchy. Above it is what you came to do, below it is what
+   you go looking for, and the two groups are otherwise identical — a second
+   weight or a second colour would be saying it twice. */
+.rail-rule {
+  border: 0;
+  border-top: 1px solid var(--edge);
+  margin: 10px 10px 8px;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--r-ctl);
   color: var(--text-3);
   text-decoration: none;
   font: 500 13px var(--display);
-  transition: color 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
-nav.tabs a:hover {
+.rail-item:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+/* Where you are is the one navigational fact worth the action colour: the rail
+   is the only place on the page that answers it. */
+.rail-item.on {
+  color: var(--text);
+  background: var(--raised);
+}
+.rail-item.on .icon {
+  color: var(--action);
+}
+.rail-item:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* The language pill (src/app/LanguagePill.tsx) ------------------------------ */
+
+.lang-pill {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.pill-face {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--raised);
+  font-size: 13px;
+}
+.pill-face .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+  transition: transform 0.15s;
+}
+.pill-face.open .icon {
+  transform: rotate(180deg);
+}
+.pill-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+/* A flag is 20px wide and a drawing; All is neither, so it gets a plate of the
+   same size rather than the row shifting left when nothing is selected. */
+.lang-pill svg:not(.icon),
+.pill-all {
+  flex: none;
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--edge);
+}
+.pill-all {
+  background: linear-gradient(135deg, var(--tone-4), var(--tone-3));
+}
+
+.pill-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max(100%, 220px);
+  padding: 6px;
+  background: var(--lifted);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 45%);
+
+  /* Flat rows. A menu item is a choice, not a press, and the lip every other
+     button gets would give each row its own 4px shelf. The control base reads
+     these two tokens, so setting them equal is how a host says so — see the
+     header of src/settings/skin.css. */
+  --lip: 1px;
+  --lip-sunk: 1px;
+}
+
+.pill-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-ctl);
+  background: none;
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: left;
+}
+.pill-item:hover:not(:disabled) {
+  background: var(--raised);
   color: var(--text);
 }
-nav.tabs a.on {
+.pill-item.on {
   color: var(--text);
-  border-bottom-color: var(--edge-lit);
+  background: var(--inset);
+}
+.pill-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* Not a language, so it does not look like one: separated, and lettered rather
+   than flagged. */
+.pill-item.add {
+  margin-top: 6px;
+  padding-top: 11px;
+  border-top: 1px solid var(--edge);
+  border-radius: 0 0 var(--r-ctl) var(--r-ctl);
+  color: var(--action);
+}
+.pill-plus {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  font-size: 15px;
+}
+
+/* The aside (src/app/Aside.tsx) --------------------------------------------- */
+
+.aside {
+  position: sticky;
+  top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
+}
+/* The column already spaces the panels; the stacking margin would double it. */
+.aside .panel + .panel {
+  margin-top: 0;
+}
+.aside .panel {
+  padding: 13px 15px;
+}
+
+.aside-title {
+  margin: 0 0 10px;
+  font: 500 11px var(--display);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.aside-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.aside-stat .n {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 21px/1.2 var(--display);
+  font-variant-numeric: tabular-nums;
+}
+.aside-stat .label {
+  display: block;
+  color: var(--text-3);
+  font-size: 11px;
+}
+/* The streak is the one number here that is about turning up rather than about
+   the deck, and the flame is what says so. */
+.streak-stat .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--warn);
+}
+
+.aside-progress {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--edge);
+}
+.aside-progress .bar {
+  margin: 6px 0;
+}
+.aside-progress p {
+  margin: 0;
+}
+
+.aside button.wide {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* A video title is a scanning target, not something to read: one line, clipped,
+   with the capture count beside it keeping its room. */
+.aside .row a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Surfaces ------------------------------------------------------------------ */
@@ -176,6 +413,9 @@ nav.tabs a.on {
 }
 .empty p {
   margin: 0 0 6px;
+}
+.empty button {
+  margin-top: 14px;
 }
 
 /* The dictionary licence, under the definitions it covers: required, and not
@@ -1191,9 +1431,45 @@ details.help p {
 
 /* ---------------------------------------------------------------------------- */
 
+/* The aside is commentary on the work, so it goes first. */
+@media (max-width: 1180px) {
+  .shell,
+  .shell.solo {
+    grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  }
+  .aside {
+    display: none;
+  }
+}
+
+/* The rail collapses to its glyphs and never to nothing: navigation is the last
+   thing a narrow window should lose. */
+@media (max-width: 860px) {
+  .shell,
+  .shell.solo {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+  .rail-brand,
+  .rail-label,
+  .pill-name,
+  .pill-face .icon {
+    display: none;
+  }
+  .rail-item,
+  .pill-face {
+    justify-content: center;
+    padding: 10px;
+  }
+  .pill-menu {
+    width: 220px;
+  }
+}
+
 @media (max-width: 560px) {
-  .shell {
-    padding: 20px 16px 60px;
+  .shell,
+  .shell.solo {
+    padding: 20px 12px 60px;
   }
   /* The list stacks above the conversation rather than squeezing beside it. */
   .chat-layout {

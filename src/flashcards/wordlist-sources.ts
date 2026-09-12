@@ -74,7 +74,7 @@ export const WORD_LIST_SOURCES: Record<string, WordListSource[]> = {
       // Seven bars, not nine: this dataset collapses HSK 3.0's 7-9 bands into a
       // single band 7, which is how the standard itself publishes them.
       blurb:
-        'Groups the dictionary by level and adds the progress bars on Overview. Bands 7-9 arrive merged, as HSK 3.0 publishes them.',
+        'Groups the dictionary by level, so the deck can be measured a level at a time. Bands 7-9 arrive merged, as HSK 3.0 publishes them.',
       url: HSK30_URL,
       licence: 'MIT',
       attribution: HSK30_ATTRIBUTION,

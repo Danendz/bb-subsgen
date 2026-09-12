@@ -50,7 +50,8 @@ Three files, and a new value belongs in exactly one of them:
 
 - **`src/shared/tokens.css`** — the palette, the type stacks, the radii, and the density tokens
   (`--rail-w`, `--row-y`, `--r-ctl`, `--lip`/`--lip-sunk`, `--btn-size`/`--btn-pad`, `--grow-min`,
-  `--range-w`, `--url-w`). Every extension page imports it. A hardcoded hex in a page stylesheet
+  `--range-w`, `--url-w`, and the study app's `--nav-w`/`--aside-w`). Every extension page
+  imports it. A hardcoded hex in a page stylesheet
   is a bug waiting for the second page to disagree.
 - **`src/settings/skin.css`** — the control base (`button`, inputs, `:focus-visible`, `.panel`)
   and the shared settings rows. Imported by both pages.
@@ -205,12 +206,44 @@ installed deck re-ranks every card with nothing to say so, and `main` gives
 entry in `manifest.json` — that allowlist is explicit, and `optional_host_permissions` is not
 the pattern the dictionary sources follow.
 
+## The study app's shell
+
+`src/app/App.tsx` is the route table and nothing else. The frame is `src/app/Shell.tsx`: a
+three-column grid of navigation rail, work and aside, with the widths coming from `--nav-w`
+and `--aside-w` above.
+
+**The rail has two groups and the rule between them is the hierarchy.** Primary is what you
+came to do — the path at `/`, review, dictionary, chat. Below the rule is what you go looking
+for: videos, settings, data. Adding an item means deciding which side it belongs on; a rail
+where everything is primary is the seven equal-weight tabs this replaced.
+
+**The two breakpoints drop things in one order only.** The aside goes first, because it is
+commentary on the work, and the rail collapses to its glyphs second and never disappears.
+Navigation is the last thing a narrow window should lose.
+
+**The aside is derived, never authoritative.** Everything in it comes from one read in
+`src/app/Aside.tsx`; four panels each opening the database would be four transactions and
+four spinners landing separately down one column. There is no `Overview` screen any more —
+those numbers are these panels, because a stats dashboard as the front door is something to
+read rather than something to act on.
+
+Icons are hand-authored SVG in `src/app/icons.tsx`, on the model of `src/app/flags.tsx`: named
+exports, `currentColor`, one fixed viewBox. The extension ships offline, so a CDN is not an
+option and an icon font is a dependency for seven drawings.
+
 ## The setup surface
 
-`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** one of the tabs in
-`src/app/App.tsx`'s `TABS` array — it's reached from the popup when nothing is installed, and
-from a link in Settings, not from primary navigation. Its header explains why it runs the
-download itself rather than asking the service worker to.
+`src/app/SetupWizard.tsx` (route `#/setup`) is deliberately **not** in either rail group — it
+is reached from the popup when nothing is installed, and from the last row of the language
+menu in `src/app/LanguagePill.tsx`. That row is the reason the pill is rendered even when only
+one language exists: the popup's rule of hiding a one-option picker would hide the only front
+door to the wizard. Its header explains why it runs the download itself rather than asking the
+service worker to.
+
+The pill and the popup's `LanguageFilter` are two designs for one choice, not one design at two
+densities — the same split `.settings-group` makes. What they share is
+`src/settings/useStudyLanguages.ts`; two copies meant two `dictStatus()` round trips whose
+answers could disagree for a frame.
 
 ## Build-time shape
 

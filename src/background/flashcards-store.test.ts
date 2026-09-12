@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   applyReviewIn,
   captureSentenceIn,
@@ -12,7 +12,7 @@ import {
 } from './flashcards-store'
 import { openFlashcardsDb, STORES } from '../flashcards/db'
 import { done, request } from '../shared/idb'
-import { studyStreak } from '../flashcards/queries'
+import { reviewsOn, studyStreak } from '../flashcards/queries'
 import {
   grammarId,
   sentenceId,
@@ -636,6 +636,87 @@ describe('studyStreak', () => {
     const database = await db()
     await logReviews(database, NOW, [2, 3, 4])
     expect(await studyStreak(database, NOW)).toBe(0)
+  })
+})
+
+describe('reviewsOn', () => {
+  // Pinned, because the thing under test is a *local* midnight and the suite
+  // runs wherever the developer happens to be — in a zone with no daylight
+  // saving the interesting case does not exist at all. Berlin springs forward
+  // on 29 March 2026, so that night is 23 hours long.
+  // Reached through `globalThis` because this project's tsconfig carries the
+  // Chrome and Vite types and not Node's — the suite is the only thing here
+  // that runs outside a browser.
+  const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env
+  const HERE = env?.TZ
+  beforeAll(() => {
+    if (env) env.TZ = 'Europe/Berlin'
+  })
+  afterAll(() => {
+    if (env) env.TZ = HERE
+  })
+
+  async function logAt(database: IDBDatabase, times: number[]) {
+    const tx = database.transaction(STORES.reviews, 'readwrite')
+    for (const at of times) {
+      tx.objectStore(STORES.reviews).put({
+        itemId: 'w:zh:学',
+        at,
+        grade: 'good',
+        style: 'recognise',
+        intervalBefore: 0,
+        intervalAfter: 1,
+      })
+    }
+    await done(tx)
+  }
+
+  /** Local wall-clock time in the pinned zone, as an epoch. */
+  const local = (y: number, m: number, d: number, h: number, min = 0) =>
+    new Date(y, m - 1, d, h, min).getTime()
+
+  test('counts what you answered today and nothing from yesterday', async () => {
+    const database = await db()
+    const now = local(2026, 3, 12, 14)
+    await logAt(database, [
+      local(2026, 3, 11, 21),
+      local(2026, 3, 12, 0, 1),
+      local(2026, 3, 12, 9),
+      local(2026, 3, 12, 13, 59),
+    ])
+
+    expect(await reviewsOn(database, now)).toBe(3)
+  })
+
+  test('the day starts at midnight, not twenty-four hours ago', async () => {
+    // The hour that separates the two rules. Late last night is inside a rolling
+    // window and outside the day you are being told about, and a streak that
+    // says "1 review today" for something answered before bed is a number you
+    // stop believing.
+    const database = await db()
+    await logAt(database, [local(2026, 3, 11, 23, 30)])
+
+    expect(await reviewsOn(database, local(2026, 3, 12, 10))).toBe(0)
+  })
+
+  test('survives the short night the clocks change on', async () => {
+    // 29 March 2026 is 23 hours long in Berlin: noon minus 24 hours lands at
+    // 11:00 the previous day, so a fixed-width window would count yesterday
+    // lunchtime as today.
+    const database = await db()
+    // Self-check: every assertion here is written in local time, so if the zone
+    // pin above stopped working this case would quietly become an ordinary day
+    // and prove nothing.
+    expect(local(2026, 3, 29, 12) - local(2026, 3, 28, 12)).toBe(23 * 60 * 60 * 1000)
+
+    const springForward = local(2026, 3, 29, 12)
+    await logAt(database, [local(2026, 3, 28, 13), local(2026, 3, 29, 1, 30)])
+
+    expect(await reviewsOn(database, springForward)).toBe(1)
+  })
+
+  test('an empty log is nought, not a rejected promise', async () => {
+    expect(await reviewsOn(await db(), local(2026, 3, 12, 14))).toBe(0)
   })
 })
 

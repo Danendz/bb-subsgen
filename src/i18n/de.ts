@@ -6,14 +6,14 @@ import type { Messages } from './keys'
 
 export const de: Messages = {
   'app.title': 'Karteikarten',
-  'app.subtitle': 'Alles, was bb-subsgen beim Lesen für dich gesammelt hat.',
-  'app.tab.overview': 'Überblick',
-  'app.tab.review': 'Wiederholen',
-  'app.tab.chat': 'Chat',
-  'app.tab.dictionary': 'Wörterbuch',
-  'app.tab.videos': 'Videos',
-  'app.tab.data': 'Daten',
-  'app.tab.settings': 'Einstellungen',
+  'app.nav.label': 'Hauptnavigation',
+  'app.nav.learn': 'Lernen',
+  'app.nav.review': 'Wiederholen',
+  'app.nav.chat': 'Chat',
+  'app.nav.dictionary': 'Wörterbuch',
+  'app.nav.videos': 'Videos',
+  'app.nav.data': 'Daten',
+  'app.nav.settings': 'Einstellungen',
 
   'filter.studying': 'Ich lerne',
   'filter.all': 'Alle Sprachen',
@@ -143,21 +143,32 @@ export const de: Messages = {
   'settings.dicts.hint':
     'Füge eine Sprache hinzu, die du lernst, oder prüfe ein installiertes Wörterbuch auf Aktualisierungen.',
 
-  'overview.nothingToShow': 'Noch nichts zu zeigen.',
-  'overview.emptyTitle': 'Noch nichts gesammelt.',
-  'overview.emptyBody':
-    'Sieh dir ein Bilibili-Video mit Untertiteln an oder halte die Lesertaste auf einer freigeschalteten Seite — die Wörter, die du nachschlägst, landen hier.',
-  'overview.stat.words': 'Wörter gesammelt',
-  'overview.stat.known': 'Wörter bekannt',
-  'overview.stat.sentences': 'Sätze',
-  'overview.stat.grammar': 'Muster',
-  'overview.stat.pool': 'in der Warteschlange',
-  'overview.discovered': 'Entdeckt',
-  'overview.discoveredOf': '{found} der {total} häufigsten Wörter',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Es ist keine Wortliste geladen, deshalb kommen neue Karten in der Reihenfolge dran, in der du sie gefunden hast, und es gibt keinen Nenner, an dem sich der Fortschritt messen ließe. Lade eine unter {data} — dort steht, wo du eine bekommst.',
+  'pill.notInstalled': 'nicht installiert',
+  'pill.addLanguage': 'Sprache hinzufügen',
+
+  'learn.soonTitle': 'Hier entsteht dein Pfad.',
+  'learn.soonBody':
+    'Kreise aus acht Wörtern, jeder davon geöffnet, indem du seinen Wörtern beim Schauen begegnest. Bis dahin plant „Wiederholen“ weiterhin das ganze Deck.',
+  'learn.review': 'Zum Wiederholen',
+
+  'aside.today': 'Heute',
+  'aside.streakDays': { one: 'Tag in Folge', other: 'Tage in Folge' },
+  'aside.reviewsToday': { one: 'Wiederholung heute', other: 'Wiederholungen heute' },
+  'aside.deck': 'Dein Deck',
+  'aside.stat.words': 'Wörter gesammelt',
+  'aside.stat.known': 'Wörter bekannt',
+  'aside.stat.sentences': 'Sätze',
+  'aside.stat.grammar': 'Muster',
+  'aside.stat.toStudy': 'zu lernen',
+  'aside.stat.pool': 'Zeilen warten',
+  'aside.discovered': 'Entdeckt',
+  'aside.discoveredOf': '{found} der {total} häufigsten Wörter',
+  'aside.waiting': 'Wartende Wörter',
+  'aside.waitingEmpty': 'Nichts wartet \u2014 alles Gesammelte ist in Arbeit.',
+  'aside.startReview': 'Jetzt wiederholen',
+  'aside.fromVideos': 'Aus deinen Videos',
+  'aside.videoWords': { one: '{count} Wort', other: '{count} Wörter' },
+  'aside.noVideos': 'Noch nichts aus einem Video erfasst.',
 
   'mastery.known': 'Bekannt — das hast du selbst markiert',
   'mastery.mastered': 'Beherrscht — {level} von {max}',
@@ -433,7 +444,7 @@ export const de: Messages = {
   'data.lists.frequencyBlurb':
     'Bestimmt, welche neuen Wörter dir zuerst begegnen, und gibt dem Fortschritt einen Nenner.',
   'data.lists.levelsBlurb':
-    'Gruppiert das Wörterbuch nach {standard}-Stufe und ergänzt die Fortschrittsbalken im Überblick.',
+    'Gruppiert das Wörterbuch nach {standard}-Stufe, sodass sich das Deck Stufe für Stufe messen lässt.',
   'data.lists.loaded': '{name} — {count} Wörter, hinzugefügt am {date}',
   'data.lists.install': '{name} installieren',
   'data.lists.downloading': 'Lade herunter',

@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const es: Messages = {
   'app.title': 'Tarjetas',
-  'app.subtitle': 'Todo lo que bb-subsgen ha recogido mientras leías.',
-  'app.tab.overview': 'Resumen',
-  'app.tab.review': 'Repaso',
-  'app.tab.chat': 'Chat',
-  'app.tab.dictionary': 'Diccionario',
-  'app.tab.videos': 'Vídeos',
-  'app.tab.data': 'Datos',
-  'app.tab.settings': 'Ajustes',
+  'app.nav.label': 'Navegación principal',
+  'app.nav.learn': 'Aprender',
+  'app.nav.review': 'Repaso',
+  'app.nav.chat': 'Chat',
+  'app.nav.dictionary': 'Diccionario',
+  'app.nav.videos': 'Vídeos',
+  'app.nav.data': 'Datos',
+  'app.nav.settings': 'Ajustes',
 
   'filter.studying': 'Estudiando',
   'filter.all': 'Todos los idiomas',
@@ -141,21 +141,32 @@ export const es: Messages = {
   'settings.dicts.hint':
     'Añade un idioma que estudies, o comprueba si hay actualización de uno instalado.',
 
-  'overview.nothingToShow': 'Todavía no hay nada que mostrar.',
-  'overview.emptyTitle': 'Todavía no has recogido nada.',
-  'overview.emptyBody':
-    'Mira un vídeo de Bilibili con subtítulos, o mantén la tecla del lector en una página que hayas activado, y las palabras que consultes acabarán aquí.',
-  'overview.stat.words': 'palabras recogidas',
-  'overview.stat.known': 'palabras conocidas',
-  'overview.stat.sentences': 'frases',
-  'overview.stat.grammar': 'estructuras',
-  'overview.stat.pool': 'en espera',
-  'overview.discovered': 'Descubiertas',
-  'overview.discoveredOf': '{found} de las {total} palabras más frecuentes',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'No hay ninguna lista de palabras cargada, así que las tarjetas nuevas se introducen en el orden en que las encontraste y no hay denominador con el que medir el progreso. Carga una desde {data}: allí se explica dónde conseguirla.',
+  'pill.notInstalled': 'no instalado',
+  'pill.addLanguage': 'Añadir un idioma',
+
+  'learn.soonTitle': 'Aquí irá tu camino.',
+  'learn.soonBody':
+    'Círculos de ocho palabras, cada uno abierto al encontrarte con sus palabras mientras ves vídeos. Hasta que llegue, Repaso sigue programando todo el mazo.',
+  'learn.review': 'Ir a repasar',
+
+  'aside.today': 'Hoy',
+  'aside.streakDays': { one: 'día seguido', other: 'días seguidos' },
+  'aside.reviewsToday': { one: 'repaso hoy', other: 'repasos hoy' },
+  'aside.deck': 'Tu mazo',
+  'aside.stat.words': 'palabras recogidas',
+  'aside.stat.known': 'palabras conocidas',
+  'aside.stat.sentences': 'frases',
+  'aside.stat.grammar': 'estructuras',
+  'aside.stat.toStudy': 'por estudiar',
+  'aside.stat.pool': 'frases en espera',
+  'aside.discovered': 'Descubiertas',
+  'aside.discoveredOf': '{found} de las {total} palabras más frecuentes',
+  'aside.waiting': 'Palabras en espera',
+  'aside.waitingEmpty': 'Nada en espera: todo lo que has recogido está en marcha.',
+  'aside.startReview': 'Repasar ahora',
+  'aside.fromVideos': 'De tus vídeos',
+  'aside.videoWords': { one: '{count} palabra', other: '{count} palabras' },
+  'aside.noVideos': 'Todavía no has capturado nada de un vídeo.',
 
   'mastery.known': 'Conocida — la marcaste tú',
   'mastery.mastered': 'Dominada — {level} de {max}',
@@ -431,7 +442,7 @@ export const es: Messages = {
   'data.lists.frequencyBlurb':
     'Ordena qué palabras nuevas encuentras primero, y le da un denominador al progreso.',
   'data.lists.levelsBlurb':
-    'Agrupa el diccionario por nivel {standard} y añade las barras de progreso del Resumen.',
+    'Agrupa el diccionario por nivel {standard}, para poder medir el mazo nivel a nivel.',
   'data.lists.loaded': '{name} — {count} palabras, añadida el {date}',
   'data.lists.install': 'Instalar {name}',
   'data.lists.downloading': 'Descargando',

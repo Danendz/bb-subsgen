@@ -4,14 +4,14 @@ import type { Messages } from './keys'
 
 export const ru: Messages = {
   'app.title': 'Карточки',
-  'app.subtitle': 'Всё, что bb-subsgen собрал, пока вы читали.',
-  'app.tab.overview': 'Обзор',
-  'app.tab.review': 'Повторение',
-  'app.tab.chat': 'Чат',
-  'app.tab.dictionary': 'Словарь',
-  'app.tab.videos': 'Видео',
-  'app.tab.data': 'Данные',
-  'app.tab.settings': 'Настройки',
+  'app.nav.label': 'Основная навигация',
+  'app.nav.learn': 'Учить',
+  'app.nav.review': 'Повторение',
+  'app.nav.chat': 'Чат',
+  'app.nav.dictionary': 'Словарь',
+  'app.nav.videos': 'Видео',
+  'app.nav.data': 'Данные',
+  'app.nav.settings': 'Настройки',
 
   'filter.studying': 'Изучаю',
   'filter.all': 'Все языки',
@@ -143,21 +143,47 @@ export const ru: Messages = {
   'settings.dicts.hint':
     'Добавьте язык, который вы изучаете, или проверьте обновления для установленного.',
 
-  'overview.nothingToShow': 'Пока нечего показать.',
-  'overview.emptyTitle': 'Пока ничего не собрано.',
-  'overview.emptyBody':
-    'Посмотрите видео на Bilibili с субтитрами или удержите клавишу чтения на разрешённой странице — и слова, которые вы посмотрите, окажутся здесь.',
-  'overview.stat.words': 'слов собрано',
-  'overview.stat.known': 'слов известно',
-  'overview.stat.sentences': 'предложений',
-  'overview.stat.grammar': 'конструкций',
-  'overview.stat.pool': 'в очереди',
-  'overview.discovered': 'Открыто',
-  'overview.discoveredOf': '{found} из {total} самых частых слов',
-  'overview.hsk': 'HSK',
-  'overview.hskLevel': 'HSK {level}',
-  'overview.noWordList':
-    'Частотный список не загружен, поэтому новые карточки вводятся в том порядке, в каком вы их нашли, и прогресс не с чем сравнивать. Загрузите список из раздела {data} — там написано, где его взять.',
+  'pill.notInstalled': 'не установлен',
+  'pill.addLanguage': 'Добавить язык',
+
+  'learn.soonTitle': 'Здесь появится ваш путь.',
+  'learn.soonBody':
+    'Круги по восемь слов; каждый открывается, когда вы встретите его слова во время просмотра. Пока его нет, «Повторение» по-прежнему планирует всю колоду.',
+  'learn.review': 'К повторению',
+
+  'aside.today': 'Сегодня',
+  'aside.streakDays': {
+    one: 'день подряд',
+    few: 'дня подряд',
+    many: 'дней подряд',
+    other: 'дня подряд',
+  },
+  'aside.reviewsToday': {
+    one: 'повторение сегодня',
+    few: 'повторения сегодня',
+    many: 'повторений сегодня',
+    other: 'повторения сегодня',
+  },
+  'aside.deck': 'Ваша колода',
+  'aside.stat.words': 'слов собрано',
+  'aside.stat.known': 'слов известно',
+  'aside.stat.sentences': 'предложений',
+  'aside.stat.grammar': 'конструкций',
+  'aside.stat.toStudy': 'изучить',
+  'aside.stat.pool': 'строк в очереди',
+  'aside.discovered': 'Открыто',
+  'aside.discoveredOf': '{found} из {total} самых частых слов',
+  'aside.waiting': 'Слова в очереди',
+  'aside.waitingEmpty': 'Ничего не ждёт \u2014 всё собранное уже в работе.',
+  'aside.startReview': 'Повторить сейчас',
+  'aside.fromVideos': 'Из ваших видео',
+  'aside.videoWords': {
+    one: '{count} слово',
+    few: '{count} слова',
+    many: '{count} слов',
+    other: '{count} слова',
+  },
+  'aside.noVideos': 'Из видео пока ничего не собрано.',
 
   'mastery.known': 'Известно — вы отметили это сами',
   'mastery.mastered': 'Освоено — {level} из {max}',
@@ -460,7 +486,7 @@ export const ru: Messages = {
   'data.lists.frequencyBlurb':
     'Задаёт порядок, в котором вы встречаете новые слова, и даёт прогрессу знаменатель.',
   'data.lists.levelsBlurb':
-    'Группирует словарь по уровням {standard} и добавляет полосы прогресса в «Обзор».',
+    'Группирует словарь по уровням {standard}, чтобы колоду можно было мерить по уровням.',
   'data.lists.loaded': '{name} — слов: {count}, добавлено {date}',
   'data.lists.install': 'Установить {name}',
   'data.lists.downloading': 'Загрузка',

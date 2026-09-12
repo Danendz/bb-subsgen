@@ -99,6 +99,12 @@
      popup row, and these are the whole difference between the two. Defaults are
      the page's; src/popup/style.css tightens them. */
   --rail-w: 180px;
+  /* The study app's three columns. Here rather than in its own stylesheet for
+     the reason the rest of this block is: a width repeated in a media query and
+     in a grid is two places to disagree. The popup declares no shell and simply
+     never reads them. */
+  --nav-w: 210px;
+  --aside-w: 290px;
   --row-y: 10px;
   --btn-size: 14px;
   --btn-pad: 8px 14px;

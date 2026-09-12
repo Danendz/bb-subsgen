@@ -11,37 +11,21 @@
 // the settings rows, which then render for any installed language rather than
 // for one.
 //
-// Lists every language the wizard was told about, not only the downloaded ones:
-// one you ticked and never installed is offered disabled, because dropping it
-// would leave the wizard as the only place that mentions the missing download,
-// and offering it live would empty every lookup on the page.
-//
-// Asks the worker for the installed set rather than opening the dictionary
-// database, so the popup keeps paying a message instead of a store.
+// This is the popup's form of the control, and the only one now: the app draws
+// the same choice as a flag pill in its rail (src/app/LanguagePill.tsx). What
+// the two share is useStudyLanguages.ts, whose header says why that is a split
+// rather than a density token.
 
-import { useEffect, useState } from 'preact/hooks'
-import { enabledSources } from '../dict/sources'
-import { dictStatus } from '../shared/dict-client'
 import { Select } from './controls'
-import { useSettings } from './useSettings'
+import { useStudyLanguages } from './useStudyLanguages'
 import { useT } from '../i18n/useT'
 
 export function LanguageFilter() {
   const { t } = useT()
-  const { settings, loaded, update } = useSettings()
-  const [installed, setInstalled] = useState<ReadonlySet<string> | null>(null)
+  const { languages, installed, studyLang, ready, choose } = useStudyLanguages()
 
-  useEffect(() => {
-    void dictStatus().then((languages) =>
-      setInstalled(
-        new Set(languages.filter((entry) => entry.installed).map((entry) => entry.lang)),
-      ),
-    )
-  }, [])
+  if (!ready) return null
 
-  if (!loaded || !installed) return null
-
-  const languages = enabledSources(settings.enabledLanguages)
   // Hidden below two, the same rule the pickers this replaces followed: a
   // control whose only options are All and the language you are already in is
   // one more thing on the screen and no choice at all.
@@ -51,7 +35,7 @@ export function LanguageFilter() {
     <div class="lang-filter">
       <Select
         label={t('filter.studying')}
-        value={settings.studyLang}
+        value={studyLang}
         options={[
           { code: '', label: t('filter.all') },
           // A language chosen in the wizard and never downloaded is listed and
@@ -66,7 +50,7 @@ export function LanguageFilter() {
             disabled: !installed.has(source.lang),
           })),
         ]}
-        onChange={(v) => update({ studyLang: v })}
+        onChange={choose}
       />
     </div>
   )

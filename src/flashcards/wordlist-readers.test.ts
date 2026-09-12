@@ -24,7 +24,7 @@ describe('the hsk30 reader, reading frequency', () => {
 
   test('re-ranks by position, because the file ranks 11,377 words with 9,113 numbers', () => {
     // `q` is a raw SUBTLEX rank with ties and gaps — 了 and 我 really do share
-    // rank 3. Passed through, the Overview bar would report a denominator of a
+    // rank 3. Passed through, the discovered bar would report a denominator of a
     // million; positional ranks give it the number of words there actually are.
     const rows = frequency(
       payload([entry('我', 3, ['n1']), entry('的', 1, ['n1']), entry('了', 3, ['n1'])]),

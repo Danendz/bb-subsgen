@@ -127,6 +127,46 @@ export function studyStreak(db: IDBDatabase, now = Date.now()): Promise<number> 
   })
 }
 
+/**
+ * Reviews answered on the calendar day containing `now`.
+ *
+ * The number beside the streak: the streak says you turned up, this says what
+ * you did once you were here, and a streak with a zero under it is the prompt
+ * to start.
+ *
+ * Bounded below by local midnight through the `by-at` index and stopped at the
+ * first row belonging to another day, so it costs today rather than the whole
+ * log. The boundary comes from `startOfDay`, not from `now - 24h`, for the
+ * reason `previousDay` exists: the night the clocks change is 23 or 25 hours
+ * long, and a fixed-width window would take in yesterday evening or miss this
+ * morning twice a year.
+ *
+ * Whole-deck, like `studyStreak` and for the same reason — a review row carries
+ * only an `itemId`, and "did you study today" is not a question about one
+ * language.
+ */
+export function reviewsOn(db: IDBDatabase, now = Date.now()): Promise<number> {
+  const index = db
+    .transaction(STORES.reviews, 'readonly')
+    .objectStore(STORES.reviews)
+    .index('by-at')
+  const midnight = startOfDay(now)
+
+  return new Promise((resolve, reject) => {
+    const req = index.openCursor(IDBKeyRange.lowerBound(midnight))
+    let count = 0
+
+    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (!cursor) return resolve(count)
+      if (startOfDay((cursor.value as Review).at) !== midnight) return resolve(count)
+      count += 1
+      cursor.continue()
+    }
+  })
+}
+
 export interface HskProgress {
   level: number
   known: number
