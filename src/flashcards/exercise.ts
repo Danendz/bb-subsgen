@@ -10,7 +10,10 @@
 // asked to be produced however the setting is set — that is not a test of
 // memory, it is a test of the last five minutes — and a word known for three
 // months is still allowed the easy question, because unlocks accumulate and
-// keeping recognition warm is part of what mixed mode is for.
+// keeping recognition warm is part of what mixed mode is for. At the top it is
+// asked to be *used*: blanked inside one of the real lines it was captured
+// from, which is the only exercise here that reads a card's contexts past the
+// most recent one.
 //
 // The rule that shapes everything here: a prompt must carry exactly one cue —
 // the meaning, or the sound — and never zero. A blanked line with no cue is not
@@ -137,38 +140,106 @@ export function tiersFor(item: Pick<Item, 'interval' | 'level'>): Tier[] {
   return UNLOCKS.filter(([, at]) => level >= at).map(([tier]) => tier)
 }
 
-const ROTATION: ReadonlyArray<Exclude<StudyMode, 'mixed'>> = ['remember', 'type', 'audio']
+/**
+ * One angle a card can be met from.
+ *
+ * Not the same list as `StudyMode`, and that is the point: `context` is a
+ * question the setting has no name for. The study mode is a preference the
+ * reader expressed once; an ask is what this card, at this rung, is actually
+ * put on screen as.
+ */
+export type Ask = 'remember' | 'type' | 'audio' | 'context'
 
 /**
- * Which mode a card is met in.
+ * Every ask, the mode that reaches it and the tier that unlocks it.
  *
- * `mixed` rotates off the card's review count rather than choosing at random,
- * so a word is met from a different angle each sitting instead of the same one
- * three times running. Because the cards in any one session sit at different
- * rep counts, that still gives a varied session. It rotates over the modes the
- * card has *unlocked*, so a fresh card in mixed mode alternates recognition and
- * listening rather than being asked to produce a word it has met once.
+ * Order is the rotation order, so a mixed sitting alternates recognising a word
+ * and using it rather than pairing the two hardest asks back to back.
  *
- * A mode the card has not earned falls back to `remember` rather than failing,
- * the same way asking for audio on a machine with no voice already did. That
- * makes the rung the ceiling and the setting a choice underneath it: `type` on
- * a card below the production rung is a request the card cannot yet answer.
+ * `audio` sits in the recognition tier because listening is not itself
+ * production — below the production rung it asks you to pick what you heard
+ * rather than to write it, which is what keeps audio-only study working on a
+ * deck of new cards. See `exerciseFor`.
  *
- * `audio` is not gated, because listening is not itself production — below the
- * production rung it asks you to pick what you heard rather than to write it.
- * See `exerciseFor`.
+ * `context` is reached by `type` rather than by a mode of its own, which is why
+ * that mode rotates between two asks once a word is mature: producing a word in
+ * isolation and producing it into a sentence you met it in are the same request
+ * at two strengths, and the tier accumulating means the weaker one does not go
+ * away.
+ *
+ * `kinds` is on `context` alone. A sentence card *is* its line and a pattern
+ * card is asked to build one, so neither has a word to be met inside a sentence
+ * — the contextual tier is a thing only a word card can do.
  */
-export function modeFor(
-  item: Pick<Item, 'reps' | 'interval' | 'level'>,
+const ASKS: ReadonlyArray<{
+  ask: Ask
+  mode: Exclude<StudyMode, 'mixed'>
+  tier: Tier
+  kinds?: ReadonlyArray<Item['kind']>
+}> = [
+  { ask: 'remember', mode: 'remember', tier: 'recognition' },
+  { ask: 'type', mode: 'type', tier: 'production' },
+  { ask: 'audio', mode: 'audio', tier: 'recognition' },
+  { ask: 'context', mode: 'type', tier: 'contextual', kinds: ['word'] },
+]
+
+/** What `askFor` chooses between. */
+type Asked = Pick<Item, 'reps' | 'interval' | 'level' | 'kind'>
+
+/**
+ * Which angle a card is met from.
+ *
+ * Two filters and a rotation. The rung says which asks the card has *earned*,
+ * the mode says which of those the reader wants, and `reps` picks between what
+ * is left — so a word is met from a different angle each sitting instead of the
+ * same one three times running, and deterministically rather than at random.
+ * Because the cards in any one session sit at different rep counts, that still
+ * gives a varied session.
+ *
+ * A mode with nothing unlocked under it falls back to `remember` rather than
+ * failing, the same way asking for audio on a machine with no voice already
+ * did. That makes the rung the ceiling and the setting a choice underneath it:
+ * `type` on a card below the production rung is a request the card cannot yet
+ * answer. `remember` is unlocked at every rung and needs no hardware, so the
+ * fallback pool is never empty.
+ */
+export function askFor(item: Asked, mode: StudyMode, canSpeak: boolean): Ask {
+  const tiers = tiersFor(item)
+  const unlocked = ASKS.filter(
+    (a) =>
+      tiers.includes(a.tier) &&
+      (a.mode !== 'audio' || canSpeak) &&
+      (a.kinds === undefined || a.kinds.includes(item.kind)),
+  )
+  const wanted = mode === 'mixed' ? unlocked : unlocked.filter((a) => a.mode === mode)
+  const pool = wanted.length > 0 ? wanted : unlocked.filter((a) => a.mode === 'remember')
+  return pool[item.reps % pool.length].ask
+}
+
+/**
+ * Which of the card's captured lines the prompt is built from.
+ *
+ * An index rather than the `Context` itself, so this stays testable without
+ * building one, and so the caller can read the same entry for the line, its
+ * translation and its video.
+ *
+ * Everything but the contextual ask reads the most recent, which is what the
+ * screen has always done. The contextual ask is the first thing in the app to
+ * read any of the others: a word met across ten videos has nine lines that
+ * nothing has ever shown, and rotating them off `reps` is what turns those into
+ * questions. A card holding one context still answers with it — the same
+ * sentence every time is a real sentence the word was met in, which is a weaker
+ * version of this exercise rather than a broken one.
+ */
+export function contextFor(
+  item: Asked & Pick<Item, 'contexts'>,
   mode: StudyMode,
   canSpeak: boolean,
-): Exclude<StudyMode, 'mixed'> {
-  const producing = tiersFor(item).includes('production')
-  const available = ROTATION.filter(
-    (m) => (m !== 'audio' || canSpeak) && (m !== 'type' || producing),
-  )
-  if (mode !== 'mixed') return available.includes(mode) ? mode : 'remember'
-  return available[item.reps % available.length]
+): number {
+  const last = item.contexts.length - 1
+  if (last < 0) return 0
+  if (askFor(item, mode, canSpeak) !== 'context') return last
+  return item.reps % item.contexts.length
 }
 
 /**
@@ -196,16 +267,19 @@ function cloze(can: Capability): Exercise {
  * asked.
  *
  * Two ceilings, and they are not the same thing. The rung says how demanding a
- * question the card has *earned* (`tiersFor`); the capability says what this
- * card and this machine can actually put on screen. Degradation goes below the
- * unlocked tier and never above it — the cued cloze is the terminal fallback
- * for a card that cannot be asked any other way, at any rung, which is why it
- * is not what the contextual tier unlocks. That tier is the *deliberate* choice
- * to ask a mature word inside a sentence it was met in, and it is built in its
- * own slice.
+ * question the card has *earned* (`tiersFor`, then `askFor`); the capability
+ * says what this card and this machine can actually put on screen. Degradation
+ * goes below the unlocked tier and never above it.
+ *
+ * So the cued cloze is reached two different ways, and only one of them is the
+ * contextual tier. A card that cannot be asked any other way falls to it at any
+ * rung — that is the terminal fallback, and it is what let self-grading go. A
+ * mature word is *sent* there by `ask === 'context'` with everything else still
+ * available to it. The exercise is the same; what differs is which line it is
+ * built from, and that is `contextFor`'s answer rather than this one's.
  */
 export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exercise {
-  const resolved = modeFor(item, mode, can.canSpeak)
+  const ask = askFor(item, mode, can.canSpeak)
   const producing = tiersFor(item).includes('production')
 
   // A pattern has no sound of its own — a skeleton is not a sentence — so the
@@ -219,7 +293,7 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
     // dropped from the language pack and there is no explanation left to offer
     // as the right answer. The second is degradation and ignores the rung — a
     // dropped pattern has no recognition question left to fall back to.
-    const builds = (producing && resolved !== 'remember') || !can.hasChoices
+    const builds = (producing && ask !== 'remember') || !can.hasChoices
     if (builds && can.hasTranslation) {
       return { style: 'type', cue: 'pattern', response: 'tiles', autoSpeak: false }
     }
@@ -235,7 +309,15 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
   }
 
   if (item.kind === 'word') {
-    if (resolved === 'audio') {
+    // The tier this whole ladder was built towards: the word blanked inside one
+    // of the real lines it was captured from, cued by its own definition beside
+    // the gap. `contextFor` chose which line; this only says that it is asked
+    // for. A word the chosen line cannot be blanked out of falls through to the
+    // production question below rather than down to recognition — the ask was
+    // for production, and losing the sentence is not losing the rung.
+    if (ask === 'context' && can.hasTarget) return cloze(can)
+
+    if (ask === 'audio') {
       if (producing) return { style: 'audio', cue: 'audio', response: 'text', autoSpeak: true }
       // Heard, not yet written. Below the production rung the sound is still the
       // whole prompt — nothing is on screen until you answer — but the answer is
@@ -257,9 +339,11 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
       // keystrokes and a candidate list, and the question is whether you know
       // the word — the typing escape is there for anyone who would rather type
       // it.
-      // Only ever reached from the production rung up: `modeFor` answers
-      // `remember` for a card that has not earned `type` yet.
-      if (resolved === 'type') {
+      // Only ever reached from the production rung up: `askFor` answers
+      // `remember` for a card that has not earned `type` yet. `context` lands
+      // here too when its line could not be blanked, which is the same request
+      // without the sentence around it.
+      if (ask === 'type' || ask === 'context') {
         return { style: 'type', cue: 'gloss', response: 'tiles', autoSpeak: false }
       }
       // The characters, and four meanings to choose between. The style logged
@@ -275,7 +359,7 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
     return orphan()
   }
 
-  if (resolved === 'remember') {
+  if (ask === 'remember') {
     // The line, and four things it might mean. Same style logged as before —
     // what the card asks has not changed, only who decides whether the answer
     // was right.
@@ -288,7 +372,7 @@ export function exerciseFor(item: Item, mode: StudyMode, can: Capability): Exerc
 
   // Audio mode withholds the line entirely, so the sound is the only cue and
   // the translation is kept back for the answer.
-  if (resolved === 'audio' && can.canSpeak) {
+  if (ask === 'audio' && can.canSpeak) {
     // The same split as a word's: below the production rung, hearing the line
     // asks what it meant rather than asking you to rebuild it.
     if (!producing && can.hasChoices) {

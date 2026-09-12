@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { applyReview } from '../../background/flashcards-store'
 import { vocabularyIn } from '../../flashcards/capture'
 import { chooseTarget, fallbackTarget } from '../../flashcards/cloze'
-import { exerciseFor } from '../../flashcards/exercise'
+import { contextFor, exerciseFor } from '../../flashcards/exercise'
 import { DAY_MS, levelOf, MAX_LEVEL, reschedules } from '../../flashcards/scheduler'
 import { Pips } from '../mastery'
 import { answerOf, buildBank, distractorChars, isCorrect, seedFor } from '../../flashcards/wordbank'
@@ -202,17 +202,23 @@ export function Session({
   })
   const inputRef = useRef<HTMLInputElement | null>(null)
 
+  // Which captured line this card is being met in. The most recent one for
+  // almost every card, and one of the earlier ones once a word is mature enough
+  // to be asked to use it — see `contextFor`. Resolved before the exercise is,
+  // because the line decides what can be blanked out of it and so feeds the
+  // capabilities the exercise is chosen from.
+  const context =
+    current === null
+      ? undefined
+      : current.contexts[contextFor(current, mode, canSpeak(words.pack.voiceLang))]
+
   // The Chinese line this card puts on screen: a word's example, or the
   // sentence itself. Named here because both the definitions and the renderer
   // need it, and because for a word card it is not the card's own text.
   // A grammar card is the same shape as a word card here: its own `text` is a
   // skeleton, not Chinese, so the line it shows has to come from an example.
   const line =
-    current === null
-      ? ''
-      : current.kind === 'sentence'
-        ? current.text
-        : (current.contexts[current.contexts.length - 1]?.text ?? '')
+    current === null ? '' : current.kind === 'sentence' ? current.text : (context?.text ?? '')
 
   // Every word on screen, in one batched round trip. A lookup per word would be
   // a message per word, and the line is known in full before it is rendered.
@@ -235,7 +241,6 @@ export function Session({
   const card = useMemo(() => {
     if (!current) return null
 
-    const context = current.contexts[current.contexts.length - 1]
     const translation = context?.translation ?? ''
     // Segmented from the example for a grammar card — `current.text` is the
     // skeleton, which is not a sentence and has no tiles in it.
@@ -305,7 +310,6 @@ export function Session({
       current.kind === 'sentence' ? distinctPatterns(words.pack.findPatterns(tokens)) : []
 
     return {
-      context,
       translation,
       tokens,
       target,
@@ -492,7 +496,6 @@ export function Session({
    * over the session and closing it puts you back on the same card.
    */
   const explain = async () => {
-    const context = card?.context
     if (!current || !context?.text || opening) return
 
     setOpening(true)
@@ -605,8 +608,7 @@ export function Session({
     )
   }
 
-  const { exercise, context, translation, blank, clozeText, bank, options, patterns, exampleText } =
-    card
+  const { exercise, translation, blank, clozeText, bank, options, patterns, exampleText } = card
   // The card's own pattern, as opposed to `patterns`, which is everything the
   // example line happens to contain.
   const ownPattern = current.patternId ? words.pack.patternById(current.patternId) : undefined

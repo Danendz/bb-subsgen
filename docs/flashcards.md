@@ -43,6 +43,11 @@ rather than replace, so a word you've known for months can still come up as a qu
 recognition question, and rotation mixes over everything that card has unlocked. Getting
 one wrong drops it a rung, and the next question it asks eases with it.
 
+From the fifth rung a word is asked to be *used*: it turns up blanked inside one of the
+real lines you captured it from — a subtitle from a video, a sentence from a page — with
+its meaning beside the gap. This is the one exercise that reads past a card's most recent
+context, so a word you've met across ten videos is met again in each of them in turn.
+
 A sitting is never empty. Once what's due and the day's new material run out, the rest is
 filled with practice drawn from the deck — coldest first, most frequent among cards last
 met on the same day, so it works through everything you've collected rather than the same

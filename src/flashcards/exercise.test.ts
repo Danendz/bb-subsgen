@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { exerciseFor, modeFor, tiersFor, type Capability } from './exercise'
+import { askFor, contextFor, exerciseFor, tiersFor, type Capability } from './exercise'
 import type { Item, StudyMode } from './types'
 
 function make(partial: Partial<Item> & Pick<Item, 'kind' | 'text'>): Item {
@@ -36,10 +36,10 @@ const able: Capability = {
   hasChoices: true,
 }
 
-describe('modeFor', () => {
+describe('askFor', () => {
   test('a chosen mode is used as chosen', () => {
     for (const mode of ['remember', 'type', 'audio'] as const) {
-      expect(modeFor(word(), mode, true)).toBe(mode)
+      expect(askFor(word(), mode, true)).toBe(mode)
     }
   })
 
@@ -47,9 +47,9 @@ describe('modeFor', () => {
   // it: asking a word met once yesterday to be produced tests the last five
   // minutes rather than memory.
   test('asking to produce a card that has not earned it falls back rather than failing', () => {
-    expect(modeFor(word({ level: 0 }), 'type', true)).toBe('remember')
-    expect(modeFor(word({ level: 1 }), 'type', true)).toBe('remember')
-    expect(modeFor(word({ level: 2 }), 'type', true)).toBe('type')
+    expect(askFor(word({ level: 0 }), 'type', true)).toBe('remember')
+    expect(askFor(word({ level: 1 }), 'type', true)).toBe('remember')
+    expect(askFor(word({ level: 2 }), 'type', true)).toBe('type')
   })
 
   // Listening is not production — below the production rung it asks you to pick
@@ -57,39 +57,39 @@ describe('modeFor', () => {
   // rather than going silent.
   test('audio-only study still listens at every rung', () => {
     for (const level of [0, 1, 2, 6]) {
-      expect(modeFor(word({ level }), 'audio', true)).toBe('audio')
+      expect(askFor(word({ level }), 'audio', true)).toBe('audio')
     }
   })
 
   test('mixed rotates off the review count, not at random', () => {
     // A word met from a different angle each sitting, rather than the same one
     // three times running.
-    const met = [0, 1, 2, 3, 4].map((reps) => modeFor(word({ reps }), 'mixed', true))
+    const met = [0, 1, 2, 3, 4].map((reps) => askFor(word({ reps }), 'mixed', true))
     expect(met).toEqual(['remember', 'type', 'audio', 'remember', 'type'])
   })
 
   test('with no voice, mixed rotates through what is left', () => {
-    const met = [0, 1, 2, 3].map((reps) => modeFor(word({ reps }), 'mixed', false))
+    const met = [0, 1, 2, 3].map((reps) => askFor(word({ reps }), 'mixed', false))
     expect(met).toEqual(['remember', 'type', 'remember', 'type'])
   })
 
   // A fresh card rotates between recognising it and hearing it, and never
   // reaches the third. Deterministic off `reps` at every rung, not just the top.
   test('mixed rotates only over what a fresh card has unlocked', () => {
-    const met = [0, 1, 2, 3].map((reps) => modeFor(word({ reps, level: 0 }), 'mixed', true))
+    const met = [0, 1, 2, 3].map((reps) => askFor(word({ reps, level: 0 }), 'mixed', true))
     expect(met).toEqual(['remember', 'audio', 'remember', 'audio'])
   })
 
   // The rotation widens at the threshold and nowhere either side of it.
   test('production joins the rotation at the third rung, and not before', () => {
     const modes = (level: number) =>
-      [0, 1, 2].map((reps) => modeFor(word({ reps, level }), 'mixed', true))
+      [0, 1, 2].map((reps) => askFor(word({ reps, level }), 'mixed', true))
     expect(modes(1)).toEqual(['remember', 'audio', 'remember'])
     expect(modes(2)).toEqual(['remember', 'type', 'audio'])
   })
 
   test('choosing audio on a machine with no voice falls back rather than failing', () => {
-    expect(modeFor(word(), 'audio', false)).toBe('remember')
+    expect(askFor(word(), 'audio', false)).toBe('remember')
   })
 })
 
@@ -443,5 +443,104 @@ describe('the rung decides what a card may be asked', () => {
     expect(exerciseFor(word({ level: 0 }), 'audio', { ...able, hasChoices: false })).toMatchObject({
       cue: 'cloze',
     })
+  })
+})
+
+describe('contextFor', () => {
+  const met = (...lines: string[]) =>
+    lines.map((text, i) => ({ text, translation: `what ${text} means`, at: i }))
+
+  // Which line a card is met in was the most recent one for as long as there
+  // has been a review screen. Everything below the contextual tier still is.
+  test('below the contextual tier a card is met in the line it was met in last', () => {
+    const item = word({ level: 3, reps: 1, contexts: met('一', '二', '三') })
+    for (const mode of ['remember', 'type', 'audio', 'mixed'] as const) {
+      expect(contextFor(item, mode, true)).toBe(2)
+    }
+  })
+
+  // The point of the tier. A word met across ten videos had nine lines that
+  // nothing ever showed; the rotation is what turns them into questions. Read
+  // at the reps where mixed's four-ask rotation lands on the contextual one —
+  // the sittings in between are the earlier exercises, which still meet the
+  // most recent line.
+  test('a mature word is met across all its lines, not only the last', () => {
+    const contexts = met('一', '二', '三')
+    const seen = [3, 7, 11, 15].map((reps) =>
+      contextFor(word({ level: 4, reps, contexts }), 'mixed', true),
+    )
+    expect(seen).toEqual([0, 1, 2, 0])
+  })
+
+  // A deck where most cards carry one context is the open risk this tier was
+  // filed with. One is not a failure — it is the same real sentence every time,
+  // which is a weaker version of the exercise rather than a broken one.
+  test('a word carrying one line is still met in it', () => {
+    const item = word({ level: 6, reps: 7, contexts: met('一') })
+    expect(contextFor(item, 'type', true)).toBe(0)
+  })
+
+  // Nothing to index into. The caller reads `contexts[0]` off the end and gets
+  // undefined, which is the orphan card it already handles.
+  test('a card with no lines at all indexes nothing rather than NaN', () => {
+    expect(contextFor(word({ level: 6, reps: 3, contexts: [] }), 'type', true)).toBe(0)
+  })
+
+  // Only a word card has a word to be met inside a sentence. A sentence card is
+  // its line and a pattern card is asked to build one.
+  test('lines and patterns keep meeting their most recent context', () => {
+    const contexts = met('一', '二', '三')
+    expect(contextFor(line({ level: 6, reps: 1, contexts }), 'type', true)).toBe(2)
+    expect(contextFor(pattern({ level: 6, reps: 1, contexts }), 'type', true)).toBe(2)
+  })
+})
+
+describe('the contextual tier', () => {
+  // The exercise this whole ladder was built towards: the word blanked inside a
+  // line it was really captured from, cued by its own definition beside the gap
+  // — and graded by the app, like every other.
+  test('a mature word is asked to use it, blanked into a line it was captured in', () => {
+    expect(exerciseFor(word({ level: 4, reps: 1 }), 'type', able)).toEqual({
+      style: 'cloze',
+      cue: 'cloze',
+      response: 'tiles',
+      autoSpeak: true,
+    })
+  })
+
+  // The threshold, and both sides of it. L3 is still the isolated production
+  // question; L4 is the sentence.
+  test('contextual use unlocks at the fifth rung, and not before', () => {
+    expect(exerciseFor(word({ level: 3, reps: 1 }), 'type', able)).toMatchObject({ cue: 'gloss' })
+    expect(exerciseFor(word({ level: 4, reps: 1 }), 'type', able)).toMatchObject({ cue: 'cloze' })
+  })
+
+  // Accumulation, which is what stops the top of the ladder being uniformly
+  // hard: `type` alternates producing the word alone and producing it into a
+  // sentence, and recognition and listening are still in the mixed rotation.
+  test('a mature word still meets every earlier exercise', () => {
+    const typed = [0, 1, 2, 3].map((reps) => exerciseFor(word({ reps, level: 5 }), 'type', able))
+    expect(typed.map((e) => e.cue)).toEqual(['gloss', 'cloze', 'gloss', 'cloze'])
+
+    const mixed = [0, 1, 2, 3].map((reps) => exerciseFor(word({ reps, level: 5 }), 'mixed', able))
+    expect(mixed.map((e) => e.cue)).toEqual(['hanzi', 'gloss', 'audio', 'cloze'])
+  })
+
+  // A word whose chosen line does not contain it — a headword that segments out
+  // of the sentence it was captured from — loses the sentence, not the rung.
+  test('a line the word cannot be blanked out of falls back to production, not recognition', () => {
+    expect(
+      exerciseFor(word({ level: 4, reps: 1 }), 'type', { ...able, hasTarget: false }),
+    ).toMatchObject({
+      cue: 'gloss',
+      response: 'tiles',
+    })
+  })
+
+  test('lines and patterns never reach it — neither has a word to meet inside a sentence', () => {
+    const mixed = (kind: typeof line) =>
+      [0, 1, 2, 3].map((reps) => askFor(kind({ reps, level: 6 }), 'mixed', true))
+    expect(mixed(line)).toEqual(['remember', 'type', 'audio', 'remember'])
+    expect(mixed(pattern)).toEqual(['remember', 'type', 'audio', 'remember'])
   })
 })
