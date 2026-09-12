@@ -144,10 +144,50 @@ export const es: Messages = {
   'pill.notInstalled': 'no instalado',
   'pill.addLanguage': 'Añadir un idioma',
 
-  'learn.soonTitle': 'Aquí irá tu camino.',
-  'learn.soonBody':
-    'Círculos de ocho palabras, cada uno abierto al encontrarte con sus palabras mientras ves vídeos. Hasta que llegue, Repaso sigue programando todo el mazo.',
+  'learn.title': 'Tu camino',
+  'learn.blurb':
+    'Círculos de ocho palabras en orden de frecuencia. Un círculo se abre cuando todas sus palabras están en tu mazo: ver vídeos es lo que construye el camino.',
+  'learn.needList.title': 'El camino se construye a partir de una lista de frecuencia.',
+  'learn.needList.body':
+    'Todavía no hay nada ordenado, así que no hay camino que recorrer. El asistente de configuración instala la lista junto al diccionario.',
+  'learn.needList.action': 'Abrir la configuración',
+  'learn.noList.title': 'Aún no hay lista de frecuencia para este idioma.',
+  'learn.noList.body':
+    'El camino la necesita para ordenar las palabras, y para este idioma todavía no existe. El repaso sigue programando todo lo que captures.',
   'learn.review': 'Ir a repasar',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Sección {n}',
+  'path.sectionProgress': '{done} de {total} dominados',
+  'path.unit': 'Unidad {n}',
+  'path.circleWords': 'Palabras {from}\u2013{to}',
+  'path.circleLabel': 'Palabras {from}\u2013{to}, {status}',
+  'path.status.locked': 'bloqueado',
+  'path.status.ready': 'listo',
+  'path.status.taken': 'visto',
+  'path.status.mastered': 'dominado',
+  'path.earlier': 'Unidades anteriores',
+  'path.more': { one: '{count} unidad más', other: '{count} unidades más' },
+  'path.foot': {
+    one: '{count} palabra ordenada en total',
+    other: '{count} palabras ordenadas en total',
+  },
+  'path.met': '{met} de {total} encontradas',
+  'path.lockedHint':
+    'Encuentra las demás viendo vídeos, o añádelas del diccionario ahora: una palabra rara no debería bloquear un círculo durante un mes.',
+  'path.add': {
+    one: 'Añadir {count} palabra del diccionario',
+    other: 'Añadir {count} palabras del diccionario',
+  },
+  'path.adding': 'Añadiendo\u2026',
+  'path.readyHint': {
+    one: '{count} palabra, se enseña y luego se pregunta una vez.',
+    other: '{count} palabras, cada una se enseña y luego se pregunta una vez.',
+  },
+  'path.start': 'Empezar este círculo',
+  'path.takenHint': 'Visto. El repaso las irá devolviendo: un círculo no se hace dos veces.',
+  'path.masteredHint':
+    'Dominado. Cada palabra de aquí ha pasado el intervalo tras el cual los subtítulos dejan de anotarla.',
 
   'aside.today': 'Hoy',
   'aside.streakDays': { one: 'día seguido', other: 'días seguidos' },
@@ -162,6 +202,8 @@ export const es: Messages = {
   'aside.discovered': 'Descubiertas',
   'aside.discoveredOf': '{found} de las {total} palabras más frecuentes',
   'aside.waiting': 'Palabras en espera',
+  'aside.nextCircle': 'Círculo más cercano: {met} de {total}',
+  'aside.openPath': 'Abrir el camino',
   'aside.waitingEmpty': 'Nada en espera: todo lo que has recogido está en marcha.',
   'aside.startReview': 'Repasar ahora',
   'aside.fromVideos': 'De tus vídeos',

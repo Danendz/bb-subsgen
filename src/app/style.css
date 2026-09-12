@@ -1429,6 +1429,186 @@ details.help p {
   padding-bottom: 4px;
 }
 
+/* The path (src/app/Learn.tsx, src/app/path/) ------------------------------- */
+
+.path {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* A section is shut until you open it, so the 1,400-circle list costs nothing
+   to have on the page. */
+.path-section {
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-ctl);
+  overflow: hidden;
+}
+.path-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 14px;
+  text-align: left;
+}
+.path-head-name {
+  flex: 1;
+  font: 600 15px var(--display);
+}
+.path-head .icon {
+  transition: transform 0.15s ease;
+}
+.path-section.open .path-head .icon {
+  transform: rotate(180deg);
+}
+.path-units {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.path-unit {
+  background: var(--lifted);
+  border-radius: var(--r-ctl);
+  padding: 14px 12px 18px;
+}
+.path-unit-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.path-circles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* One transform for every circle on the path. `--at` is the circle's place in
+   its unit and 72deg is a fifth of a turn, so a unit of five traces exactly one
+   wave and the next unit starts where the last one began — no table of offsets,
+   and nothing to re-tune when a unit changes length. */
+.circle {
+  --sway: sin(var(--at) * 72deg);
+  transform: translateX(calc(var(--sway) * 64px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--edge-lit);
+  background: var(--raised-hot);
+  color: var(--text-3);
+}
+.circle .icon {
+  width: 22px;
+  height: 22px;
+}
+.circle-met {
+  font: 600 10px var(--body);
+  letter-spacing: 0.02em;
+}
+.circle:active:not(:disabled) {
+  transform: translateX(calc(var(--sway) * 64px)) translateY(1px);
+}
+.circle.on {
+  outline: 2px solid var(--action);
+  outline-offset: 3px;
+}
+
+/* The only circle you can act on, so it takes the one colour that means
+   "press this". */
+.circle.ready {
+  background: var(--action);
+  border-color: var(--action);
+  color: var(--action-ink);
+}
+/* Finished circles carry the tone most of their words are said in — the tone
+   bar's idea, one level up. `--tone` is unset for a language that marks none,
+   and the fallback is what the circle then draws in. */
+.circle.taken {
+  background: color-mix(in oklab, var(--tone, var(--edge-lit)) 35%, var(--raised-hot));
+  border-color: var(--tone, var(--edge-lit));
+  color: var(--text);
+}
+.circle.mastered {
+  background: var(--tone, var(--edge-lit));
+  border-color: transparent;
+  color: var(--ink);
+  box-shadow: 0 0 0 3px var(--raised);
+}
+
+/* The one orchestrated moment on this screen: a circle that became mastered
+   while you were reviewing, and only ever the ones that changed — see `won` in
+   Learn.tsx. Nothing animates on load. */
+@keyframes circle-won {
+  0% {
+    transform: translateX(calc(var(--sway) * 64px)) scale(1);
+  }
+  45% {
+    transform: translateX(calc(var(--sway) * 64px)) scale(1.22);
+  }
+  100% {
+    transform: translateX(calc(var(--sway) * 64px)) scale(1);
+  }
+}
+.circle.won {
+  animation: circle-won 620ms ease-out calc(var(--at) * 90ms) 1 both;
+}
+
+.circle-detail {
+  background: var(--raised);
+  margin-top: 14px;
+}
+.circle-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.circle-words .hanzi {
+  font: 18px var(--hanzi);
+}
+.circle-words .missing {
+  color: var(--text-2);
+}
+.circle-list {
+  list-style: none;
+  margin: 8px 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.circle-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.circle-list .hanzi {
+  font: 17px var(--hanzi);
+}
+.path button.wide {
+  width: 100%;
+  margin-top: 4px;
+}
+.path-foot {
+  text-align: center;
+}
+
 /* ---------------------------------------------------------------------------- */
 
 /* The aside is commentary on the work, so it goes first. */

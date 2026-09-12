@@ -146,10 +146,51 @@ export const de: Messages = {
   'pill.notInstalled': 'nicht installiert',
   'pill.addLanguage': 'Sprache hinzufügen',
 
-  'learn.soonTitle': 'Hier entsteht dein Pfad.',
-  'learn.soonBody':
-    'Kreise aus acht Wörtern, jeder davon geöffnet, indem du seinen Wörtern beim Schauen begegnest. Bis dahin plant „Wiederholen“ weiterhin das ganze Deck.',
+  'learn.title': 'Dein Weg',
+  'learn.blurb':
+    'Kreise aus acht Wörtern in Häufigkeitsreihenfolge. Ein Kreis öffnet sich, sobald alle seine Wörter in deinem Stapel sind \u2014 Schauen baut die Straße.',
+  'learn.needList.title': 'Der Weg entsteht aus einer Häufigkeitsliste.',
+  'learn.needList.body':
+    'Noch ist nichts eingestuft, es gibt also keine Reihenfolge zum Gehen. Der Einrichtungsassistent installiert die Liste gleich neben dem Wörterbuch.',
+  'learn.needList.action': 'Einrichtung öffnen',
+  'learn.noList.title': 'Für diese Sprache gibt es noch keine Häufigkeitsliste.',
+  'learn.noList.body':
+    'Der Weg braucht eine, um Wörter zu ordnen, und für diese Sprache gibt es noch keine. Die Wiederholung plant weiterhin alles, was du sammelst.',
   'learn.review': 'Zum Wiederholen',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Abschnitt {n}',
+  'path.sectionProgress': '{done} von {total} gemeistert',
+  'path.unit': 'Einheit {n}',
+  'path.circleWords': 'Wörter {from}\u2013{to}',
+  'path.circleLabel': 'Wörter {from}\u2013{to}, {status}',
+  'path.status.locked': 'gesperrt',
+  'path.status.ready': 'bereit',
+  'path.status.taken': 'durchgenommen',
+  'path.status.mastered': 'gemeistert',
+  'path.earlier': 'Frühere Einheiten',
+  'path.more': { one: '{count} weitere Einheit', other: '{count} weitere Einheiten' },
+  'path.foot': {
+    one: 'Insgesamt {count} eingestuftes Wort',
+    other: 'Insgesamt {count} eingestufte Wörter',
+  },
+  'path.met': '{met} von {total} getroffen',
+  'path.lockedHint':
+    'Triff die übrigen beim Schauen, oder hol sie jetzt aus dem Wörterbuch \u2014 ein seltenes Wort sollte einen Kreis nicht einen Monat lang blockieren.',
+  'path.add': {
+    one: '{count} Wort aus dem Wörterbuch hinzufügen',
+    other: '{count} Wörter aus dem Wörterbuch hinzufügen',
+  },
+  'path.adding': 'Wird hinzugefügt\u2026',
+  'path.readyHint': {
+    one: '{count} Wort, erst gezeigt, dann einmal abgefragt.',
+    other: '{count} Wörter, jedes erst gezeigt, dann einmal abgefragt.',
+  },
+  'path.start': 'Diesen Kreis starten',
+  'path.takenHint':
+    'Durchgenommen. Die Wiederholung bringt sie zurück \u2014 ein Kreis wird nicht zweimal gelaufen.',
+  'path.masteredHint':
+    'Gemeistert. Jedes Wort hier hat das Intervall überschritten, ab dem die Untertitel es nicht mehr annotieren.',
 
   'aside.today': 'Heute',
   'aside.streakDays': { one: 'Tag in Folge', other: 'Tage in Folge' },
@@ -164,6 +205,8 @@ export const de: Messages = {
   'aside.discovered': 'Entdeckt',
   'aside.discoveredOf': '{found} der {total} häufigsten Wörter',
   'aside.waiting': 'Wartende Wörter',
+  'aside.nextCircle': 'Nächster Kreis: {met} von {total}',
+  'aside.openPath': 'Weg öffnen',
   'aside.waitingEmpty': 'Nichts wartet \u2014 alles Gesammelte ist in Arbeit.',
   'aside.startReview': 'Jetzt wiederholen',
   'aside.fromVideos': 'Aus deinen Videos',

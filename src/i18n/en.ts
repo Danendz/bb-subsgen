@@ -165,10 +165,47 @@ export const en = {
   'pill.addLanguage': 'Add a language',
 
   // --- Learn (src/app/Learn.tsx) ---
-  'learn.soonTitle': 'Your path lands here.',
-  'learn.soonBody':
-    'Circles of eight words, each one opened by meeting its words while you watch. Until it arrives, Review still schedules the whole deck.',
+  'learn.title': 'Your path',
+  'learn.blurb':
+    'Circles of eight words in frequency order. A circle opens once every one of its words is in your deck \u2014 watching is what builds the road.',
+  'learn.needList.title': 'The path is built from a frequency list.',
+  'learn.needList.body':
+    'Nothing is ranked yet, so there is no order to walk. The setup wizard installs the list beside the dictionary.',
+  'learn.needList.action': 'Open setup',
+  'learn.noList.title': 'No frequency list for this language yet.',
+  'learn.noList.body':
+    'The path needs one to put words in order, and there is not one for this language yet. Review still schedules everything you capture.',
   'learn.review': 'Go to review',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Section {n}',
+  'path.sectionProgress': '{done} of {total} mastered',
+  'path.unit': 'Unit {n}',
+  'path.circleWords': 'Words {from}\u2013{to}',
+  'path.circleLabel': 'Words {from}\u2013{to}, {status}',
+  'path.status.locked': 'locked',
+  'path.status.ready': 'ready',
+  'path.status.taken': 'taken in',
+  'path.status.mastered': 'mastered',
+  'path.earlier': 'Earlier units',
+  'path.more': { one: '{count} more unit', other: '{count} more units' },
+  'path.foot': { one: '{count} ranked word in all', other: '{count} ranked words in all' },
+  'path.met': '{met} of {total} met',
+  'path.lockedHint':
+    'Meet the rest while you watch, or add them from the dictionary now \u2014 a rare word should not block a circle for a month.',
+  'path.add': {
+    one: 'Add {count} word from the dictionary',
+    other: 'Add {count} words from the dictionary',
+  },
+  'path.adding': 'Adding\u2026',
+  'path.readyHint': {
+    one: '{count} word, taught and then asked once.',
+    other: '{count} words, each taught and then asked once.',
+  },
+  'path.start': 'Start this circle',
+  'path.takenHint': 'Taken in. Review keeps these coming back \u2014 a circle is not run twice.',
+  'path.masteredHint':
+    'Mastered. Every word here has gone past the interval that stops the subtitles annotating it.',
 
   // --- The aside (src/app/Aside.tsx) ---
   'aside.today': 'Today',
@@ -184,6 +221,8 @@ export const en = {
   'aside.discovered': 'Discovered',
   'aside.discoveredOf': '{found} of the {total} most common words',
   'aside.waiting': 'Words waiting',
+  'aside.nextCircle': 'Nearest circle: {met} of {total} met',
+  'aside.openPath': 'Open the path',
   'aside.waitingEmpty': 'Nothing waiting \u2014 everything you have collected is in hand.',
   'aside.startReview': 'Review now',
   'aside.fromVideos': 'From your videos',

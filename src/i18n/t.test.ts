@@ -87,6 +87,7 @@ const SAME_IN_SOME_TARGET = new Set<keyof typeof en>([
   'session.structure',
   'videos.back',
   'data.rail.diagnostics',
+  'path.section',
 ])
 
 describe('the locale tables', () => {

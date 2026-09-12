@@ -144,10 +144,50 @@ export const pt: Messages = {
   'pill.notInstalled': 'não instalado',
   'pill.addLanguage': 'Adicionar um idioma',
 
-  'learn.soonTitle': 'O seu percurso aparece aqui.',
-  'learn.soonBody':
-    'Círculos de oito palavras, cada um aberto ao encontrar as suas palavras enquanto vê vídeos. Até lá, a Revisão continua a agendar o baralho inteiro.',
+  'learn.title': 'O seu caminho',
+  'learn.blurb':
+    'Círculos de oito palavras por ordem de frequência. Um círculo abre quando todas as suas palavras estão no seu baralho \u2014 ver vídeos é o que constrói a estrada.',
+  'learn.needList.title': 'O caminho é construído a partir de uma lista de frequência.',
+  'learn.needList.body':
+    'Ainda não há nada ordenado, por isso não há ordem a percorrer. O assistente de configuração instala a lista ao lado do dicionário.',
+  'learn.needList.action': 'Abrir a configuração',
+  'learn.noList.title': 'Ainda não há lista de frequência para este idioma.',
+  'learn.noList.body':
+    'O caminho precisa dela para ordenar as palavras, e para este idioma ainda não existe. A revisão continua a agendar tudo o que captura.',
   'learn.review': 'Ir para a revisão',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Secção {n}',
+  'path.sectionProgress': '{done} de {total} dominados',
+  'path.unit': 'Unidade {n}',
+  'path.circleWords': 'Palavras {from}\u2013{to}',
+  'path.circleLabel': 'Palavras {from}\u2013{to}, {status}',
+  'path.status.locked': 'bloqueado',
+  'path.status.ready': 'pronto',
+  'path.status.taken': 'percorrido',
+  'path.status.mastered': 'dominado',
+  'path.earlier': 'Unidades anteriores',
+  'path.more': { one: 'mais {count} unidade', other: 'mais {count} unidades' },
+  'path.foot': {
+    one: '{count} palavra ordenada no total',
+    other: '{count} palavras ordenadas no total',
+  },
+  'path.met': '{met} de {total} encontradas',
+  'path.lockedHint':
+    'Encontre as restantes enquanto vê, ou acrescente-as do dicionário agora \u2014 uma palavra rara não deve bloquear um círculo durante um mês.',
+  'path.add': {
+    one: 'Acrescentar {count} palavra do dicionário',
+    other: 'Acrescentar {count} palavras do dicionário',
+  },
+  'path.adding': 'A acrescentar\u2026',
+  'path.readyHint': {
+    one: '{count} palavra, ensinada e depois perguntada uma vez.',
+    other: '{count} palavras, cada uma ensinada e depois perguntada uma vez.',
+  },
+  'path.start': 'Começar este círculo',
+  'path.takenHint': 'Percorrido. A revisão vai trazê-las de volta \u2014 um círculo não se repete.',
+  'path.masteredHint':
+    'Dominado. Cada palavra aqui passou o intervalo a partir do qual as legendas deixam de a anotar.',
 
   'aside.today': 'Hoje',
   'aside.streakDays': { one: 'dia seguido', other: 'dias seguidos' },
@@ -162,6 +202,8 @@ export const pt: Messages = {
   'aside.discovered': 'Descobertas',
   'aside.discoveredOf': '{found} das {total} palavras mais frequentes',
   'aside.waiting': 'Palavras à espera',
+  'aside.nextCircle': 'Círculo mais próximo: {met} de {total}',
+  'aside.openPath': 'Abrir o caminho',
   'aside.waitingEmpty': 'Nada à espera \u2014 tudo o que recolheu está em curso.',
   'aside.startReview': 'Rever agora',
   'aside.fromVideos': 'Dos seus vídeos',

@@ -126,6 +126,14 @@ not be swapped. A hidden row for planned work leaves the reader hunting for a se
 was never there; a badge on something the language will never have is a promise with a timer
 on it, which is why pitch accent is hidden and Japanese grammar patterns are badged.
 
+`LanguagePack.sections` is the same kind of flag one level up: it is how the path bands the
+frequency list, and "a section is an HSK level" is exactly the Chinese assumption this
+directory exists to contain. A pack that implements none falls back to plain rank bands. It
+cuts the ranked list by *size* rather than reading each word's own `Rank.hsk`, because the
+setup wizard installs the frequency list alone — the level list is a separate, optional
+install — so most decks carry no level on any row and the alternative puts every word in one
+undifferentiated section.
+
 **Nothing outside a language's directory imports a module from inside it.** That is the point
 of the directory: an import of `zh/segment` from `reader/` is a Chinese assumption that
 compiles cleanly and is invisible from the file it sits in. The exceptions are the surfaces
@@ -230,6 +238,26 @@ read rather than something to act on.
 Icons are hand-authored SVG in `src/app/icons.tsx`, on the model of `src/app/flags.tsx`: named
 exports, `currentColor`, one fixed viewBox. The extension ships offline, so a CDN is not an
 option and an icon font is a dependency for seven drawings.
+
+## The path
+
+`/` is `src/app/Learn.tsx` and the circles it draws are `src/app/path/`. The model behind them
+— banding, the four circle states, what is waiting — is `src/flashcards/path.ts`, which takes
+rows and returns a model so that all of it is testable without a screen. **Nothing about a
+circle is stored.** Every state derives from `ranks` and the deck on each render, so there is
+no schema change and nothing that can disagree with the deck; mastery is `isKnown` from
+`known.ts`, the same maturity rule that stops the overlay annotating a word, rather than a
+second threshold that can drift from it.
+
+**Learn adds, Review maintains.** A circle runs `buildIntake` — its own eight words, in rank
+order, nothing else — and never `buildSession`. Mixing due cards into a circle makes it a
+progress bar in a costume: you press `words 281-288` and are asked six words from elsewhere.
+The scheduler, the ladder and the daily budget are untouched by anything on this screen.
+
+**Both screens that run a `Session` load it through `src/app/review/deck.ts`.** The lexicon
+read and the dozen lines that resolve a card's options are identical for Review and Learn, and
+the second copy is the one that quietly stops translating. What stays out of it is *which*
+cards a sitting holds — that is the whole difference between the two screens.
 
 ## The setup surface
 

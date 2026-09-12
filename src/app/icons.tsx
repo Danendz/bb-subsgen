@@ -115,3 +115,31 @@ export function FlameIcon() {
     </Glyph>
   )
 }
+
+/** A circle you have finished, and the one the review screen already marks right. */
+export function CheckIcon() {
+  return (
+    <Glyph>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </Glyph>
+  )
+}
+
+/** A circle you can run now. */
+export function PlayIcon() {
+  return (
+    <Glyph>
+      <path d="M8 5.5l10 6.5-10 6.5z" />
+    </Glyph>
+  )
+}
+
+/** A circle still waiting on words you have not met. */
+export function LockIcon() {
+  return (
+    <Glyph>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2.2" />
+      <path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7" />
+    </Glyph>
+  )
+}

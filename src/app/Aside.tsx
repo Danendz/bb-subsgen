@@ -6,9 +6,11 @@
 // are glanceable, which is the only thing they were ever for.
 //
 // Three panels, in the order you care about them: what you did today, what is
-// waiting, and where the words came from. The middle one is the stub #54 fills
-// — once the path exists, "waiting" means *waiting for a circle to open*, and
-// it gains the nearest circle it could unlock as its action.
+// waiting, and where the words came from. "Waiting" means waiting *for a circle
+// to open*: the words you have collected that the path cannot use yet, and the
+// circle nearest to opening as the thing to press. `waiting()` answers both, in
+// src/flashcards/path.ts, because the path screen asks the same question and
+// two copies of that rule would be two copies nothing could test.
 //
 // Everything here derives from a single read. Four panels each calling
 // `flashcardsDb()` would be four transactions and four spinners landing
@@ -26,7 +28,10 @@ import {
   studyStreak,
   videoWords,
 } from '../flashcards/queries'
+import { bandsFor, waiting } from '../flashcards/path'
+import { packFor } from '../lang/packs'
 import { loadSettings, resolveStudyLang } from '../shared/settings'
+import type { Item } from '../flashcards/types'
 import { navigate, useAsync } from './hooks'
 import { FlameIcon } from './icons'
 import { useT } from '../i18n/useT'
@@ -75,7 +80,7 @@ export function Aside() {
       captured.push({ videoId: video.videoId, title: video.title, words: words.length })
     }
 
-    return { items, ranks, videos: captured, streak, today }
+    return { items, ranks, videos: captured, streak, today, lang: studyLang }
   }, [])
 
   const { data } = useAsync(load)
@@ -90,6 +95,15 @@ export function Aside() {
   const ranked = data.ranks.filter((rank) => rank.rank !== undefined)
   const discovered = ranked.filter((rank) => known.has(rank.headword)).length
   const studiable = counts.words - counts.known
+
+  // The same banding the path screen draws, so "nearest circle" here and the
+  // circle Learn opens on are the same circle.
+  const deck = new Map(
+    data.items.flatMap((item): Array<[string, Item]> =>
+      item.kind === 'word' ? [[item.text, item]] : [],
+    ),
+  )
+  const next = waiting(bandsFor(data.ranks, packFor(data.lang)?.sections), deck).next
 
   return (
     <aside class="aside">
@@ -140,8 +154,16 @@ export function Aside() {
               <Stat n={studiable} label={t('aside.stat.toStudy')} />
               <Stat n={counts.pool} label={t('aside.stat.pool')} />
             </div>
-            <button class="wide" onClick={() => navigate('/review')}>
-              {t('aside.startReview')}
+            {next && (
+              <p class="muted small">
+                {t('aside.nextCircle', {
+                  met: next.state.met,
+                  total: next.circle.words.length,
+                })}
+              </p>
+            )}
+            <button class="wide" onClick={() => navigate(next ? '/' : '/review')}>
+              {next ? t('aside.openPath') : t('aside.startReview')}
             </button>
           </>
         ) : (

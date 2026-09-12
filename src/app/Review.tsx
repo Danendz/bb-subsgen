@@ -12,10 +12,7 @@ import { buildSession, queueCounts, type QueueSession } from '../flashcards/queu
 import { vocabularyIn, unknownIn } from '../flashcards/capture'
 import { rankKey, rankMap } from '../background/flashcards-store'
 import type { Choice } from '../flashcards/choices'
-import { buildOptions } from './review/options'
-import { lookupDefs, translatedGlosses } from '../shared/dict-client'
-import { packFor } from '../lang/packs'
-import { dictDb, getLexiconIn } from '../dict/store'
+import { loadLexicon, resolveChoices } from './review/deck'
 import { resolveStudyLang } from '../shared/settings'
 import type { Item } from '../flashcards/types'
 import { useAsync } from './hooks'
@@ -24,20 +21,6 @@ import { canSpeak } from '../shared/speak'
 import { Session } from './review/Session'
 import { Setup, setupSummary, type SessionSetup } from './review/Setup'
 import { useT } from '../i18n/useT'
-
-/**
- * Extension-origin caller, so it reads the store directly rather than asking
- * the worker for it — see src/dict/store.ts. No dictionary installed loads the
- * empty lexicon: a deck with nothing to segment against is not a reason to fail
- * the whole screen. A language with no pack has nothing to load it with, and is
- * the one case that has to be null.
- */
-async function loadWords(lang: string) {
-  const pack = packFor(lang)
-  if (!pack) return null
-  const text = await getLexiconIn(await dictDb(), lang)
-  return pack.load(text ?? '')
-}
 
 export function Review() {
   const { t, lang: uiLang } = useT()
@@ -59,7 +42,7 @@ export function Review() {
     const db = await flashcardsDb()
     const [items, words, ranks, streak, exposures] = await Promise.all([
       listItems(db, lang),
-      loadWords(lang),
+      loadLexicon(lang),
       rankMap(),
       studyStreak(db),
       listExposures(db),
@@ -170,27 +153,10 @@ export function Review() {
     setBuilding(true)
     try {
       setChoices(
-        await buildOptions(
+        await resolveChoices(
           built.cards,
-          {
-            deck: data.items,
-            patterns: words.pack.patterns,
-            rankOf: rankOfWord,
-          },
-          {
-            defs: (headwords) => lookupDefs(data.lang, headwords, settings.useTraditional),
-            // The sense the learner would have been shown, and only the first
-            // one: an option is a thing to pick between, and three senses each
-            // makes the card something to read instead.
-            glossOf: (entries, headword) =>
-              words.pack.rank(entries, headword)[0]?.senses[0]?.gloss ?? '',
-            // Words written with the same character as the target, which are
-            // the dictionary's nearest thing to a plausible wrong answer.
-            padding: (headword, exclude, count) =>
-              words.search(Array.from(headword)[0] ?? '', exclude, count),
-            translate: (requests) =>
-              translatedGlosses(data.lang, settings.translationLang, requests),
-          },
+          { deck: data.items, words, lang: data.lang, rankOf: rankOfWord },
+          settings,
         ),
       )
       setSession(built)

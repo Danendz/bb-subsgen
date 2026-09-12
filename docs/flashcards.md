@@ -29,6 +29,26 @@ Stopping on a word is the exception. Hovering one puts it straight into the deck
 lookup says more than any amount of passing exposure — and it pulls a word out of the
 pool if it was waiting there.
 
+## The path
+
+The app opens on a path of circles, and a circle is eight words from the installed frequency
+list in rank order. Above them: five circles to a unit, and a section per band of the
+language's own scale — HSK 1 to 7-9 for Chinese, plain bands of forty words for a language
+with no exam scale.
+
+A circle opens when all eight of its words are in your deck, so **watching is what builds the
+road**. Pressing an open one runs those eight words and nothing else: each is taught, then
+asked once. That is all Learn does — the review scheduler, the ladder and the daily budget
+are untouched, and Review goes on scheduling over the whole deck.
+
+Video does not deal out frequency ranks evenly, so you will sit at seven of eight for a while.
+A locked circle names what is missing and offers to add it from the dictionary, which is the
+escape hatch: without it a single rare word blocks a circle indefinitely.
+
+A circle is **mastered** once every word in it has passed the same interval that stops the
+subtitles annotating it. Nothing about a circle is stored — every state is worked out from
+your deck as it stands — and mastery does not decay.
+
 ## Reviews
 
 Reviews answer one question — did you get it or not — and each card climbs a seven-rung

@@ -144,10 +144,47 @@ export const fr: Messages = {
   'pill.notInstalled': 'non installé',
   'pill.addLanguage': 'Ajouter une langue',
 
-  'learn.soonTitle': 'Votre parcours arrivera ici.',
-  'learn.soonBody':
-    'Des cercles de huit mots, chacun ouvert par la rencontre de ses mots pendant que vous regardez. En attendant, Révision programme toujours l’ensemble du paquet.',
+  'learn.title': 'Votre parcours',
+  'learn.blurb':
+    'Des cercles de huit mots par ordre de fréquence. Un cercle s\u2019ouvre quand tous ses mots sont dans votre paquet \u2014 c\u2019est le visionnage qui construit la route.',
+  'learn.needList.title': 'Le parcours se construit à partir d\u2019une liste de fréquence.',
+  'learn.needList.body':
+    'Rien n\u2019est encore classé, il n\u2019y a donc pas d\u2019ordre à suivre. L\u2019assistant d\u2019installation pose la liste à côté du dictionnaire.',
+  'learn.needList.action': 'Ouvrir l\u2019installation',
+  'learn.noList.title': 'Pas encore de liste de fréquence pour cette langue.',
+  'learn.noList.body':
+    'Le parcours en a besoin pour ordonner les mots, et il n\u2019y en a pas encore pour cette langue. La révision planifie toujours tout ce que vous captez.',
   'learn.review': 'Aller aux révisions',
+
+  // --- The path (src/app/path/) ---
+  'path.section': 'Section {n}',
+  'path.sectionProgress': '{done} sur {total} maîtrisés',
+  'path.unit': 'Unité {n}',
+  'path.circleWords': 'Mots {from}\u2013{to}',
+  'path.circleLabel': 'Mots {from}\u2013{to}, {status}',
+  'path.status.locked': 'verrouillé',
+  'path.status.ready': 'prêt',
+  'path.status.taken': 'parcouru',
+  'path.status.mastered': 'maîtrisé',
+  'path.earlier': 'Unités précédentes',
+  'path.more': { one: '{count} unité de plus', other: '{count} unités de plus' },
+  'path.foot': { one: '{count} mot classé en tout', other: '{count} mots classés en tout' },
+  'path.met': '{met} sur {total} rencontrés',
+  'path.lockedHint':
+    'Rencontrez les autres en regardant, ou ajoutez-les depuis le dictionnaire : un mot rare ne devrait pas bloquer un cercle pendant un mois.',
+  'path.add': {
+    one: 'Ajouter {count} mot du dictionnaire',
+    other: 'Ajouter {count} mots du dictionnaire',
+  },
+  'path.adding': 'Ajout\u2026',
+  'path.readyHint': {
+    one: '{count} mot, montré puis demandé une fois.',
+    other: '{count} mots, chacun montré puis demandé une fois.',
+  },
+  'path.start': 'Commencer ce cercle',
+  'path.takenHint': 'Parcouru. La révision les fera revenir \u2014 un cercle ne se refait pas.',
+  'path.masteredHint':
+    'Maîtrisé. Chaque mot ici a dépassé l\u2019intervalle à partir duquel les sous-titres cessent de l\u2019annoter.',
 
   'aside.today': 'Aujourd’hui',
   'aside.streakDays': { one: 'jour d’affilée', other: 'jours d’affilée' },
@@ -162,6 +199,8 @@ export const fr: Messages = {
   'aside.discovered': 'Découverts',
   'aside.discoveredOf': '{found} des {total} mots les plus fréquents',
   'aside.waiting': 'Mots en attente',
+  'aside.nextCircle': 'Cercle le plus proche : {met} sur {total}',
+  'aside.openPath': 'Ouvrir le parcours',
   'aside.waitingEmpty': 'Rien en attente \u2014 tout ce que vous avez recueilli est en cours.',
   'aside.startReview': 'Réviser maintenant',
   'aside.fromVideos': 'De vos vidéos',
